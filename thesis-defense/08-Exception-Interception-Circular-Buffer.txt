@@ -1,0 +1,181 @@
+================================================================
+BugSafari Feature Notes for Oral Defense
+FILE 8 of 8: MULTI-CHANNEL EXCEPTION INTERCEPTION
+             and the CIRCULAR ACTION BUFFER
+================================================================
+
+
+WHAT IT IS
+----------
+Two cooperating parts:
+
+1. Multi-Channel Exception Interception: BugSafari attaches listeners to
+   every channel through which a web app can reveal a fault, uncaught JS
+   exceptions, error-level console output, unhandled promise rejections,
+   failed and 4xx/5xx network responses, native dialogs, and renderer
+   crashes, so no fault slips by unseen.
+
+2. Circular Action Buffer: a fixed-size ring buffer that continuously
+   records the last N actions the engine performed. When a fault fires,
+   this buffer is the recent history used to build the reproduction
+   steps, so the finding explains HOW to reach the bug.
+
+
+FILES RELATED
+-------------
+Exception interception:
+  testing-core/src/domain/services/telemetry/StabilityMonitor.ts
+      (attachExceptionMonitoring, attachCrashMonitoring, attachDialogHandler,
+       network response/requestfailed handlers, reportRuntimeFault)
+  testing-core/src/infrastructure/monitoring/stabilityMonitor.ts (setup)
+  testing-core/src/infrastructure/monitoring/browserConsoleListener.ts
+
+Circular action buffer:
+  testing-core/src/lib/circularBuffer.ts        (CircularBuffer<T>)
+  testing-core/src/infrastructure/monitoring/actionBuffer.ts (ActionRecorder)
+
+
+WHAT IT CAPTURES (THE CHANNELS)
+-------------------------------
+attachExceptionMonitoring wires the page fault channels:
+  - page.on('pageerror'): uncaught JavaScript exceptions. This is
+    first-party proof the app threw, so its confidence is floored at
+    CONFIRMED.
+  - page.on('console') filtered to type 'error': error-level console
+    output. Floored at SIGNAL (real signal, but not proof the app threw).
+    Known noise is filtered out first (network-stack errors already
+    covered elsewhere, browser resource-load errors, React
+    development-only warnings, CSP-violation reports).
+  - Unhandled promise rejections: an init script inside the page listens
+    for window 'unhandledrejection' and forwards the reason + stack + the
+    in-page timestamp through an exposed binding, so silent async
+    failures are caught too.
+attachCrashMonitoring wires page.on('crash') for renderer/tab crashes
+(OOM or GPU faults), which are attributed to the environment/harness, not
+the target. attachDialogHandler answers native alert/confirm/prompt
+dialogs so they cannot block exploration, recording the branch taken. The
+network handlers (response / requestfailed) capture transport failures
+and HTTP status faults (4xx/5xx).
+
+
+HOW THE CHANNELS ARE HANDLED
+----------------------------
+Every caught fault flows through one pipeline so all channels are treated
+consistently:
+  1. separate the human message from the stack trace, and sanitize the
+     stack (strip server file paths, node internals, env vars, secrets)
+     and scrub any echoed credentials.
+  2. verifyFault: classify against the knowledge base, then run a
+     provenance + evidence check. Faults whose root cause is NOT the
+     target app (BugSafari, Playwright, the browser, the network) are
+     demoted to informational telemetry, never reported as bugs.
+     Under-evidenced faults (confidence below threshold) are also
+     dropped.
+  3. deduplicate: repeats of the same fault signature collapse into ONE
+     finding with an occurrence count, so a per-render error flood does
+     not swamp the report.
+  4. a confirmed, reportable fault is emitted live to the Errors tab,
+     persisted to the forensic store, and registered in the confirmed-bug
+     ledger, all with the same attribution (bug class, CWE, severity,
+     reproduction).
+
+
+HOW ACTIONS ARE STORED (THE CIRCULAR BUFFER)
+--------------------------------------------
+CircularBuffer<T> is a fixed-capacity ring buffer. It keeps head and size
+indices and writes to (head + size) % capacity. When it is full, a new
+push OVERWRITES the oldest entry and advances head, all in O(1), with no
+array shifting. ActionRecorder wraps it and records every action the
+engine takes (NAVIGATE, CLICK, TYPE, HOVER, SUBMIT) with rich metadata:
+the human label, the selector, the URL, the payload/fuzz value, the
+observed outcome, container context, and repeat counts. The capacity is
+60 (deep enough to hold a realistic causal chain before minimization;
+it was raised from an earlier value of 20).
+
+
+HOW FINDINGS USE THE TRACE
+--------------------------
+When a fault fires, the recent action history is frozen and MINIMIZED
+down to the steps that were causally required to reach that fault, then
+turned into numbered, human-readable reproduction steps (the reproduction
+playbook). The fault's culprit control is resolved from the interaction
+active at the exact fault instant (using the in-page timestamp for async
+rejections, which lag). The finding therefore ships with: a clean
+message, a sanitized stack, and a short "do these steps to reproduce"
+list, which is exactly what Verify Fix (file 1) later replays.
+
+
+WHY THE CIRCULAR BUFFER IS NEEDED
+---------------------------------
+A bug is only useful if you can reproduce it. But a fault can fire long
+after the action that caused it, and the engine performs thousands of
+actions per run. Recording ALL of them forever would waste memory; a ring
+buffer keeps only the RECENT window (the part that matters for
+reproduction) at constant memory and constant O(1) cost per action. It is
+"circular" so it never needs to grow or shift: the newest action simply
+overwrites the oldest once it is full.
+
+
+INPUTS AND OUTPUTS
+------------------
+Exception interception input: raw browser events (pageerror, console,
+rejection, crash, dialog, network response/failure).
+Output: verified, classified, deduplicated findings with attribution,
+plus live telemetry and persisted forensic records.
+Circular buffer input: each executed action step.
+Output: a snapshot of the recent action window, and (after minimization)
+the reproduction playbook.
+
+
+SIMPLE EXAMPLE
+--------------
+The engine types a huge number into a quantity field, then clicks Update.
+Two seconds later an unhandled promise rejection fires from the fetch
+that failed.
+  - The rejection channel (init-script listener) catches it with its
+    in-page timestamp.
+  - verifyFault confirms it is the target app's fault and classifies it.
+  - The circular buffer holds the recent steps; minimization keeps
+    NAVIGATE -> TYPE(quantity=99999999) -> CLICK(Update).
+  - The finding shows those three steps as the reproduction, and the
+    culprit is the Update control that was active when the request fired.
+
+
+LIMITATIONS AND EDGE CASES
+--------------------------
+  - The buffer holds only the last 60 actions; a fault whose cause is
+    older than that window may lose its earliest step (mitigated by
+    minimization keeping only causal steps).
+  - Noise filters (React dev warnings, CSP reports, resource-load errors)
+    could, in theory, suppress a genuinely unusual error that matches
+    their patterns; the patterns are written to be distinctive to avoid
+    that.
+  - Faults during a concurrent burst cannot be pinned to one control, so
+    attribution falls back to the endpoint or the burst macro.
+  - Renderer crashes are treated as environment faults, not target bugs.
+
+
+IF A PANELIST ASKS "WHY DID YOU USE THIS?"
+------------------------------------------
+Because a web app can fail through many different channels, and watching
+only one (say console) would miss silent rejections or network faults.
+Listening to all of them, then funneling them through one
+verify-and-dedup pipeline, catches real bugs without drowning in noise.
+The circular buffer is the cheapest correct way to always have the recent
+action history ready to explain a fault the moment it happens.
+
+IF THEY ASK "HOW DOES IT WORK?"
+-------------------------------
+Playwright listeners on pageerror, error console, unhandled rejection,
+network failures, dialogs, and crashes feed one pipeline that sanitizes,
+classifies, provenance-checks, and deduplicates each fault. In parallel a
+fixed-size ring buffer continuously records the last 60 actions; when a
+fault fires, that window is frozen and minimized into numbered
+reproduction steps attached to the finding.
+
+IF THEY ASK "WHY IS THIS USEFUL?"
+---------------------------------
+It means BugSafari catches faults no matter how the app leaks them, only
+reports the ones truly caused by the app, and always attaches concrete
+steps to reproduce, which is what makes each finding actionable and
+re-verifiable.

@@ -1,0 +1,178 @@
+================================================================
+BugSafari Feature Notes for Oral Defense
+FILE 1 of 8: VERIFY FIX (Regression Replay Verification)
+================================================================
+
+
+WHAT IT IS
+----------
+Verify Fix is a one-click button on a saved finding. When a developer
+believes they have fixed a bug that BugSafari reported, they press
+"Verify Fix". BugSafari then opens a fresh browser, replays the exact
+recorded steps that produced the bug the first time, and re-checks
+whether the same fault still happens. It returns a plain verdict:
+the bug is RESOLVED, still STILL_ACTIVE, INCONCLUSIVE, or the check
+itself failed (VERIFICATION_FAILED).
+
+The key idea: this is a deterministic REPLAY, not a new exploration.
+It does not use the machine-learning scorer or the graph navigator.
+It just re-walks the saved timeline. The same finding on the same
+target should always give the same verdict.
+
+
+FILES RELATED
+-------------
+Backend (the actual replay engine):
+  testing-core/src/domain/services/regression/RegressionPlaybookVerifier.ts
+  testing-core/src/domain/services/regression/ReplaySession.ts
+  testing-core/src/domain/services/regression/verdict.ts        (decideVerdict, confirmResolution, summarize)
+  testing-core/src/domain/services/regression/replayProbes.ts   (isReplayVerifiable)
+  testing-core/src/domain/services/regression/replayAdmission.ts
+
+Frontend (the queue + button):
+  developer-dashboard/src/application/useCases/verifyQueue.ts
+  developer-dashboard/src/application/useCases/useRegressionVerifier.ts
+
+Shared contract:
+  shared/types (VerifyFixRequest, VerifyFixResult, VerifyFixProgress)
+
+
+WHY BUGSAFARI NEEDS IT
+----------------------
+A testing tool that only FINDS bugs is only half useful. Developers
+also need to confirm a fix actually worked. Verify Fix closes that
+loop. Instead of the developer manually reproducing the reported steps
+by hand, BugSafari does it automatically and gives a trustworthy,
+repeatable answer. This turns a single test run into a living
+regression check the developer can re-run after every code change.
+
+
+HOW IT WORKS, STEP BY STEP
+--------------------------
+1. The developer clicks Verify Fix on a saved finding. The frontend
+   sends a VerifyFixRequest carrying the sessionId (the public RUN-
+   code) and the bugId.
+
+2. The frontend puts the request into a single-flight FIFO queue
+   (VerifyQueue). Only ONE replay runs at a time per user; further
+   clicks wait as "queued", they are never rejected. This matches the
+   backend, which also serializes replays per operator. Firing several
+   at once would otherwise be refused by the backend and look like a
+   false failure.
+
+3. On the backend, RegressionPlaybookVerifier.verify() loads the
+   finding, scoped to the logged-in user (least privilege: you can
+   only verify your own runs). It reads the target URL and the saved
+   action timeline.
+
+4. It picks the timeline. It prefers the finding's OWN minimized,
+   replayable steps (the short causal chain). Only for old records
+   without that does it fall back to the whole-session timeline, and a
+   clean result on that fallback is treated as weaker evidence
+   (LEGACY_TIMELINE).
+
+5. It checks isReplayVerifiable(bugClass). Some bug classes cannot be
+   proven by replay (for example, faults that need live exploration).
+   Those return INCONCLUSIVE immediately instead of wasting a browser
+   launch and fabricating a "RESOLVED".
+
+6. It launches a FRESH, isolated headless Chromium browser with its
+   own clean context (no cookie or state bleed between attempts).
+
+7. runReplaySession replays the recorded steps in order, with NO
+   autonomous exploration, and re-applies the exact same knowledge-base
+   validation rules that first reported the bug. It watches for the
+   same fault signals (matched signals, weak signals) and records step
+   statistics (how many steps executed, skipped, failed).
+
+8. decideVerdict weighs the evidence: did the fault recur? were the
+   right endpoints exercised? was the replay complete? It produces a
+   verdict.
+
+9. Confirmation replay for a fix. A single clean replay against a live
+   target can be luck (backend data or timing). So if the first verdict
+   is RESOLVED, BugSafari runs a SECOND independent replay before it
+   dares call the bug fixed (confirmResolution). If the fault comes back
+   on the retry, the verdict flips to STILL_ACTIVE. If the retry cannot
+   agree or cannot run, it becomes UNCONFIRMED_RESOLUTION.
+
+10. The verdict, reason, step stats, and a human summary are returned
+    and persisted onto the finding so it survives a page refresh.
+
+
+INPUTS AND OUTPUTS
+------------------
+Inputs:
+  - sessionId (public RUN- code) and bugId
+  - the verified userId (query is scoped to it)
+  - the finding's saved target URL and recorded action timeline
+
+Outputs (VerifyFixResult):
+  - verdict: RESOLVED | STILL_ACTIVE | INCONCLUSIVE | VERIFICATION_FAILED
+  - reason: a typed code (e.g. REPLAY_ERROR, UNVERIFIABLE_BUG_CLASS,
+    LEGACY_TIMELINE, UNCONFIRMED_RESOLUTION)
+  - stepsReplayed and stepStats (total / executed / skipped / failed)
+  - matchedSignals, a plain-language summary, and durationMs
+
+
+IMPORTANT LOGIC WITH A SIMPLE EXAMPLE
+-------------------------------------
+Rule: RESOLVED must be confirmed twice.
+
+Example. A finding says "clicking Pay twice charges the card twice".
+  - Replay 1: BugSafari replays open-page -> click Pay -> click Pay.
+    The double charge does NOT happen. First verdict = RESOLVED.
+  - Because it is RESOLVED, a second replay runs automatically.
+    - If the double charge is still absent -> final verdict RESOLVED.
+    - If the double charge reappears -> final verdict STILL_ACTIVE
+      (the fix is flaky, so it is not trusted).
+
+This "confirm twice before declaring fixed, but trust a single
+reproduction" rule is deliberately conservative: it is easy to say a
+bug is still alive, hard to say it is dead.
+
+
+WHAT HAPPENS DURING AN ACTUAL TEST
+----------------------------------
+The developer opens a saved report, sees a finding, presses Verify Fix.
+A small status animates: queued -> replaying -> validating. Behind the
+scenes a headless browser opens the target, walks the recorded steps,
+and re-runs the original checks (possibly twice). Within a few seconds
+the card shows a verdict badge and a one-line summary such as
+"Fault no longer reproduces across two replays. Marked RESOLVED."
+
+
+LIMITATIONS AND EDGE CASES
+--------------------------
+- Some bug classes are not replay-verifiable and always return
+  INCONCLUSIVE with advice to re-test with a live run.
+- Old findings without a per-finding minimized timeline fall back to
+  the session timeline; a clean result there is flagged as weaker.
+- The target must still be reachable. If the browser cannot launch or
+  the site is down, the result is VERIFICATION_FAILED, which says
+  NOTHING about the bug itself, only that the check could not run.
+- A stale authenticated finding replayed against a login wall would
+  miss every selector and look "resolved", so a login-wall guard is on
+  to prevent that false negative.
+
+
+IF A PANELIST ASKS "WHY DID YOU USE THIS?"
+------------------------------------------
+Because finding a bug is not the end of testing. Developers need a fast,
+trustworthy way to confirm their fix worked without manually redoing the
+steps. Deterministic replay gives a repeatable yes/no answer, and the
+double-confirmation rule keeps it honest against flaky live backends.
+
+IF THEY ASK "HOW DOES IT WORK?"
+-------------------------------
+It re-opens a clean browser and replays the finding's own recorded
+steps, then re-applies the same validation rules that first caught the
+bug. No AI, no exploration, just a faithful re-run. If it looks fixed,
+it runs a second time to be sure. It returns RESOLVED, STILL_ACTIVE,
+INCONCLUSIVE, or VERIFICATION_FAILED.
+
+IF THEY ASK "WHY IS THIS USEFUL?"
+---------------------------------
+It turns every reported bug into a re-runnable regression test. After a
+code change, one click tells the developer whether the specific bug is
+truly gone, and it is safe because it never falsely claims a fix.

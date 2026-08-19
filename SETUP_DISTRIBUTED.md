@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "fix-js-runtime-errors-findings-card"
+git commit -m "support-onclick-div-buttons"
 git push origin HEAD:dev --force
 
 

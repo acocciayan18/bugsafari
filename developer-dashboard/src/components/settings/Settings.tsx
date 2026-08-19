@@ -104,7 +104,7 @@ function ThemeModeControl({ mode, onChange }: { mode: ThemeMode; onChange: (mode
             role="radio"
             aria-checked={selected}
             onClick={() => onChange(opt.mode)}
-            className={`flex min-h-[44px] flex-col items-center justify-center gap-1 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2 focus-visible:ring-offset-(--surface-app) ${
+            className={`flex min-h-[44px] flex-col cursor-pointer items-center justify-center gap-1 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2 focus-visible:ring-offset-(--surface-app) ${
               selected
                 ? 'border-(--border-strong) bg-(--surface-invert) text-(--text-oninvert)'
                 : 'border-(--border-hairline) text-(--text-secondary) hover:bg-(--surface-hover)'
@@ -477,7 +477,7 @@ function SecuritySettingsSection() {
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-3 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+          className="flex w-full items-center cursor-pointer justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-3 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
         >
           <KeyRound className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
           Change Password
@@ -683,13 +683,13 @@ function AccountSection() {
             <div className="flex flex-col gap-3 sm:flex-row">
               <button
                 onClick={handleLogout}
-                className="rounded-lg bg-(--status-critical-fg) px-4 py-2 text-sm font-semibold text-(--text-oninvert) hover:opacity-90 active:opacity-80 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+                className="rounded-lg cursor-pointer bg-(--status-critical-fg) px-4 py-2 text-sm font-semibold text-(--text-oninvert) hover:opacity-90 active:opacity-80 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
               >
                 Yes, Sign Out
               </button>
               <button
                 onClick={() => setShowLogoutConfirm(false)}
-                className="rounded-lg border border-(--border-strong) px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+                className="rounded-lg border  cursor-pointer border-(--border-strong) px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
               >
                 Cancel
               </button>

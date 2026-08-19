@@ -1,0 +1,127 @@
+================================================================
+BugSafari Feature Notes for Oral Defense
+FILE 2 of 8: SEE MORE SUGGESTIONS (On-Demand AI Fix)
+================================================================
+
+
+WHAT IT IS
+----------
+Every reported finding shows a "Suggested Fix" box. By default that box
+shows a deterministic fix written from BugSafari's own knowledge base
+(fast, offline, always available). "See More Suggestions" is a button
+next to it. When pressed, it asks a large language model (Google Gemini)
+for a tailored, finding-specific remediation and shows that instead. The
+built-in knowledge-base fix always stays as the fallback.
+
+
+FILES RELATED
+-------------
+Frontend (the button + display):
+  developer-dashboard/src/components/common/ForensicCardKit.tsx   (SuggestedFixBlock)
+  developer-dashboard/src/services/historyService.ts             (requestSuggestedFix)
+
+Backend (route + model call):
+  testing-core/src/presentation/api/registerRoutes.ts            (POST /api/findings/suggest-fix)
+  testing-core/src/infrastructure/ai/GeminiRemediationAdvisor.ts (generateRemediation)
+
+Shared contract:
+  shared/types/remediation.ts (SuggestFixRequest, SuggestFixResponse, SuggestFixSource)
+
+
+WHY BUGSAFARI NEEDS IT
+----------------------
+The deterministic knowledge-base advice is reliable but generic: it is
+the same text for every bug of that class. Real bugs have specific
+messages, payloads, and stack traces. "See More Suggestions" lets the
+developer optionally ask for advice tailored to THIS exact finding,
+while keeping the guaranteed offline fix as a safety net. It is opt-in,
+so no API call is spent unless the developer actually wants it.
+
+
+HOW IT WORKS, STEP BY STEP
+--------------------------
+1. The finding card renders with the deterministic knowledge-base fix
+   already visible (the "advice" persisted on the saved bug).
+
+2. On the saved Forensic Report, the card also has the extra fault
+   "context" (bug class, severity, CWE, error message, culprit control,
+   payload used, stack trace, reproduction steps). Only when this
+   context exists does the "See More Suggestions" button appear.
+
+3. The developer clicks it. The frontend calls requestSuggestedFix,
+   which POSTs the context to /api/findings/suggest-fix, including the
+   knowledge-base advice as a fallback field.
+
+4. The backend calls generateRemediation, which builds a compact prompt
+   and sends it to Gemini. The prompt asks for 3 to 5 short, numbered,
+   code-oriented steps, under 120 words.
+
+5. The reply is shown as the new Suggested Fix, and it is persisted onto
+   the finding so it appears immediately next time (source = 'ai'). Once
+   a genuine AI fix exists, the button hides so no call is wasted
+   regenerating a good answer.
+
+6. If the model call fails for any reason, the response falls back to
+   the deterministic fix, the button turns into "Retry", and a short,
+   friendly message explains what happened.
+
+
+WHAT DATA IT USES
+-----------------
+It sends only fault facts already captured for the finding:
+  - bug class, severity, CWE identifier
+  - the error message and stack trace
+  - the culprit control label
+  - the payload used (for injection or fuzzing findings)
+  - the reproduction steps
+
+All of these fields come from the target application, which is treated
+as UNTRUSTED. Each field is length-capped, and they are fenced inside a
+delimited "untrusted data" block in the prompt. The instruction tells
+the model to treat everything inside strictly as data and never follow
+instructions embedded in it. This is the defense against indirect prompt
+injection (a malicious app trying to hijack the model through its own
+error text).
+
+
+WHAT HAPPENS DURING AN ACTUAL TEST
+----------------------------------
+The developer reads a finding, sees the generic fix, and wants
+something more specific. They press "See More Suggestions". A spinner
+shows "Generating...". A moment later the box is replaced by a tailored,
+numbered remediation that references the actual error and payload. If
+the service is unavailable, they instead see "Showing the saved fix
+instead" plus a "Retry" button.
+
+
+LIMITATIONS AND EDGE CASES
+--------------------------
+- Needs a configured GEMINI_API_KEY. Without it the call returns
+  "not_configured" and the deterministic fix stays.
+- It is opt-in per finding and generated once, to control cost.
+- The model can be rate-limited, time out, or return unusable text;
+  every failure path is classified and falls back cleanly.
+- The advice is a suggestion, not a guaranteed correct patch; the
+  developer still judges it.
+
+
+IF A PANELIST ASKS "WHY DID YOU USE THIS?"
+------------------------------------------
+Because a generic per-class fix is not always enough, but calling an LLM
+for every finding automatically would be slow, costly, and unreliable.
+Making it an explicit, on-demand button gives the developer a
+finding-specific answer only when they ask, while the deterministic fix
+guarantees there is always some advice even offline.
+
+IF THEY ASK "HOW DOES IT WORK?"
+-------------------------------
+It sends the finding's captured fault facts to Gemini inside a guarded,
+length-capped prompt and displays the model's short remediation. The
+result is cached on the finding, and any failure falls back to the
+built-in knowledge-base fix.
+
+IF THEY ASK "WHY IS THIS USEFUL?"
+---------------------------------
+It gives the developer remediation written for their specific bug, with
+its real message and payload, instead of a one-size-fits-all template,
+without giving up the reliability of the offline fallback.

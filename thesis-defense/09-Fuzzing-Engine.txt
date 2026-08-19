@@ -1,0 +1,212 @@
+================================================================
+BugSafari Feature Notes for Oral Defense
+FILE 9 of 9: FUZZING ENGINE
+             (Heuristic Data Fuzzing + Adaptive Payload Escalation)
+================================================================
+
+
+WHAT IT IS
+----------
+The fuzzing engine is the part of BugSafari that feeds hostile,
+malformed, and boundary-breaking values into input fields to see if the
+application mishandles them. It does not throw random noise. It first
+CLASSIFIES each field by what it is for (a password box, a quantity box,
+a search box, a date, an email, a JSON blob), then picks attack payloads
+targeted to that field type, and ESCALATES the payload complexity level
+by level only when the app shows no reaction. Every payload is
+deterministic, so any finding can be replayed byte for byte.
+
+
+FILES RELATED
+-------------
+  testing-core/src/domain/scenarios/fuzzing/dataFuzzer.ts
+      (the DataFuzzer scenario + fuzzTextInput + injectPayload + boundary derivation)
+  testing-core/src/domain/scenarios/fuzzing/elementClassifier.ts
+      (classifyInputElement -> FieldCategory, sensitive-value masking, benign values)
+  testing-core/src/domain/scenarios/fuzzing/payloadEscalator.ts
+      (synthesizeEscalatedPayload, deriveFuzzSeed, escalation levels)
+  testing-core/src/domain/scenarios/fuzzing/strategies/*.ts
+      (per-category vector corpora: numeric, XSS, SQL/NoSQL, email, date, JSON, chaos)
+  testing-core/src/domain/scenarios/formBypasser.ts        (stripConstraintsSilently)
+  testing-core/src/domain/services/exploration/formSubmitter.ts (triggerFormSubmission, concurrentDoubleSubmit)
+  testing-core/src/infrastructure/monitoring/fuzzForensics.ts   (captureFuzzStep: pre/post state hashing)
+  testing-core/src/domain/chaos/ChaosTransactionManager.ts      (FUZZ transaction tracking)
+
+
+WHY BUGSAFARI NEEDS IT
+----------------------
+Many of the most serious bugs (injection, validation bypass, memory or
+size limits, encoding errors, crashes) only appear when a field receives
+input the developer never expected. Simply typing valid data never finds
+them. The fuzzer generates exactly the "impossible" inputs, but does so
+intelligently: aiming the right kind of attack at the right kind of
+field, so it wastes far fewer attempts than blind random fuzzing.
+
+
+HOW IT WORKS, STEP BY STEP
+--------------------------
+1. CLASSIFY the field. classifyInputElement reads the element's type,
+   id, name, class, inner text, and placeholder, tokenizes them (splitting
+   on delimiters and camelCase), and matches whole-word or prefix tokens
+   against curated sets. It returns one of seven categories, checked in
+   priority order:
+     DATABASE_AUTH (login/password/token) -> checked FIRST (most security
+       sensitive), NUMERIC, TEXT_SEARCH, EMAIL, DATE, JSON, and
+     CHAOS_FALLBACK (the default for anything unclassified).
+
+2. SEED the field. deriveFuzzSeed hashes (category + selector) with FNV-1a
+   into a stable 32-bit seed. This makes every payload for that field
+   deterministic and replayable, no random numbers, no clock.
+
+3. READ then STRIP constraints. Before injecting, readInputConstraints
+   reads the HTML5 min/max/step/maxlength (for numeric/date boundary
+   payloads). Immediately before each injection, stripConstraintsSilently
+   removes client-side validation attributes so the payload actually
+   reaches the field and the server. This is re-run before every injection
+   to defeat SPA re-renders that re-add the attributes.
+
+4. SYNTHESIZE the payload for the current escalation level
+   (synthesizeEscalatedPayload). It picks a base vector from the category
+   corpus, then layers mutations by level (see the escalation table below).
+
+5. INJECT. injectPayload types the value in. Large payloads (>10000 chars)
+   are set directly via the DOM and dispatched with input/change events;
+   a <select> gets a rogue out-of-set <option> appended and selected (to
+   test server-side validation of dropdowns); everything else uses
+   page.fill.
+
+6. SUBMIT. triggerFormSubmission commits the value so it actually reaches
+   the backend. Without the submit, the payload just sits in the field and
+   the fault-triggering request never fires. Auth fields also get a
+   zero-wait concurrentDoubleSubmit race probe at level 0, to expose
+   double-login/double-register and missing in-flight locks.
+
+7. OBSERVE and decide whether to escalate. captureFuzzStep hashes page
+   state BEFORE and AFTER the injection (using the DOM structural hash from
+   the loop-prevention system) and collects API responses and console
+   anomalies. If the state CHANGED (a meaningful reaction), the fuzzer
+   STOPS escalating this field. If nothing happened, it escalates to the
+   next level and tries a stronger payload. This is the adaptive part:
+   start gentle, get nastier only as needed.
+
+8. Around each injection, a FUZZ transaction is opened on the
+   ChaosTransactionManager so the fuzzGuard vulnerability detector sees the
+   live payload metadata while its effects land.
+
+
+THE ADAPTIVE ESCALATION LEVELS (0 to 4)
+---------------------------------------
+Each level adds one more mutation layer on top of the base vector:
+  L0  base          the raw category vector (numeric boundary, XSS, SQL/
+                    NoSQL, etc.). For numeric/date fields a constraint-
+                    boundary value just OUTSIDE the declared range is
+                    preferred here (higher bug yield).
+  L1  + structure   parser breakers appended: unbalanced quotes, brackets,
+                    NUL byte, newlines, comment markers ("'`)}]>\\\0\n\r\t<!--)
+  L2  + context     field placement gets context-breaking mutators
+                    (attribute breakout, event-handler graft, {{7*7}}
+                    template expression, unicode-normalization bypass);
+                    URL placement gets layered percent + unicode encoding
+  L3  + amplify     length blow-up (8 KB then 64 KB) to probe size/DoS
+                    and buffer limits
+  L4  polyglot      a single cross-context string live in HTML/JS, SQL,
+                    NoSQL, and template interpreters at once
+Levels 0..4 give up to 5 attempts, and it stops early the moment the app
+reacts.
+
+
+CATEGORY -> ATTACK MAPPING (WHY IT IS "HEURISTIC")
+--------------------------------------------------
+  NUMERIC        -> numeric boundary payloads (overflow, out-of-range)
+  TEXT_SEARCH    -> XSS vectors (text that might render as HTML)
+  DATABASE_AUTH  -> SQL / NoSQL injection vectors
+  EMAIL          -> email-format mutation vectors
+  DATE           -> date manipulation / out-of-range vectors
+  JSON           -> JSON injection vectors
+  CHAOS_FALLBACK -> generic chaos tokens
+Aiming the payload family at the field's purpose is the "heuristic,
+context-aware" idea, it is why the fuzzer is efficient.
+
+
+INPUTS AND OUTPUTS
+------------------
+Input: a live Playwright page and a target input element.
+Output (per field): a swept series of injected payloads with recorded
+strategy, escalation level, and observed effect (state change, API
+responses, console anomalies). Every injection is written to the action
+recorder as bypass -> TYPE -> FORM_SUBMIT steps so a resulting fault
+ships with an exact reproduction, and fuzzGuard can raise a finding.
+
+
+IMPORTANT LOGIC WITH A SIMPLE EXAMPLE
+-------------------------------------
+Determinism formula (paraphrased):
+  seed = FNV1a(category + "::" + selector)
+  base index = (FNV1a(seed + ":" + level) + cursor) mod corpusSize
+The cursor advances on repeat visits so a field sweeps DIFFERENT vectors
+over time instead of re-firing the same one.
+
+Example: a field named "quantity", type="number", min=1 max=10.
+  - classify -> NUMERIC.
+  - readInputConstraints -> max=10, step=1.
+  - L0 boundary payload -> "11" (max + step), out of range.
+  - stripConstraintsSilently removes min/max, injectPayload types "11",
+    triggerFormSubmission sends it.
+  - captureFuzzStep compares before/after hashes. If the app crashes,
+    throws, or the API 500s, the state changed -> stop, and the fault is
+    reported with steps NAVIGATE -> TYPE(quantity=11) -> submit.
+  - If nothing happens, escalate: L1 appends parser breakers, L3 blows the
+    length up to 64 KB, L4 fires the polyglot, until a reaction appears or
+    level 4 is exhausted.
+
+
+WHAT HAPPENS DURING AN ACTUAL TEST
+----------------------------------
+When the engine reaches a form, it classifies each input, strips its
+guards, and injects a targeted payload, submitting after each. The
+dashboard streams heuristic-fuzz milestones and the classified category.
+A field that reacts is left alone; a silent field is hit with
+progressively harsher payloads. Any exception, injection reflection, or
+server fault this provokes is caught by the multi-channel interceptor and
+turned into a finding with the exact payload attached.
+
+
+LIMITATIONS AND EDGE CASES
+--------------------------
+  - Classification is token-based; an oddly named field may fall to
+    CHAOS_FALLBACK and get generic payloads.
+  - "State changed" is the escalation trigger; a real but state-silent
+    server bug could stop escalation early.
+  - Sensitive fields (password, card, SSN, token) have their narrated
+    value MASKED in the human playbook, though replay keeps the verbatim
+    value.
+  - Amplification payloads are bounded (max 64 KB) to stay under Node/
+    Playwright string limits.
+  - The standalone dataFuzzer scenario is off the main live dispatch path;
+    the engine fuzzes through ActionExecutor.executeInputFuzzing, while
+    fuzzTextInput is still used by the NoSQL finder.
+
+
+IF A PANELIST ASKS "WHY DID YOU USE THIS?"
+------------------------------------------
+Because the highest-impact bugs live in how apps handle unexpected input,
+and blind random fuzzing is slow and wasteful. Classifying each field and
+aiming type-appropriate payloads at it, then escalating only when needed,
+finds validation and injection flaws far more efficiently, and full
+determinism means every finding is reproducible.
+
+IF THEY ASK "HOW DOES IT WORK?"
+-------------------------------
+It classifies each input into one of seven categories, derives a stable
+seed, strips client-side validation, injects a targeted payload, submits
+it, and measures the app's reaction via before/after state hashing. If the
+app does not react, it escalates the payload through five mutation levels
+(structure breakers, context breaks/encoding, amplification, polyglot)
+until it does or the levels run out.
+
+IF THEY ASK "WHY IS THIS USEFUL?"
+---------------------------------
+It automatically discovers input-handling bugs (injection, boundary,
+encoding, size, crash) that valid-data testing never reaches, aims each
+attack where it is most likely to work, and hands the developer the exact
+payload and steps to reproduce and fix the fault.

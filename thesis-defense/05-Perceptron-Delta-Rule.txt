@@ -1,0 +1,169 @@
+================================================================
+BugSafari Feature Notes for Oral Defense
+FILE 5 of 8: SINGLE-LAYER PERCEPTRON and DELTA RULE
+================================================================
+
+
+WHAT IT IS
+----------
+The Single-Layer Perceptron is BugSafari's small on-device machine
+learning model that RATES how promising each interactive element on a
+page is. Given a control (a button, input, link), it outputs a number
+that estimates "how likely is clicking or typing here to lead somewhere
+useful or expose a bug". The Delta Rule is the learning rule that
+updates the model's weights during the run, using the results of the
+actions it actually took. It is online learning: the model learns while
+it explores.
+
+
+FILES RELATED
+-------------
+  testing-core/src/ml/perceptron.ts
+      (SingleLayerPerceptron, DEFAULT_WEIGHTS, buildFeatureVectorFromElement)
+  testing-core/src/domain/services/RiskScorer.ts
+      (blends the perceptron score with the heuristic score)
+  testing-core/src/ml/perceptron.test.ts
+
+
+PURPOSE
+-------
+An SPA can have dozens of controls on one screen. Clicking blindly
+wastes time. The perceptron gives every control a learned score so the
+engine can act on the most promising ones first (login forms, submit,
+pay, delete, search) and learn from experience which kinds of controls
+actually produce new states, network activity, or faults.
+
+
+INPUTS (THE FEATURE VECTOR)
+---------------------------
+Each element is turned into a numeric feature vector by
+buildFeatureVectorFromElement. Features include:
+  - Structural: hasId, hasClass, isInput, isButton, isLink, isSelect,
+    isDisabled, hasPlaceholder, hasAriaLabel, roleInteractive
+  - Keyword flags (word-boundary matched against id, class, type, text,
+    placeholder, aria-label, name, role): kwLogin, kwSubmit, kwPay,
+    kwCheckout, kwDelete, kwRegister, kwPassword, kwEmail, kwSearch,
+    kwDropdown, opensLayer
+  - Normalized layout priors: areaNorm (size), yNorm (vertical
+    position), textLenNorm (label length)
+Each feature is 0/1 or a value normalized to roughly 0..1.
+
+
+WEIGHTS
+-------
+Every feature has a weight. The model ships with informed DEFAULT_WEIGHTS
+(priors) so it is useful from step one (a "warm start", no cold start):
+  kwDelete 1.9, kwPay 1.8, kwCheckout 1.8, kwLogin 1.7, kwSubmit 1.6,
+  kwRegister 1.5, kwPassword 1.4, kwEmail 1.3, kwSearch 0.9,
+  isInput 0.45, isButton 0.45, ... yNorm -0.2 (prefer near the top).
+There is also a bias (default -0.35). Weights are clamped to [-6, 6] so
+no single feature can dominate.
+
+
+THE CALCULATION (SCORING)
+-------------------------
+1. Weighted sum (the perceptron's linear combination):
+     z = bias + SUM over features ( weight_i * feature_i )
+   Non-finite feature values are skipped so one bad extraction cannot
+   poison the score.
+2. Squash to a probability with the sigmoid (logistic) function:
+     sigmoidScore = 1 / (1 + e^(-z))
+   This gives a value in (0, 1): higher means "more promising".
+RiskScorer multiplies this by 100 and blends it with the keyword
+heuristic:  combined = heuristic * 0.6 + (sigmoid * 100) * 0.4.
+
+
+THE UPDATE PROCESS (DELTA RULE)
+-------------------------------
+After an action, BugSafari knows what happened, so it teaches the model.
+The classic Delta Rule updates each weight by:
+     weight_i += learningRate * (target - prediction) * feature_i
+BugSafari uses this with three stabilizers so the model refines instead
+of wildly swinging:
+  - MOMENTUM (0.9): each update carries a fraction of the previous
+    step's velocity, so consistent-direction rewards accelerate and one
+    lone opposite penalty cannot flip a strong weight.
+  - L2 weight decay (lambda 0.001): gently pulls weights toward 0 each
+    update so they do not inflate without bound.
+  - Learning-rate decay: the effective rate shrinks as updates
+    accumulate (lr / (1 + 0.0005 * updateCount)), so late-run updates
+    fine-tune rather than overturn.
+Each weight is then clamped to [-6, 6].
+
+The velocity update actually used:
+     velocity_i = 0.9 * velocity_i + lr * error * feature_i
+     weight_i   = clamp( weight_i * (1 - lr*0.001) + velocity_i )
+where error = target - sigmoidPrediction.
+
+
+HOW THE TARGET (REWARD) IS FORMED
+---------------------------------
+Instead of a single hand-labeled answer, BugSafari builds the training
+target from what the action produced (applyReward). Starting at 0.5:
+  + 0.5  if a fault / vulnerability was detected  (strongest positive)
+  + 0.3  if it triggered real network activity
+  + 0.2  if it produced a genuine new DOM state
+  - 0.5  if it landed on a fully saturated (dead) destination
+  - 0.4  if it looped back to an already-seen state (revisit)
+  - 0.25 if it did nothing at all (no-op control)
+The result is clamped to [0, 1]. The further the target is from the
+neutral 0.5, the larger the (still bounded) learning rate used, from
+0.12 up to 0.30. So a control that found a bug teaches the model
+strongly; a control that did nothing nudges it gently down.
+
+
+HOW BUGSAFARI USES IT
+---------------------
+The perceptron is one half of the RiskScorer. Its 0..1 confidence (x100)
+is blended 40% with the 60% keyword/tag/type heuristic to produce each
+control's combined score. The pathfinder then explores highest-scored
+controls first. After each action, applyReward teaches the model from
+the outcome. The learned weights can be exported as a "brain" and
+re-loaded per target URL for a warm start next time (loadState overlays
+saved weights on the defaults, so features added later keep their
+default prior).
+
+
+WHAT HAPPENS DURING AN ACTUAL TEST
+----------------------------------
+Early on, controls score mostly from the informed default weights, so a
+"Delete Account" or "Pay" button already ranks high. As the run
+proceeds, the model observes which controls produced novelty, network
+calls, or faults, and shifts its weights toward those feature patterns,
+so exploration steadily sharpens toward productive controls.
+
+
+LIMITATIONS AND EDGE CASES
+--------------------------
+  - It is a LINEAR model (single layer): it cannot learn feature
+    interactions like a deep network. This is a deliberate trade for
+    speed, interpretability, and stability inside a live run.
+  - Learned weights are transient per run unless persisted as a brain;
+    velocity/momentum state is never persisted.
+  - Rewards are heuristic proxies for "usefulness", not ground truth.
+  - Clamping and decay bound the model, so it cannot chase one runaway
+    signal.
+
+
+IF A PANELIST ASKS "WHY DID YOU USE THIS?"
+------------------------------------------
+A single-layer perceptron is the smallest model that can learn online,
+in-process, with no training data and no GPU, and stay interpretable and
+stable inside a live browser session. It gives BugSafari adaptivity
+without the cost, opacity, or instability of a deep network.
+
+IF THEY ASK "HOW DOES IT WORK?"
+-------------------------------
+Each control becomes a feature vector; the perceptron computes a weighted
+sum plus bias, squashed by a sigmoid into a 0..1 score. After each
+action, the Delta Rule adjusts the weights toward a target built from the
+action's outcome (fault, novelty, network = up; revisit, no-op, dead end
+= down), stabilized by momentum, weight decay, learning-rate decay, and
+clamping.
+
+IF THEY ASK "WHY IS THIS USEFUL?"
+---------------------------------
+It lets the engine prioritize the most promising controls from the very
+first step (thanks to informed default weights) and then get smarter as
+it learns which controls actually reveal bugs, all without human
+scripting.

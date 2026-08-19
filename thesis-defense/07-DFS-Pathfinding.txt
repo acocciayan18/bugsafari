@@ -1,0 +1,164 @@
+================================================================
+BugSafari Feature Notes for Oral Defense
+FILE 7 of 8: DFS PATHFINDING (Directed State-Graph Traversal)
+================================================================
+
+
+WHAT IT IS
+----------
+BugSafari models the application under test as a directed graph. Each
+unique UI state is a NODE (identified by its DOM structural hash from
+file 6), and each interactive control you can act on is an EDGE leading
+to another state. The engine explores this graph in a Depth-First Search
+(DFS) style: it goes deep down one path, and when it hits a dead end or a
+loop it BACKTRACKS to the nearest earlier state that still has unexplored
+controls. A chronological "breadcrumb" stack drives this.
+
+
+FILES RELATED
+-------------
+  testing-core/src/domain/services/DIrectedPathFinder.ts
+      (graph types: GraphNode, GraphEdge, TraversalFrame, decisions)
+  testing-core/src/domain/services/StateGraphNavigator.ts
+      (the traversal brain: nextAction, dead-end/backtrack logic)
+  testing-core/src/domain/services/pathfinder/TraversalStack.ts
+      (the DFS breadcrumb stack + ancestor tracking)
+  testing-core/src/domain/services/pathfinder/EdgeSelector.ts
+      (best-first choice of which edge to take)
+  testing-core/src/domain/services/pathfinder/GraphStore.ts (node/edge storage)
+
+
+PURPOSE
+-------
+The engine needs a disciplined way to visit as much of the application
+as possible without getting lost, without repeating itself, and with the
+ability to come back and finish branches it left unexplored. DFS with
+explicit backtracking gives exactly that: deep coverage of multi-step
+flows (login, checkout, wizards) plus a guarantee that abandoned
+branches are revisited.
+
+
+HOW DFS WORKS HERE, STEP BY STEP
+--------------------------------
+The core loop is StateGraphNavigator.nextAction(), which returns one of
+three decisions: explore-edge, backtrack, or exhausted.
+
+1. Sync position. The current DOM hash is computed and the breadcrumb
+   stack (TraversalStack) is synced. If the hash already exists deeper in
+   the stack, the stack is TRIMMED back to it (the engine went backward,
+   for example via a router history change) rather than pushing a
+   duplicate frame. A brand-new state pushes a new frame recording
+   "we are at nodeHash, arrived via edge X".
+
+2. Pick the best unexplored edge. EdgeSelector scans the current node's
+   UNVISITED edges and returns the highest-scored one (Best-First Search
+   via a single argmax pass, no full sort). The score is the 60% keyword
+   heuristic + 40% perceptron score from the RiskScorer (files 4/5). So
+   DFS controls the ORDER of traversal, but scoring decides WHICH child
+   to descend into first. If a good edge exists, the decision is
+   explore-edge and the engine clicks it.
+
+3. Backtrack on a dead end. If the current node has NO unvisited edges
+   left (or is a structural dead end with no interactive elements), the
+   engine unwinds the breadcrumb stack to the nearest ANCESTOR that still
+   has unexplored controls, and returns a backtrack decision with a route
+   to get there. Its ancestor list comes from the stack (every frame
+   except the current top).
+
+4. Global scored frontier. Rather than only walking straight up the
+   stack, when it needs a new target the navigator can scan the WHOLE
+   known graph for the best waiting (unvisited) edge, scored by the edge
+   score plus a novelty bonus that decays with how often the target node
+   was already visited. It then jumps there, using a BFS shortest path
+   over already-explored edges, and re-roots the breadcrumb on that
+   route. This keeps DFS depth while avoiding wasted walks.
+
+5. Loop and stagnation guards. Several counters keep DFS honest:
+     - A consecutive-repeat counter (same hash again and again) flags a
+       hard loop.
+     - An edge that leads back to an ancestor is marked a CYCLIC loop and
+       is permanently blocked (never re-queued).
+     - backtracksFromHere: too many backtracks originating from one node
+       escalates to blocking that whole branch.
+     - backtracksTo / maxBacktracksToNode: if the engine keeps RETURNING
+       to the same node as a supposed frontier, that node is a stagnation
+       trap; its frontier is blocked and it is excluded from future
+       backtracking.
+     - Boredom threshold: if the best available edge scores below an
+       adaptive floor, that is a signal to backtrack, but only if no
+       unvisited control remains (an unvisited control is always explored
+       before abandoning the page).
+
+6. Exhausted. When no reachable node has any unvisited, unblocked edge
+   left, nextAction returns the exhausted decision and the run ends its
+   traversal.
+
+
+BACKTRACKING DETAIL
+-------------------
+The breadcrumb stack is the DFS memory. On backtrack the engine may need
+to physically get the browser back to an earlier state; the backtrack
+decision carries a BFS shortest action sequence over explored edges
+(click these selectors in order), with a fallback to history or
+deep-link restore if no known route exists. Because clearing the stack on
+a cross-branch jump could blind loop detection, the recency trail and
+planned route are used to reseed the ancestor list so the loop guards
+stay armed.
+
+
+INPUTS AND OUTPUTS
+------------------
+Input: the current state hash, the scored interactive elements on the
+page, and the accumulated graph (nodes, edges, their statuses).
+Output: a PathfinderDecision, one of
+  - explore-edge (selector + score + path trace)
+  - backtrack   (target hash/url + navigation path)
+  - exhausted   (whole reachable graph covered)
+
+
+WHAT HAPPENS DURING AN ACTUAL TEST
+----------------------------------
+The engine lands on the home page, scores its controls, clicks the best
+one, and descends. It follows a multi-step flow deep (say home -> login
+-> dashboard -> settings). When settings has nothing new left, it
+backtracks to dashboard, finds another unexplored control, and descends
+again. If it detects it keeps returning to the same screen, it blocks
+that trap and jumps via the scored frontier to the best unexplored edge
+anywhere in the graph. This continues until the reachable graph is
+exhausted or the time box ends.
+
+
+LIMITATIONS AND EDGE CASES
+--------------------------
+  - The breadcrumb stack has a max depth; very deep paths drop their
+    oldest frames.
+  - State identity depends on the DOM hash, so a hash collision could
+    merge two states or a hash split could duplicate one.
+  - Backtracking assumes explored edges are still traversable; if the app
+    state cannot be restored, it falls back to history/deep-link restore.
+  - Blocked cyclic edges are never retried, which is safe but could miss
+    a path that only becomes valid later.
+
+
+IF A PANELIST ASKS "WHY DID YOU USE THIS?"
+------------------------------------------
+DFS with backtracking is the natural fit for exploring an application as
+a state graph: it reaches deep multi-step flows that breadth-first
+scanning would only touch shallowly, and explicit backtracking
+guarantees abandoned branches are finished. Layering the scored frontier
+on top keeps it from wandering.
+
+IF THEY ASK "HOW DOES IT WORK?"
+-------------------------------
+Each UI state is a graph node keyed by its DOM hash; controls are edges.
+A breadcrumb stack drives depth-first traversal: descend into the
+highest-scored unexplored control, and when a node has none left,
+backtrack to the nearest ancestor that does, or jump to the best
+unexplored edge anywhere via a shortest known path. Loop and stagnation
+counters block cycles and traps until the graph is exhausted.
+
+IF THEY ASK "WHY IS THIS USEFUL?"
+---------------------------------
+It gives thorough, systematic coverage of the app, including deep flows,
+without repeating states or getting stuck, so within a limited time box
+the engine reaches and tests as much distinct functionality as possible.

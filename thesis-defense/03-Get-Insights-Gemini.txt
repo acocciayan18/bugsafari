@@ -1,0 +1,130 @@
+================================================================
+BugSafari Feature Notes for Oral Defense
+FILE 3 of 8: GET INSIGHTS (Gemini API, Session-Level Analysis)
+================================================================
+
+
+WHAT IT IS
+----------
+"Get Insights" is a session-level button on a saved run. It asks the
+Gemini large language model to read ALL of the run's findings at once
+and produce two things: a short root-cause narrative for the whole
+session, and a prioritized list of recommended fixes. This is different
+from "See More Suggestions", which advises on ONE finding. Get Insights
+summarizes the entire run.
+
+
+FILES RELATED
+-------------
+Backend:
+  testing-core/src/infrastructure/ai/GeminiRemediationAdvisor.ts (generateInsights)
+  testing-core/src/presentation/api/registerRoutes.ts            (POST /api/forensic/insights)
+
+Frontend:
+  developer-dashboard/src/services/historyService.ts (requestAiInsights)
+  developer-dashboard/src/components/forensics/ForensicReport.tsx
+
+Shared contract:
+  shared/types/remediation.ts (SuggestInsightsRequest, SuggestInsightsResponse)
+
+
+HOW GEMINI IS INTEGRATED
+------------------------
+BugSafari does not use a heavy SDK. It calls the Gemini REST endpoint
+directly with fetch:
+  https://generativelanguage.googleapis.com/v1beta/models/<model>:generateContent
+The default model is gemini-flash-lite-latest (overridable by the
+GEMINI_MODEL environment variable). The API key travels in the
+x-goog-api-key HTTP header, never in the URL, so it can never leak into
+a URL log. For insights, the request asks the model to return MINIFIED
+JSON only, using responseMimeType: application/json, so the reply is
+machine-parseable.
+
+
+WHAT INPUTS / DATA IT RECEIVES
+------------------------------
+The prompt is built from the run's findings (up to 50). For each finding
+it includes: severity, bug class, the culprit control label, and the
+error message (each field length-capped). It also includes the session
+risk level. As with See More Suggestions, every finding field comes from
+the target application and is treated as untrusted: fields are capped,
+fenced in an <untrusted_finding_data> block, and the model is told to
+treat the block strictly as data, never as instructions. The whole
+prompt is also capped at 40,000 characters as a backstop.
+
+
+WHAT IT RETURNS
+---------------
+generateInsights sends the JSON-mode prompt, then parses the reply
+(stripping any code fences the model adds). It extracts:
+  - rootCause: 1 to 2 sentences describing the likely underlying cause
+  - recommendations: 3 to 5 short, actionable items
+If neither is usable, it returns a classified failure reason instead of
+crashing. On success the result is persisted as aiInsights on the
+session, and those AI insights then take precedence over the
+deterministic template analysis in the saved report.
+
+
+WHY AN LLM IS USEFUL HERE
+-------------------------
+Root-cause synthesis across many findings is a language task. The
+deterministic analyzer (ForensicAnalysisService) can count errors and
+pick priority messages with fixed if-rules, but it cannot read ten
+different findings and say, in natural English, "these are all symptoms
+of one unvalidated input path". An LLM is good at exactly that kind of
+narrative summarization and prioritization, so it adds a layer the rule
+engine cannot.
+
+
+REQUIREMENTS / API KEY
+----------------------
+  - GEMINI_API_KEY must be set (read per-call, not at module load, so it
+    is available after dotenv loads).
+  - Optional GEMINI_MODEL and GEMINI_TIMEOUT_MS (default 30 seconds,
+    because reasoning-capable flash models can spend several seconds
+    "thinking" before the first byte).
+If the key is missing, the call returns "not_configured" and the
+deterministic analysis is shown instead.
+
+
+LIMITATIONS
+-----------
+  - It depends on an external paid service; it can be rate-limited, time
+    out, or be blocked. Every failure path resolves to a typed reason
+    and the deterministic analysis remains the fallback.
+  - Only the first 50 findings are summarized (bounded prompt).
+  - Output is a summary and opinion, not verified ground truth; the
+    developer still judges it. The report marks aiGenerated: true so it
+    is clear the narrative came from the model, not the template engine.
+
+
+WHY ITS USE IS APPROPRIATE FOR THE THESIS
+-----------------------------------------
+The LLM is used narrowly and safely: only for optional natural-language
+summarization of data BugSafari already gathered on its own. The core
+engine (exploration, scoring, bug detection, verification) is fully
+deterministic and does not depend on the LLM. The model never decides
+what is a bug and never drives the browser. This keeps the scientific
+contribution in the autonomous engine, while the LLM is a clearly
+bounded, guarded convenience layer with a deterministic fallback and
+explicit prompt-injection defenses.
+
+
+IF A PANELIST ASKS "WHY DID YOU USE THIS?"
+------------------------------------------
+To give the operator a readable, whole-run root-cause story and a
+ranked fix list, which is a language task the rule engine cannot do. It
+is optional and additive, never load-bearing.
+
+IF THEY ASK "HOW DOES IT WORK?"
+-------------------------------
+It packs the run's findings into a guarded JSON-mode prompt, calls the
+Gemini REST endpoint with the key in a header, parses the returned JSON
+into a root cause and recommendations, and saves them on the session.
+Any failure falls back to the deterministic analysis.
+
+IF THEY ASK "WHY IS THIS USEFUL?"
+---------------------------------
+It compresses many separate findings into one clear explanation and a
+prioritized action plan, so the developer knows where to start, without
+compromising the engine, which works fully without it.

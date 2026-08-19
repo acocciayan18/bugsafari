@@ -1,0 +1,178 @@
+================================================================
+BugSafari Feature Notes for Oral Defense
+FILE 6 of 8: DOM STRUCTURAL HASHING and REPETITION PENALTY
+================================================================
+
+
+WHAT IT IS
+----------
+DOM Structural Hashing turns the current page into a short, stable
+fingerprint (a SHA-256 hash) that identifies WHICH state the app is in,
+while ignoring cosmetic churn like changing text, random ids, or
+streaming ad cards. The Repetition Penalty is the scoring pressure that
+builds up when the engine keeps landing on the SAME state (same
+fingerprint) or the same layout, so it stops going in circles and moves
+on. Together they are BugSafari's loop-prevention system.
+
+
+FILES RELATED
+-------------
+  testing-core/src/ml/domHasher.ts
+      (DomHasher, hashCompound, collapseChildSignatures, normalizeRoutePath, routeKey)
+  testing-core/src/domain/services/exploration/stagnationScoring.ts
+      (computeStagnation, penalty intensity and window)
+  testing-core/src/domain/services/pathfinder/TraversalStack.ts
+      (consecutive-repeat loop counter)
+  testing-core/src/domain/services/StateGraphNavigator.ts (uses the hash as node identity)
+
+
+PURPOSE
+-------
+An autonomous explorer must know "have I been here before?". Without a
+reliable answer it either loops forever on one screen or mistakes every
+minor redraw for a brand-new page (false novelty). The hash answers that
+question robustly; the repetition penalty acts on the answer to keep
+exploration moving into genuinely new territory.
+
+
+THE HASHING PROCESS, STEP BY STEP
+---------------------------------
+hashCompound runs ONE page.evaluate pass and builds a compound
+fingerprint with three parts:
+
+1. STRUCTURE signature: a normalized layout skeleton. It walks the DOM
+   (bounded to maxElements, default 5000) and emits only structural tags
+   (div, section, form, input, button, table rows, headings, etc.).
+   Normalization removes the churn that would otherwise create fake new
+   states:
+     - Volatile subtrees (script, style, svg, iframe, ad/analytics slots,
+       BugSafari's own highlight overlays) are dropped entirely.
+     - Dynamic class tokens (anything with a digit, or generated
+       css-<hash>/sc-<hash> module classes) are stripped.
+     - Text is collapsed: whitespace normalized, trimmed to 32 chars,
+       and digit runs replaced with "#" so counters/timers/ids do not
+       change the signature.
+     - Repeated identical child subtrees are collapsed by
+       collapseChildSignatures: a feed of identical cards [A,A,A,B] and a
+       reordered [B,A,A,A] both normalize to the same "A*B", so an
+       infinite scroll does not mint a new state per scroll.
+
+2. INTERACTIVE signature: the interactive controls in document order,
+   each recorded as tag|type|role|stateFlags|normalizedLabel. Stable
+   state flags (disabled, checked, readonly, required, open, expanded,
+   selected, pressed) are captured, so toggling a checkbox IS seen as a
+   state change, but typing volatile text is not.
+
+3. ROUTE path: pathname + hash fragment, with the query string dropped
+   (session tokens and pagination should not fragment identity).
+
+The structure and interactive strings are each SHA-256 hashed Node-side,
+then combined:
+     combined = sha256( structureHash : interactiveHash [ : routePath ] )
+The route path is folded in only when the hasher is urlAware, so two
+structurally identical templates served at different routes (for example
+a shared 404 page at /null and /-1) become DISTINCT states instead of
+colliding and false-tripping loop detection. This "combined" hash is the
+engine's canonical node identity used for graph nodes and loop detection.
+On any failure the hasher returns a deterministic sentinel, which callers
+treat as "no stable state yet", the safe conservative choice.
+
+
+REPETITION DETECTION AND PENALTY
+--------------------------------
+Two mechanisms use the hash:
+
+A) Consecutive-repeat counter (TraversalStack.updateRepeatCounter):
+   if the new hash equals the last observed hash, a counter increments;
+   otherwise it resets to 1. A high count is a hard loop signal.
+
+B) Progressive stagnation score (computeStagnation). Instead of a binary
+   "3 identical hashes then punish" cliff, stagnation is scored from
+   several signals:
+     - combinedRepeated: the EXACT state recurred (structure +
+       interactive identical). Worth 2 points.
+     - structureFamiliarity: how many times this structural SHELL
+       appeared in a recent short window (same layout, maybe new data).
+       Each recent match adds 1 point.
+     - coverage stall: if no new coverage is being gained, add 1, plus
+       1 more per few extra stalled steps (bounded).
+   stagnationScore = (combinedRepeated ? 2 : 0)
+                     + structureFamiliarity
+                     + coverageStagnation
+
+The score then drives two things:
+   penaltyIntensity = min(1, (stagnationScore - 1) / forceBacktrackThreshold)
+       - scales how hard each control on this stale page is penalized.
+   penaltyWindow    = min(cap, stagnationScore + 1)
+       - how many steps the "escape window" stays open, capped so the
+         engine always eventually recovers.
+
+
+HOW IT PREVENTS REPETITIVE EXPLORATION
+--------------------------------------
+When stagnation rises, the per-element penalty subtracts from every
+control's risk score on that page, pushing the engine to try different
+controls, and if it stays stuck, to backtrack to an unexplored part of
+the graph. Because the penalty decays over time and the escape window is
+capped, the pressure is a temporary nudge, not permanent suppression, so
+a page is not banned forever. The hash normalization is what makes this
+correct: without it, a redraw or an ad refresh would look like a new
+state and the penalty would never build.
+
+
+INPUTS AND OUTPUTS
+------------------
+Input: a live Playwright Page (and, for stagnation, the recent history
+of hashes/structures and coverage state).
+Output of the hasher: { structure, interactive, routePath, combined }.
+Output of stagnation: a numeric stagnationScore plus the derived penalty
+intensity and window length.
+
+
+SIMPLE EXAMPLE
+--------------
+A social feed streams new cards as you scroll.
+  - Raw HTML would change on every scroll -> a naive explorer sees
+    endless "new" states and loops forever.
+  - collapseChildSignatures folds all identical cards to "card*", so the
+    structure signature is stable across scrolls; the combined hash does
+    not change.
+  - The engine now sees the SAME hash repeatedly -> combinedRepeated adds
+    2, structureFamiliarity climbs -> stagnationScore rises -> penalties
+    open an escape window -> the engine backtracks to explore elsewhere.
+
+
+LIMITATIONS AND EDGE CASES
+--------------------------
+  - The DOM walk is bounded (maxElements 5000) to cap cost on huge pages,
+    so extremely large DOMs are fingerprinted from a bounded prefix.
+  - Two genuinely different pages that share an identical normalized
+    skeleton and identical controls could collide; the interactive
+    signature and optional route-awareness reduce but cannot fully
+    eliminate this.
+  - Normalization could, in rare cases, hide a real state difference
+    that lives only in stripped text or a dynamic class.
+
+
+IF A PANELIST ASKS "WHY DID YOU USE THIS?"
+------------------------------------------
+An autonomous explorer must reliably recognize repeated states, and
+modern SPAs are full of cosmetic churn (dynamic ids, animations, ad
+slots, infinite feeds) that fools naive comparisons. A normalized
+structural hash gives a stable identity, and a progressive stagnation
+penalty acts on it to break loops smoothly instead of with a brittle
+fixed cliff.
+
+IF THEY ASK "HOW DOES IT WORK?"
+-------------------------------
+It builds a normalized skeleton + interactive-surface signature of the
+page, hashes them into one SHA-256 identity, and detects repetition by
+comparing hashes and counting how familiar the state/shell is. Rising
+familiarity plus a coverage stall increases a stagnation score that
+penalizes stale controls and opens a bounded escape window to backtrack.
+
+IF THEY ASK "WHY IS THIS USEFUL?"
+---------------------------------
+It stops the engine from wasting the whole session looping on one screen
+or chasing false novelty, so the limited testing time is spent reaching
+and exercising genuinely new parts of the application.

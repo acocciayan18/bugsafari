@@ -1,0 +1,162 @@
+================================================================
+BugSafari Feature Notes for Oral Defense
+FILE 4 of 8: RISK SCORE (History Card Risk 0-100 and Risk Level)
+================================================================
+
+
+WHAT IT IS
+----------
+Each run in History and each saved Forensic Report shows a Risk Score, a
+number from 0 to 100, and a Risk Level band (LOW / MEDIUM / HIGH /
+CRITICAL). The score summarizes how dangerous the whole run is, based on
+the findings it produced. Higher means more and worse bugs.
+
+IMPORTANT: this run-level Risk Score is NOT the same as the per-element
+"riskScore" the exploration engine uses to decide which button to click
+next (that is the perceptron + heuristic control score, covered in file
+5). This file is about the session danger score shown on cards.
+
+
+FILES RELATED
+-------------
+  testing-core/src/domain/services/ForensicAnalysisService.ts
+      (scoreFindings, calculateRiskScore)
+  testing-core/src/infrastructure/database/models/ForensicAnalysisModel.ts
+      (determineRiskLevel, capRiskLevelByMaxSeverity)
+  testing-core/src/presentation/api/registerRoutes.ts
+      (effectiveRiskScore / effectiveRiskLevel assembly for the report)
+
+
+WHY BUGSAFARI NEEDS IT
+----------------------
+A run can produce many findings of different severities. A developer
+scanning a history list needs a single at-a-glance number to know which
+runs are urgent. The Risk Score gives that. It is designed to
+discriminate across the full 0-100 range instead of pinning at the top
+after just a few bugs, so two dangerous runs do not look identical.
+
+
+HOW THE SCORE IS CALCULATED
+---------------------------
+There are two entry points that share the same math:
+
+A) For SAVED runs, scoreFindings() runs over the persisted findings
+   (caughtBugs). This is the authoritative source for history cards,
+   because the raw forensic_errors table is empty for saved runs.
+
+B) For live forensic analysis, calculateRiskScore() runs over the
+   forensic_errors, adding type multipliers, status-code bumps, and a
+   breadth term.
+
+Both pass a weighted sum through the SAME saturating curve.
+
+Severity weights (per finding):
+  CRITICAL = 20
+  HIGH     = 10
+  MEDIUM   = 4
+  LOW      = 1.5
+  INFO     = 0.5
+
+The saturating formula (scoreFindings, the history-card path):
+  weightSum = sum of the severity weight of every finding
+  score     = round( 100 * (1 - e^(-weightSum / 40)) )
+The constant 40 (RISK_SATURATION_K) controls how fast the curve climbs.
+The curve rises toward 100 but never pins exactly at it, so more bugs
+always move the number, but each extra bug adds a little less than the
+last (diminishing returns).
+
+The richer live-error path (calculateRiskScore) adds, before the curve:
+  - a type multiplier per error class (for example API_FAILURE x1.6,
+    JS_EXCEPTION x1.5, CONSOLE_WARN x0.4)
+  - +6 for a 5xx server status, +3 for a 4xx client status
+  - +3 for each DISTINCT failing endpoint (breadth of impact)
+then the same 100 * (1 - e^(-weightSum / 40)).
+
+Risk Level bands (determineRiskLevel):
+  score >= 76  -> CRITICAL
+  score >= 51  -> HIGH
+  score >= 26  -> MEDIUM
+  else         -> LOW
+
+Level cap (capRiskLevelByMaxSeverity):
+  The band is then clamped so it can never exceed the worst single
+  finding present. A pile of MEDIUM findings can push the NUMBER into
+  the HIGH range, but the LEVEL is capped at MEDIUM, because no single
+  finding is worse than MEDIUM. This stops "many small bugs" from
+  masquerading as "one severe bug".
+
+
+RANGES AND MEANING OF EACH SCORE
+--------------------------------
+  0            No findings. Clean run.
+  1  to 25     LOW. Minor or few issues.
+  26 to 50     MEDIUM. Real issues worth fixing.
+  51 to 75     HIGH. Serious problems.
+  76 to 100    CRITICAL. Severe and/or many faults.
+The band shown is the lower of (band from the number) and (band of the
+single worst finding).
+
+
+IMPORTANT LOGIC WITH A SIMPLE EXAMPLE
+-------------------------------------
+Example 1: one CRITICAL finding.
+  weightSum = 20
+  score = 100 * (1 - e^(-20/40)) = 100 * (1 - e^-0.5)
+        = 100 * (1 - 0.6065) = 39, rounded.
+  Number 39 falls in the MEDIUM band by number... but the worst finding
+  is CRITICAL, and the cap only lowers a band, so this stays roughly
+  MEDIUM by the numeric curve. (The curve deliberately keeps one bug
+  from instantly reading 100 so volume can still discriminate.)
+
+Example 2: five MEDIUM findings.
+  weightSum = 5 * 4 = 20
+  score = same 39.
+  Numeric band = MEDIUM. Worst severity = MEDIUM. Cap agrees. -> MEDIUM.
+
+Example 3: three CRITICAL findings.
+  weightSum = 60
+  score = 100 * (1 - e^(-60/40)) = 100 * (1 - e^-1.5)
+        = 100 * (1 - 0.2231) = 78, rounded. -> CRITICAL band, worst
+  finding is CRITICAL, so the level stays CRITICAL.
+
+
+WHAT HAPPENS DURING AN ACTUAL TEST
+----------------------------------
+When a run finishes and is saved, its findings are weighted and passed
+through the curve; the resulting 0-100 score and its capped level are
+stored and shown on the History card and the report header. A run with
+no findings shows 0 / clean; a run with several server faults climbs
+into HIGH or CRITICAL.
+
+
+LIMITATIONS AND EDGE CASES
+--------------------------
+  - The score reflects DETECTED findings only; undetected bugs are not
+    counted.
+  - Findings with missing severity default to MEDIUM weight.
+  - The saturating curve means very buggy runs compress near the top;
+    the exact number matters less than the band there.
+  - The level cap can make the band lower than the raw number suggests,
+    which is intentional and honest.
+
+
+IF A PANELIST ASKS "WHY DID YOU USE THIS?"
+------------------------------------------
+Developers need one comparable number to triage many runs. A plain count
+saturates quickly and treats a typo warning like a server crash. A
+severity-weighted saturating score with a level cap gives a fair,
+discriminating, and honest single indicator.
+
+IF THEY ASK "HOW DOES IT WORK?"
+-------------------------------
+Each finding contributes a severity weight; the weights are summed and
+passed through 100 * (1 - e^(-sum/40)), which rises toward but never
+reaches 100. The number maps to LOW/MEDIUM/HIGH/CRITICAL bands, and the
+band is clamped so it never claims more danger than the single worst
+finding.
+
+IF THEY ASK "WHY IS THIS USEFUL?"
+---------------------------------
+It lets a developer glance at a history list and instantly see which
+runs are urgent, with a score that separates a few minor issues from a
+handful of critical ones, and a level that never overstates severity.

@@ -480,8 +480,6 @@ export default function SavedEvaluationSafaris() {
                           <span>{evalItem.date}</span>
                         </span>
 
-                        <span aria-hidden="true">•</span>
-                        <span>{evalItem.steps} steps</span>
                         {/* Which profile produced these findings — absent on rows saved before it was recorded. */}
                         {profileLabel(evalItem.infiltrationProfile) && (
                           <>
