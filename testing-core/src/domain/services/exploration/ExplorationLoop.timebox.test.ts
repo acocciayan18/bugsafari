@@ -109,7 +109,7 @@ function makeDeps(over: Partial<ExplorationLoopDeps> = {}): {
       },
     },
     stateRestorer: {
-      probeStaticTarget: async () => ({ href: null, deadEnd: false, newTab: false }),
+      probeStaticTarget: async () => ({ href: null, deadEnd: false, newTab: false, bareHash: false }),
       verifyTraversal: async () => ({ ok: true, childHash: 'c2', childStructure: 's2' }),
     },
     tabs: { canExploreSecondary: () => false },

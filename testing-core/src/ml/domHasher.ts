@@ -47,6 +47,20 @@ export function normalizeRoutePath(url: string): string {
   }
 }
 
+/**
+ * Route path with the query string RETAINED (`pathname + search + hash`). Never used
+ * for state identity — only the navigation-loop oracle needs it, so a query-only SPA
+ * oscillation (`?loop=a ↔ ?loop=b`) reads as two distinct hops instead of collapsing.
+ */
+export function fullRoutePath(url: string): string {
+  try {
+    const u = new URL(url);
+    return (u.pathname || '/') + (u.search || '') + (u.hash || '');
+  } catch {
+    return '';
+  }
+}
+
 // Route identity shared by every per-run visited/dead-end set and the navigator's
 // frontier exclusion: origin + normalized route path, query dropped. Both sides
 // MUST key on this exact string so "mark route dead" and "exclude from frontier"

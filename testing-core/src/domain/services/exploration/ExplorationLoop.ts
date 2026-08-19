@@ -221,6 +221,11 @@ export class ExplorationLoop {
   // lock so a navigation BugSafari itself cancelled is never read as a dead link.
   private lastProbedHref: string | null = null;
 
+  // The same probe resolved a bare-fragment href (`#`/empty) — a placeholder with no
+  // real destination. Lets the dead-interaction oracle strike it instead of excusing
+  // its coincidental self-route match as a legitimate self-link.
+  private lastProbedBareHash = false;
+
   public async execute(page: Page, maxSteps: number): Promise<LoopResult> {
     const telemetry = this.deps.telemetry;
 
@@ -1265,6 +1270,7 @@ export class ExplorationLoop {
         fromRoute: compound.routePath,
         toRoute: normalizeRoutePath(url),
         probedRoute: this.lastProbedRoute,
+        probedBareHash: this.lastProbedBareHash,
         semanticRole: inferSemanticRole(target),
         traversalOk: outcome.traversalOk,
         landedInvalid: outcome.landedInvalid,
@@ -1667,6 +1673,7 @@ export class ExplorationLoop {
   ): Promise<boolean> {
     this.lastProbedRoute = null;
     this.lastProbedHref = null;
+    this.lastProbedBareHash = false;
     // Session-wide transition-repeat cap: this exact control has already driven
     // its structural shell back to already-seen views `budget` times — a
     // navigation-loop source the combined-hash edge model can't see (each variant
@@ -1695,6 +1702,7 @@ export class ExplorationLoop {
     const probe = await this.deps.stateRestorer.probeStaticTarget(page, target.selector);
     this.lastProbedHref = probe.href && !probe.deadEnd ? probe.href : null;
     this.lastProbedRoute = this.lastProbedHref ? normalizeRoutePath(this.lastProbedHref) || null : null;
+    this.lastProbedBareHash = probe.bareHash;
 
     // Breadcrumb-ancestor cycle: clicking would drop straight back into a loop.
     // Route-normalize both sides — the rest of the engine keys cycles on the

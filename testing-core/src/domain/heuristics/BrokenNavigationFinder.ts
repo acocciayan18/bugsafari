@@ -1,4 +1,4 @@
-import { normalizeRoutePath } from '../../ml/domHasher.js';
+import { normalizeRoutePath, fullRoutePath } from '../../ml/domHasher.js';
 import { BUG_CATALOG } from '../../bugs/knowledgeBase/bugCatalog.js';
 import { resolveControlName } from '../../../../shared/reproduction.js';
 
@@ -62,6 +62,9 @@ export interface InteractionObservation {
   toRoute: string;
   /** Normalized route the static lookahead probe resolved for the control (null = none). */
   probedRoute: string | null;
+  /** Probe resolved a bare-fragment href (`#`/empty) — a placeholder with no real
+   *  destination, so its self-route match must NOT be excused as a legit self-link. */
+  probedBareHash?: boolean;
   semanticRole: string;
   traversalOk: boolean;
   landedInvalid: boolean;
@@ -133,7 +136,10 @@ export class BrokenNavigationFinder {
   private readonly suppressedLoopRoutes = new Set<string>();
   private readonly deadClickStrikes = new Map<string, number>();
   private redirectWindow: RedirectHop[] = [];
-  private urlWindow: Array<{ route: string; timestampMs: number }> = [];
+  // `full` = pathname+search (query kept) keys oscillation sightings so a query-only
+  // SPA loop (?loop=a↔?loop=b) reads as two distinct hops; `route` (query dropped)
+  // stays the display/suppression identity so one cycle still yields one finding.
+  private urlWindow: Array<{ full: string; route: string; timestampMs: number }> = [];
   private lastInteraction: LastInteraction | null = null;
   private lastNavCause: 'interaction' | 'engine' | 'none' = 'none';
 
@@ -185,8 +191,10 @@ export class BrokenNavigationFinder {
     if (o.actionThrew || o.landedInvalid) return [];
     const navIntent = o.semanticRole === 'NAVIGATE' || o.probedRoute !== null;
     if (!navIntent) return [];
-    // Self-links declare the current route — a no-op is the expected outcome.
-    if (o.probedRoute !== null && o.probedRoute === o.fromRoute) return [];
+    // A real self-link declares the current route — a no-op is the expected outcome.
+    // A bare-fragment placeholder (`#`) declares no destination at all, so its match
+    // against fromRoute is coincidental and must still be able to strike as dead.
+    if (!o.probedBareHash && o.probedRoute !== null && o.probedRoute === o.fromRoute) return [];
 
     const declaredElsewhere = o.probedRoute !== null && o.probedRoute !== o.fromRoute;
     const strikes = this.bumpStrike(this.deadClickStrikes, key);
@@ -304,25 +312,25 @@ export class BrokenNavigationFinder {
     if (this.lastNavCause === 'engine') return [];
     const route = normalizeRoutePath(c.url);
     if (!route) return [];
+    const full = fullRoutePath(c.url) || route;
     const last = this.urlWindow[this.urlWindow.length - 1];
     if (last && c.timestampMs - last.timestampMs > OSCILLATION_GAP_MS) this.urlWindow = [];
-    // A consecutive same-route hop is a reload, not an oscillation: a redirect loop
-    // alternates BETWEEN routes (A→B→A). The engine reloads/re-parses a node while
-    // exploring (Chaos amplifies it), which would otherwise inflate the sighting
-    // count of an A→B→B→B arrive-then-reload shape into a false loop.
+    // A consecutive same-hop reload is not an oscillation: a redirect loop alternates
+    // BETWEEN destinations (A→B→A). Keyed on `full` (query kept) so a query-only SPA
+    // loop counts, while an arrive-then-reload of the identical url still collapses.
     const tail = this.urlWindow[this.urlWindow.length - 1];
-    if (tail && tail.route === route) {
+    if (tail && tail.full === full) {
       tail.timestampMs = c.timestampMs;
       return [];
     }
-    this.urlWindow.push({ route, timestampMs: c.timestampMs });
+    this.urlWindow.push({ full, route, timestampMs: c.timestampMs });
     if (this.urlWindow.length > MAX_WINDOW_ENTRIES) this.urlWindow.shift();
     if (this.suppressedLoopRoutes.has(route)) return [];
-    const sightings = this.urlWindow.filter((e) => e.route === route).length;
-    const distinct = new Set(this.urlWindow.map((e) => e.route)).size;
+    const sightings = this.urlWindow.filter((e) => e.full === full).length;
+    const distinct = new Set(this.urlWindow.map((e) => e.full)).size;
     if (sightings < OSCILLATION_SIGHTINGS || distinct < 2) return [];
-    const chain = this.urlWindow.map((e) => e.route).join(' → ');
-    const hops: NavHop[] = this.urlWindow.map((e) => ({ route: e.route, timestampMs: e.timestampMs }));
+    const chain = this.urlWindow.map((e) => e.full).join(' → ');
+    const hops: NavHop[] = this.urlWindow.map((e) => ({ route: e.full, timestampMs: e.timestampMs }));
     this.urlWindow.forEach((e) => this.suppressedLoopRoutes.add(e.route));
     this.urlWindow = [];
     const culprit = this.attributableInteraction(c.timestampMs);

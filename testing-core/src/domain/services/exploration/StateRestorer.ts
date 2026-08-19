@@ -49,10 +49,10 @@ export class StateRestorer {
   public async probeStaticTarget(
     page: Page,
     selector: string,
-  ): Promise<{ href: string | null; newTab: boolean; deadEnd: boolean }> {
+  ): Promise<{ href: string | null; newTab: boolean; deadEnd: boolean; bareHash: boolean }> {
     try {
       return await page.evaluate((sel: string) => {
-        const neutral = { href: null as string | null, newTab: false, deadEnd: false };
+        const neutral = { href: null as string | null, newTab: false, deadEnd: false, bareHash: false };
         const el = document.querySelector(sel) as HTMLElement | null;
         if (!el) return neutral;
         const anchor = el.closest('a') as HTMLAnchorElement | null;
@@ -61,7 +61,9 @@ export class StateRestorer {
           const newTab = anchor.target === '_blank';
           const scheme = anchor.protocol; // e.g. 'https:', 'mailto:', 'tel:', 'javascript:'
           const deadEnd = scheme !== 'http:' && scheme !== 'https:';
-          return { href: anchor.href, newTab, deadEnd };
+          const raw = (anchor.getAttribute('href') ?? '').trim();
+          const bareHash = raw === '' || raw === '#';
+          return { href: anchor.href, newTab, deadEnd, bareHash };
         }
         const route =
           el.getAttribute('data-route') ??
@@ -69,7 +71,7 @@ export class StateRestorer {
           el.getAttribute('to');
         if (route) {
           try {
-            return { href: new URL(route, document.baseURI).href, newTab: false, deadEnd: false };
+            return { href: new URL(route, document.baseURI).href, newTab: false, deadEnd: false, bareHash: false };
           } catch {
             return neutral;
           }
@@ -77,7 +79,7 @@ export class StateRestorer {
         return neutral;
       }, selector);
     } catch {
-      return { href: null, newTab: false, deadEnd: false };
+      return { href: null, newTab: false, deadEnd: false, bareHash: false };
     }
   }
 

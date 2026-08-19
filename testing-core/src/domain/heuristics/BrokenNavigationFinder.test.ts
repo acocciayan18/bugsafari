@@ -273,6 +273,35 @@ check('arrive-then-reload (A,B,B,B) is a reload, not a loop, and never reports',
   assert.equal(defects.length, 0);
 });
 
+check('query-only SPA oscillation (?loop=a↔?loop=b) reports one defect', () => {
+  const f = new BrokenNavigationFinder();
+  f.observeInteraction(deadClick());
+  let defects: ReturnType<typeof f.observeUrlChange> = [];
+  ['/nd?loop=a', '/nd?loop=b', '/nd?loop=a', '/nd?loop=b', '/nd?loop=a'].forEach((r, i) => {
+    defects = defects.concat(f.observeUrlChange(change(r, 1000 + i * 100)));
+  });
+  assert.equal(defects.length, 1);
+  assert.equal(defects[0].kind, 'REDIRECT_LOOP');
+});
+
+console.log('\nBrokenNavigationFinder — DEAD_INTERACTION (bare-fragment placeholder)');
+
+check('a bare-# no-op still strikes as dead despite matching the current route', () => {
+  const f = new BrokenNavigationFinder();
+  const bare = { probedRoute: '/home', probedBareHash: true } as const;
+  assert.equal(f.observeInteraction(deadClick(bare)).length, 0);
+  const defects = f.observeInteraction(deadClick(bare));
+  assert.equal(defects.length, 1);
+  assert.equal(defects[0].kind, 'DEAD_INTERACTION');
+});
+
+check('a genuine self-link (same route, not bare-#) is still excused', () => {
+  const f = new BrokenNavigationFinder();
+  for (let i = 0; i < 4; i++) {
+    assert.equal(f.observeInteraction(deadClick({ probedRoute: '/home' })).length, 0);
+  }
+});
+
 console.log('\nBrokenNavigationFinder — ledger accounting');
 
 check('reported cap bounds the run ledger', () => {
