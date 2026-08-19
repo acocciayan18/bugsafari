@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "support-onclick-div-buttons"
+git commit -m "Replace copy button text with icon"
 git push origin HEAD:dev --force
 
 

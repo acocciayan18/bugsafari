@@ -224,7 +224,7 @@ export function describeTargetList(targets: StepTarget[]): string {
   return `${shown.slice(0, -1).join(', ')} and ${shown[shown.length - 1]}`;
 }
 
-// Capitalized element kind for operator-facing descriptions (Button/Input/Link).
+// capitalize element kind for operator-facing descriptions (Button/Input/Link).
 function elementKind(tagName?: string, type?: string): string {
   const tag = (tagName ?? '').toLowerCase();
   const elementType = (type ?? '').toLowerCase();

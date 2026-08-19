@@ -7,7 +7,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useState } from 'react';
-import { Copy, Sparkles, Loader2, Info } from 'lucide-react';
+import { Copy, Check, Sparkles, Loader2, Info } from 'lucide-react';
 import type { BugCategory, RemediationFailureReason, SuggestFixRequest, SuggestFixSource } from '../../../../shared/types.js';
 import { BUG_CATEGORY_META } from '../../../../shared/types.js';
 import { requestSuggestedFix } from '../../services/historyService';
@@ -51,14 +51,18 @@ export const CopyButton = ({ text, label }: { text: string; label?: string }) =>
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const actionLabel = `Copy ${label || 'content'} to clipboard`;
+
   return (
     <button
       onClick={handleClick}
-      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded text-[13px] font-normal transition-all hover:bg-(--surface-hover) active:scale-95 text-(--text-secondary) hover:text-(--text-primary)"
-      title={`Copy ${label || 'content'} to clipboard`}
+      className="inline-flex items-center justify-center p-1.5 rounded transition-all hover:bg-(--surface-hover) active:scale-95 text-(--text-secondary) hover:text-(--text-primary)"
+      title={copied ? 'Copied!' : actionLabel}
+      aria-label={copied ? 'Copied!' : actionLabel}
     >
-      <Copy className="h-3 w-3" />
-      <span className="text-xs cursor-pointer">{copied ? 'Copied!' : 'Copy'}</span>
+      {copied
+        ? <Check className="h-3.5 w-3.5 text-emerald-500" />
+        : <Copy className="h-3.5 w-3.5" />}
     </button>
   );
 };
@@ -121,7 +125,7 @@ export const SeverityBadge = ({ severity }: { severity?: string }) => {
   return (
     <span
       title={`Severity: ${style.label}`}
-      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-bold uppercase ${style.cls}`}
+      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-bold capitalize ${style.cls}`}
     >
       {style.label}
     </span>

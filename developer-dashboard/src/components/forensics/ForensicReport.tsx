@@ -552,7 +552,7 @@ function VerifyFixControl({
         type="button"
         onClick={onOpenResult}
         title="View verification result"
-        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold uppercase transition-colors ${meta.badge}`}
+        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold capitalize transition-colors ${meta.badge}`}
       >
         {meta.icon('h-3.5 w-3.5')}
         {meta.label}
