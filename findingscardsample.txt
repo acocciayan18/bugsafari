@@ -5,7 +5,7 @@ CWE-362
 Status
 CONFIRMED 85%
 Message
-POST /api/compute was sent again 289ms later, after the first had already completed, and both requests succeeded, so the action ran twice.
+POST /api/compute was sent again 297ms later, after the first had already completed, and both requests succeeded, so the action ran twice.
 Element
 Compute
 Reproduction Playbook
@@ -39,55 +39,6 @@ Suggested fix: guard against overlapping actions
 
 
 
-NoSQL Injection
-High
-
-
-CWE-943
-Status
-CONFIRMED 90%
-Message
-the "email" field accepted a SQL metacharacter the server did not treat as plain text. Injected value: ' OR 'a'='a
-Element
-email
-input[name="email"]
-Reproduction Playbook
-
-1
-open
-Navigate to /input-fuzzing
-2
-type
-Type "' UNION SELECT version()--" into the "email" field
-Route
-/input-fuzzing
-·
-Element
-"email" field
-3
-submit
-Submit the form
-Route
-/input-fuzzing
-4
-type
-Type "' OR 'a'='a" into the "email" field
-Route
-/input-fuzzing
-·
-Element
-"email" field
-Suggested Fix
-
-For this finding
-• Address: POST /api/compute (HTTP 500)
-• Field: email
-• Value that triggered it: ' OR 'a'='a
-
-Suggested fix: stop query operators from reaching the database
-1. Check and cast input types before building a query, and reject fields that arrive as objects
-2. Use parameterized query builders and turn off operator interpolation
-3. Add a test that injects {"$ne":""} and expects the request to be rejected
 Server API Failure
 High
 
@@ -97,8 +48,8 @@ CONFIRMED 100%
 Message
 HTTP 500 POST /api/compute — HTTP 500 server error. The backend failed to process the request.
 Element
-email
-input[name="email"]
+quantity
+input[name="quantity"]
 Reproduction Playbook
 
 1
@@ -106,12 +57,12 @@ open
 Navigate to /input-fuzzing
 2
 type
-Type "' UNION SELECT version()--" into the "email" field
+Type "-1" into the "quantity" field
 Route
 /input-fuzzing
 ·
 Element
-"email" field
+"quantity" field
 Suggested Fix
 
 For this finding
@@ -122,3 +73,44 @@ Suggested fix: find and fix the failing server call
 2. Return a clear error to the browser and show a retry or error state instead of a broken screen
 3. Add health checks and a timeout on upstream calls so a bad gateway fails fast with a proper status
 4. Add a test that forces the endpoint to 5xx and confirms the UI shows an error, not a crash
+
+
+
+SPA State Race Condition
+Medium
+
+CWE-362
+Status
+NEEDS VERIFICATION 75%
+Message
+POST /api/compute was sent again 195ms later, after the first had already completed, and both requests succeeded, so the action ran twice.
+Element
+Compute
+Reproduction Playbook
+
+1
+open
+Navigate to /input-fuzzing
+2
+click
+Click the "Compute" control. Result: the server responded HTTP 200
+Route
+/input-fuzzing
+·
+Element
+"Compute" control
+3
+click
+Click the "Compute" control. Result: the server responded HTTP 200
+Route
+/input-fuzzing
+·
+Element
+"Compute" control
+Suggested Fix
+
+The control fired the same state-changing request twice with no debounce or disable-on-submit guard.
+Suggested fix: guard against overlapping actions
+1. Disable or debounce the control after the first interaction until it finishes
+2. Make each state change safe to run more than once under overlapping events
+3. Add a test that fires a fast burst and confirms only one result is committed

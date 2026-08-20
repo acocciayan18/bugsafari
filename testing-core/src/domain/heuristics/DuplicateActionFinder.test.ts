@@ -525,6 +525,41 @@ check('a third request in the burst collapses into the same finding with a highe
   assert.equal(h.finder.totalFound(), 1, 'a burst is one finding, not three');
 });
 
+check('the same control fuzzed with different payloads collapses into ONE finding, never downgraded', () => {
+  const h = new Harness();
+  // Pair 1: a payload double-submitted, both commit → CONFIRMED_DUPLICATE (High).
+  const a = h.send(1000, { interaction, body: '{"q":1}' });
+  const b = h.send(1150, { interaction, body: '{"q":1}' });
+  h.settle(b, 1400, 201);
+  const first = h.settle(a, 1500, 201)!;
+  assert.equal(first.verdict, 'CONFIRMED_DUPLICATE');
+  assert.equal(h.finder.totalFound(), 1);
+
+  // Pair 2: a DIFFERENT payload on the SAME control, only ever SUSPECTED.
+  const c = h.send(2000, { interaction, body: '{"q":2}' });
+  const d = h.send(2100, { interaction, body: '{"q":2}' });
+  const second = h.settleFull(d, 2300, 201)!;
+  assert.equal(second.isNew, false, 'a sibling payload on the same control is not a new finding');
+  assert.equal(second.defect.bugId, first.bugId, 'same control ⇒ same bugId regardless of payload');
+  assert.equal(second.defect.verdict, 'CONFIRMED_DUPLICATE', 'the merged finding keeps the strongest verdict, never downgraded');
+  assert.equal(h.finder.totalFound(), 1, 'one finding for the control, not one card per fuzzed payload');
+});
+
+check('two different controls hitting the same endpoint stay distinct findings', () => {
+  const h = new Harness();
+  const one: InteractionContext = { selector: '#save-a', label: 'Save A', actedAtMs: 990 };
+  const two: InteractionContext = { selector: '#save-b', label: 'Save B', actedAtMs: 990 };
+  const a = h.send(1000, { interaction: one });
+  const b = h.send(1100, { interaction: one });
+  h.settle(b, 1300, 201);
+  h.settle(a, 1400, 201);
+  const c = h.send(2000, { interaction: two });
+  const d = h.send(2100, { interaction: two });
+  h.settle(d, 2300, 201);
+  h.settle(c, 2400, 201);
+  assert.equal(h.finder.totalFound(), 2, 'distinct controls are distinct defects');
+});
+
 check('bugId is stable across finder instances for the same signature', () => {
   const build = () => {
     const h = new Harness();

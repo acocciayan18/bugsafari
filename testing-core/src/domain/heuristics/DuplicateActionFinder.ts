@@ -132,6 +132,7 @@ export class DuplicateActionFinder {
   private readonly candidateByFirst = new Map<string, string>();
   private readonly judged = new Map<string, DuplicateVerdict>();
   private readonly reported = new Map<string, number>();
+  private readonly reportedVerdict = new Map<string, DuplicateVerdict>();
   private observations = 0;
 
   // Phase 1. Track the request and open a duplicate candidate when it repeats one that
@@ -234,19 +235,28 @@ export class DuplicateActionFinder {
         ? 'CONFIRMED_DUPLICATE'
         : 'SUSPECTED';
 
+    const interaction = second.interaction ?? first.interaction;
+    // Identity is the CONTROL + endpoint, not the payload: the same unguarded control fuzzed
+    // with different values is ONE missing-guard defect, so sibling payload pairs collapse here.
+    const bugId = this.bugIdFor(second.method, second.signature, interaction?.selector ?? '');
+
     const previous = this.judged.get(second.id);
     if (previous && VERDICT_RANK[previous] >= VERDICT_RANK[verdict]) return null;
     this.judged.set(second.id, verdict);
 
-    const bugId = this.bugIdFor(second.method, second.signature);
     const alreadyReported = this.reported.has(bugId);
     if (!alreadyReported && this.reported.size >= MAX_REPORTED) return null;
+
+    // Never downgrade a control's finding: a weaker sibling pair keeps the strongest verdict seen.
+    const best = this.reportedVerdict.get(bugId);
+    const effective = best && VERDICT_RANK[best] > VERDICT_RANK[verdict] ? best : verdict;
+    this.reportedVerdict.set(bugId, effective);
 
     // Occurrence counts duplicate REQUESTS, so a re-judgement that merely upgrades an
     // already-counted pair (the first response arriving late) must not inflate it.
     const occurrence = previous ? this.reported.get(bugId)! : (this.reported.get(bugId) ?? 1) + 1;
     this.reported.set(bugId, occurrence);
-    return { defect: this.build(bugId, first, second, verdict, overlapped, occurrence), isNew: !alreadyReported };
+    return { defect: this.build(bugId, first, second, effective, overlapped, occurrence), isNew: !alreadyReported };
   }
 
   private build(
@@ -519,8 +529,11 @@ export class DuplicateActionFinder {
     return value;
   }
 
-  private bugIdFor(method: string, signature: string): string {
-    return `dup-action-${method.toLowerCase()}-${this.hash(signature)}`;
+  private bugIdFor(method: string, signature: string, selector: string): string {
+    // Drop the body hash (the `::` tail) — identity is method + endpoint + control, so the same
+    // control fuzzed with different payloads maps to one finding, not one per payload.
+    const endpointKey = signature.split('::')[0];
+    return `dup-action-${method.toLowerCase()}-${this.hash(`${endpointKey}::${selector}`)}`;
   }
 
   // djb2 — stable, cheap, no crypto dependency.
