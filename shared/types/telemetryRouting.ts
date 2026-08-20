@@ -316,7 +316,14 @@ export function routeNetworkEvent(input: NetworkRoutingInput): NetworkRoutingVer
     return verdict('NETWORK_ONLY', 'INFORMATIONAL', 'ASSET_NOISE', 'Static asset failed to load. This is normal page activity and not a finding.');
   }
 
-  if (input.chaosInjected && failed) {
+  // A DEFENSIVE 4xx (the backend correctly rejecting the request) is NOT a failure to handle
+  // the injected fault: a Delayed sabotage preserves the app's own 401/403/404, and a Mutated
+  // body the backend rejects with 400/422 is correct handling. Promoting it manufactured a
+  // phantom "failed to handle the simulated failure" from every normal login rejection under an
+  // armed saboteur. Genuine mishandling still promotes below — a 5xx, an error payload, a
+  // transport failure, or actual UI breakage (BROKE_UI).
+  const defensiveClientStatus = status !== undefined && status >= 400 && status < 500;
+  if (input.chaosInjected && failed && !defensiveClientStatus) {
     return verdict(
       'FINDING',
       'MEDIUM',

@@ -121,6 +121,25 @@ check('chaos-injected failure outranks the cancellation filter', () => {
   assert.equal(v.promote, true);
 });
 
+check('a DEFENSIVE 4xx under an armed saboteur is correct handling, never a chaos finding', () => {
+  // Regression: a Delayed sabotage preserves the app's real 401 login rejection. That is the
+  // app handling the request correctly, not "failing to handle the simulated failure".
+  for (const status of [400, 401, 403, 404, 409, 422, 429]) {
+    const v = routeNetworkEvent({ kind: 'HTTP_RESPONSE', statusCode: status, url: 'https://app.io/api/login', resourceType: 'xhr', chaosInjected: true });
+    assert.equal(v.promote, false, `HTTP ${status} under chaos must not promote`);
+    assert.equal(v.reasonCode, 'DEFENSIVE_CLIENT_ERROR', `HTTP ${status} under chaos stays defensive`);
+  }
+});
+
+check('a chaos-injected 5xx or error payload is still a genuine finding', () => {
+  const server = routeNetworkEvent({ kind: 'HTTP_RESPONSE', statusCode: 500, url: 'https://app.io/api/login', resourceType: 'xhr', chaosInjected: true });
+  assert.equal(server.promote, true);
+  assert.equal(server.reasonCode, 'CHAOS_INJECTED');
+  const soft = routeNetworkEvent({ kind: 'HTTP_RESPONSE', statusCode: 200, resourceType: 'xhr', softFailBody: true, chaosInjected: true });
+  assert.equal(soft.promote, true);
+  assert.equal(soft.reasonCode, 'CHAOS_INJECTED');
+});
+
 check('chaos injection does NOT promote a healthy response', () => {
   const v = routeNetworkEvent({ kind: 'HTTP_RESPONSE', statusCode: 200, resourceType: 'xhr', chaosInjected: true });
   assert.equal(v.promote, false);
