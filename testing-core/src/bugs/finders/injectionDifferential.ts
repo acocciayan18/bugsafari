@@ -107,13 +107,16 @@ export function resetInjectionDifferentialFinder(): void {
   attemptedSelectors.clear();
 }
 
-function isAuthBypass(baseline: CorrelatedResponse, operator: CorrelatedResponse): boolean {
+// Behavioral evidence, not presence: the operator is judged injection ONLY when it CHANGES
+// the server's answer. A field that merely accepts special characters (baseline and operator
+// answer identically) is never flagged — the differential is empty, so both predicates fail.
+export function isAuthBypass(baseline: CorrelatedResponse, operator: CorrelatedResponse): boolean {
   const baselineFailed = baseline.status >= 400;
   const operatorOk = operator.status >= 200 && operator.status < 300;
   return baselineFailed && operatorOk;
 }
 
-function isDataAmplification(baseline: CorrelatedResponse, operator: CorrelatedResponse): boolean {
+export function isDataAmplification(baseline: CorrelatedResponse, operator: CorrelatedResponse): boolean {
   const bothOk = baseline.status < 300 && operator.status < 300 && baseline.status >= 200 && operator.status >= 200;
   return (
     bothOk &&

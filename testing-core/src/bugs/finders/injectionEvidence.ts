@@ -95,6 +95,17 @@ export interface InjectionEvidenceInput {
   statusCode?: number;
 }
 
+// Drop a sibling finder's leftover probe of the culprit field so it never leaks into THIS
+// injection's playbook: an earlier INPUT/TYPE on the same selector (a different payload) and
+// any SUBMIT it fired. The navigation and genuine setup on OTHER fields are kept.
+function pruneCulpritEchoes(records: ActionRecord[], culpritSelector: string): ActionRecord[] {
+  return records.filter((r) => {
+    const culpritInput = (r.type === 'INPUT' || r.type === 'TYPE') && r.selector === culpritSelector;
+    const staleSubmit = r.type === 'SUBMIT' || r.type === 'FORM_SUBMIT';
+    return !culpritInput && !staleSubmit;
+  });
+}
+
 export interface InjectionEvidenceParts {
   /** Tag-qualified, stable selector for the card (e.g. `input#login-username`). */
   displaySelector: string;
@@ -125,10 +136,14 @@ export function buildInjectionEvidence(input: InjectionEvidenceInput): Injection
   // playbook carries the full sequence instead of "No earlier steps were recorded".
   // Scope to the faulting page + culprit field, or unrelated cross-page exploration
   // (the preamble that navigated here) and simultaneous burst siblings leak in as steps.
-  const history = minimizeActionRecords(ReproductionPlaybookStore.snapshot(), {
-    faultUrl,
-    culpritSelector: element.selector,
-  });
+  // Then drop a SIBLING finder's own probe of THIS field: an earlier INPUT/TYPE on the
+  // culprit selector (e.g. an XSS finder's "onerror=") and any stale SUBMIT it left behind.
+  // The finder appends its OWN authoritative injection + submit below, so keeping those
+  // produced the out-of-order "type onerror= → submit → type ' OR '1'='1" playbook.
+  const history = pruneCulpritEchoes(
+    minimizeActionRecords(ReproductionPlaybookStore.snapshot(), { faultUrl, culpritSelector: element.selector }),
+    element.selector,
+  );
   const injectionInput: ActionRecord = {
     timestamp: new Date().toISOString(),
     type: 'INPUT',

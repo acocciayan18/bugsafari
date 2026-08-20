@@ -47,6 +47,28 @@ check('plain-text payload reflected (no markup) ⇒ NOT a leak', () => {
   assert.equal(classifyReflection({ rawHtml: `<div>${payload}</div>`, payload, executed: false }), 'ABSENT');
 });
 
+check('bare attribute/protocol fragments reflected as TEXT ⇒ NOT a leak (no tag context)', () => {
+  // `onerror=` / `javascript:` echoed as plain text are inert — dangerous only inside a
+  // tag/attribute a substring cannot prove. Matching them fabricated reflected-XSS findings.
+  assert.equal(classifyReflection({ rawHtml: '<div>you searched: onerror=</div>', payload: 'onerror=', executed: false }), 'ABSENT');
+  assert.equal(classifyReflection({ rawHtml: '<div>link: javascript:alert(1)</div>', payload: 'javascript:alert(1)', executed: false }), 'ABSENT');
+});
+
+check('execution witness cannot attribute to a tagless fragment payload (app-dialog contamination)', () => {
+  // Even if the page witness fired (a prior injection or the app is own alert), a payload
+  // that introduces no tag cannot be "executed as code" — it must not be confirmed.
+  const r = classifyReflectionDetailed({ rawHtml: '<div>onerror=</div>', payload: 'onerror=', executed: true });
+  assert.equal(r.verdict, 'ABSENT');
+  assert.equal(r.executed, false);
+});
+
+check('handler vector on an uncommon tag (select/textarea/marquee) reflected raw ⇒ CONFIRMED', () => {
+  // Recall guard: these were previously only caught by the loose `on\\w+=` branch. The tag
+  // set must cover them so dropping that branch does not miss a genuine vector.
+  const payload = '<select onfocus=alert(1) autofocus>';
+  assert.equal(classifyReflection({ rawHtml: `<div>${payload}</div>`, payload, executed: false }), 'CONFIRMED');
+});
+
 check('reflected but browser-normalized (quotes/void-tag added) ⇒ CONFIRMED', () => {
   // The exact bug: injected `<video><source onerror=alert(1)>` reflects via innerHTML
   // and the browser re-serializes it with quotes + a void-tag boundary, breaking an

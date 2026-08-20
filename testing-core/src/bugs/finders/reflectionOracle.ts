@@ -67,9 +67,19 @@ export async function resetExecutionWitness(page: Page): Promise<void> {
   }
 }
 
-/** Payload contains executable markup — required for a raw-reflection CONFIRMED verdict. */
+// A payload can only create an EXECUTABLE reflection when it introduces an actual HTML
+// tag. A bare `onerror=` / `javascript:` substring reflected as TEXT content is inert —
+// it is dangerous only inside a tag/attribute context a substring check cannot prove — so
+// matching it fabricated reflected-XSS findings from harmless echoed text. Requiring a real
+// OPENING tag from the script/handler-capable element set keeps every genuine vector (each
+// carries its tag, e.g. `<select onfocus=…>`) while dropping the context-free false positives.
+// The set is the union of the tags the XSS vector corpus + escalator polyglot actually emit.
+const DANGEROUS_TAG =
+  /<\s*(script|img|svg|iframe|object|embed|body|input|details|a|video|source|audio|track|select|textarea|keygen|marquee|math|mtext|table|animate|g|form)\b/i;
+
+/** Payload introduces an executable HTML tag — required for a raw-reflection CONFIRMED verdict. */
 function hasDangerousMarkup(payload: string): boolean {
-  return /<\s*(script|img|svg|iframe|object|embed|body|input|details|a|video|source|audio|track)\b|on\w+\s*=|javascript:/i.test(payload);
+  return DANGEROUS_TAG.test(payload);
 }
 
 // Normalize markup so a payload that survived unescaped is still matched after the

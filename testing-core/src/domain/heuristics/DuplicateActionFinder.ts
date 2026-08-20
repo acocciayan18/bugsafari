@@ -133,6 +133,15 @@ export class DuplicateActionFinder {
   private readonly judged = new Map<string, DuplicateVerdict>();
   private readonly reported = new Map<string, number>();
   private readonly reportedVerdict = new Map<string, DuplicateVerdict>();
+  // Best control correlated to each reported finding — reused so an uncorrelated re-emit
+  // keeps the resolved selector/label instead of the "the control that sends …" placeholder.
+  private readonly reportedInteraction = new Map<string, InteractionContext>();
+  // Correlated findings (control known) reported per endpoint identity, and the single
+  // endpoint-level (control unknown) finding per endpoint. Together they collapse the same
+  // endpoint reported once correlated and once uncorrelated into ONE finding, while keeping
+  // two genuinely distinct controls on that endpoint as two findings.
+  private readonly correlatedByEndpoint = new Map<string, Set<string>>();
+  private readonly endpointLevelBugId = new Map<string, string>();
   private observations = 0;
 
   // Phase 1. Track the request and open a duplicate candidate when it repeats one that
@@ -235,10 +244,8 @@ export class DuplicateActionFinder {
         ? 'CONFIRMED_DUPLICATE'
         : 'SUSPECTED';
 
-    const interaction = second.interaction ?? first.interaction;
-    // Identity is the CONTROL + endpoint, not the payload: the same unguarded control fuzzed
-    // with different values is ONE missing-guard defect, so sibling payload pairs collapse here.
-    const bugId = this.bugIdFor(second.method, second.signature, interaction?.selector ?? '');
+    const pairInteraction = second.interaction ?? first.interaction;
+    const { bugId, interaction } = this.identify(second.method, second.signature, pairInteraction);
 
     const previous = this.judged.get(second.id);
     if (previous && VERDICT_RANK[previous] >= VERDICT_RANK[verdict]) return null;
@@ -256,7 +263,7 @@ export class DuplicateActionFinder {
     // already-counted pair (the first response arriving late) must not inflate it.
     const occurrence = previous ? this.reported.get(bugId)! : (this.reported.get(bugId) ?? 1) + 1;
     this.reported.set(bugId, occurrence);
-    return { defect: this.build(bugId, first, second, effective, overlapped, occurrence), isNew: !alreadyReported };
+    return { defect: this.build(bugId, first, second, effective, overlapped, occurrence, interaction), isNew: !alreadyReported };
   }
 
   private build(
@@ -266,10 +273,10 @@ export class DuplicateActionFinder {
     verdict: DuplicateVerdict,
     overlapped: boolean,
     occurrence: number,
+    interaction: InteractionContext | undefined,
   ): DuplicateActionDefect {
     const intervalMs = Math.max(0, second.startedAtMs - first.startedAtMs);
     const corroborated = first.raceScenarioActive || second.raceScenarioActive;
-    const interaction = second.interaction ?? first.interaction;
     const confidenceScore = this.scoreOf({ verdict, overlapped, corroborated, interaction, idempotent: !!second.idempotencyKey });
     const severity = verdict === 'CONFIRMED_DUPLICATE' ? 'HIGH' : verdict === 'SUSPECTED' ? 'MEDIUM' : 'LOW';
     const faultConfidence = confidenceScore >= 0.75 ? 'CONFIRMED' : confidenceScore >= 0.5 ? 'SIGNAL' : 'INFERRED';
@@ -527,6 +534,44 @@ export class DuplicateActionFinder {
       }, {});
     }
     return value;
+  }
+
+  // Resolve the finding identity and the control to attribute a judged pair to. A correlated
+  // pair (control known) keys on endpoint+control, so two distinct controls on one endpoint stay
+  // two findings. An uncorrelated pair (control unknown, correlation missed during a burst) folds
+  // into the sole correlated finding on that endpoint when there is exactly one, so the same
+  // control reported both correlated and uncorrelated is ONE finding, not a real card plus an
+  // "the control that sends …" placeholder. A correlated pair likewise adopts a pre-existing
+  // endpoint-level finding (uncorrelated arrived first), then backfills its control.
+  private identify(
+    method: string,
+    signature: string,
+    pairInteraction: InteractionContext | undefined,
+  ): { bugId: string; interaction: InteractionContext | undefined } {
+    const endpointKey = signature.split('::')[0];
+    const selector = pairInteraction?.selector ?? '';
+
+    if (selector) {
+      const correlated = this.correlatedByEndpoint.get(endpointKey);
+      const endpointLevel = this.endpointLevelBugId.get(endpointKey);
+      // Adopt an existing endpoint-level finding only when no correlated finding exists yet,
+      // so the uncorrelated-first sighting of THIS control is promoted rather than duplicated.
+      const bugId = endpointLevel && !correlated ? endpointLevel : this.bugIdFor(method, signature, selector);
+      const set = correlated ?? new Set<string>();
+      set.add(bugId);
+      this.correlatedByEndpoint.set(endpointKey, set);
+      if (!this.reportedInteraction.has(bugId)) this.reportedInteraction.set(bugId, pairInteraction!);
+      return { bugId, interaction: this.reportedInteraction.get(bugId) };
+    }
+
+    const correlated = this.correlatedByEndpoint.get(endpointKey);
+    if (correlated && correlated.size === 1) {
+      const bugId = [...correlated][0];
+      return { bugId, interaction: this.reportedInteraction.get(bugId) };
+    }
+    const bugId = this.bugIdFor(method, signature, '');
+    this.endpointLevelBugId.set(endpointKey, bugId);
+    return { bugId, interaction: undefined };
   }
 
   private bugIdFor(method: string, signature: string, selector: string): string {

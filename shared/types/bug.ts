@@ -182,10 +182,6 @@ export interface IncidentReport {
   bugId?: string;
   timestamp: string;
   reason: string;
-  // Finder-supplied display headline (e.g. "Injected script ran on the page (reflected
-  // XSS)"). Ready to render verbatim — NOT title-cased. Absent ⇒ the card falls back to
-  // the humanized bug class. Distinct from `reason`, which is the full explanatory sentence.
-  title?: string;
   url: string;
   statusCode?: number;
   stackTrace?: string;

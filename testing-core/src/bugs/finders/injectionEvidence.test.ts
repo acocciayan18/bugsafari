@@ -78,6 +78,36 @@ check('cross-page preamble and simultaneous burst siblings are dropped from the 
   ReproductionPlaybookStore.reset();
 });
 
+check("a sibling finder's own probe of the culprit field is not spliced into the playbook", () => {
+  ReproductionPlaybookStore.reset();
+  // An XSS finder already typed a DIFFERENT payload into the SAME login field and submitted,
+  // before the differential SQL oracle runs. That echo must not become steps of the SQL repro.
+  ReproductionPlaybookStore.push(rec({ type: 'NAVIGATE', url: LOGIN }));
+  ReproductionPlaybookStore.push(rec({ type: 'INPUT', selector: emailField.selector, url: LOGIN, payload: 'onerror=', redactValue: false }));
+  ReproductionPlaybookStore.push(rec({ type: 'SUBMIT', selector: emailField.selector, url: LOGIN }));
+
+  const parts = buildInjectionEvidence({
+    element: emailField,
+    payload: "' OR '1'='1",
+    faultUrl: LOGIN,
+    observation: 'A normal value was rejected but the SQL operator value was accepted.',
+    method: 'POST',
+    responseUrl: 'http://app.test/api/login',
+    statusCode: 200,
+  });
+
+  // The foreign payload never appears, and the culprit field is typed EXACTLY once — ours.
+  const joined = parts.reproductionPlaybook.join('\n');
+  assert.equal(joined.includes('onerror='), false, `foreign payload excluded: ${joined}`);
+  const culpritInputs = parts.reproductionActions.filter((r) => r.type === 'INPUT' && r.selector === emailField.selector);
+  assert.equal(culpritInputs.length, 1, 'culprit field typed exactly once');
+  assert.equal(culpritInputs[0].payload, "' OR '1'='1", 'the one input is our injection');
+  // No stale submit precedes the injection: the only submit is the appended step, after it.
+  const last = parts.reproductionActions[parts.reproductionActions.length - 1];
+  assert.equal(last.type, 'INPUT', 'trace ends with the injection, no trailing foreign submit');
+  ReproductionPlaybookStore.reset();
+});
+
 check('an empty buffer still yields a self-contained navigate + injection playbook', () => {
   ReproductionPlaybookStore.reset();
   const parts = buildInjectionEvidence({

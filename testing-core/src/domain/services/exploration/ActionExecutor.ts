@@ -1414,9 +1414,6 @@ export class ActionExecutor {
     this.deps.registerConfirmedBug({
       bugId: deriveStableBugId(`fuzz-${bugClass}`, [selector, payload, finding.title, safeRoutePath(page)]),
       type: 'FUZZ',
-      // The finder's precise headline (exec vs reflected; NoSQL; crash) — shown on the
-      // card instead of the generic "Fuzz Vulnerability Leak" bucket enum.
-      title: finding.title,
       message: finding.evidence?.message ?? finding.title,
       selector,
       elementLabel,

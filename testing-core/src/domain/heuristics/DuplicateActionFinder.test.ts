@@ -560,6 +560,48 @@ check('two different controls hitting the same endpoint stay distinct findings',
   assert.equal(h.finder.totalFound(), 2, 'distinct controls are distinct defects');
 });
 
+check('the same endpoint reported correlated then uncorrelated is ONE finding, keeping the control', () => {
+  // The /sql-injection card leak: the Login double-submit surfaced once correlated to the
+  // control (HIGH) and once uncorrelated during the burst (a MEDIUM "the control that sends
+  // POST /api/login" placeholder). They must collapse into one finding that keeps the control.
+  const h = new Harness();
+  const a = h.send(1000, { interaction });
+  const b = h.send(1150, { interaction });
+  h.settle(b, 1400, 201);
+  const correlated = h.settle(a, 1500, 201)!;
+  assert.equal(correlated.selector, '#place-order');
+  assert.equal(correlated.verdict, 'CONFIRMED_DUPLICATE');
+
+  // A later burst pair on the SAME endpoint whose control correlation was lost.
+  const c = h.send(2000);
+  const d = h.send(2100);
+  const uncorrelated = h.settleFull(d, 2300, 201)!;
+  assert.equal(uncorrelated.isNew, false, 'an uncorrelated pair on a known endpoint is not a new card');
+  assert.equal(uncorrelated.defect.bugId, correlated.bugId, 'it folds into the correlated finding');
+  assert.equal(uncorrelated.defect.selector, '#place-order', 'the resolved control is kept, not blanked');
+  assert.equal(uncorrelated.defect.verdict, 'CONFIRMED_DUPLICATE', 'the merged finding keeps the strongest verdict');
+  assert.equal(h.finder.totalFound(), 1, 'one finding for the endpoint, not a real card plus a placeholder');
+});
+
+check('the same endpoint reported uncorrelated FIRST then correlated adopts and upgrades one finding', () => {
+  const h = new Harness();
+  // Burst pair with no correlated control → an endpoint-level finding first.
+  const a = h.send(1000);
+  const b = h.send(1150);
+  h.settle(b, 1400, 201);
+  const endpointLevel = h.settle(a, 1500, 201)!;
+  assert.equal(endpointLevel.selector, '', 'first sighting has no control');
+  assert.equal(h.finder.totalFound(), 1);
+
+  // The control is correlated on a later pair → adopt the same finding, backfill the control.
+  const c = h.send(2000, { interaction });
+  const d = h.send(2100, { interaction });
+  const promoted = h.settleFull(d, 2300, 201)!;
+  assert.equal(promoted.defect.bugId, endpointLevel.bugId, 'the correlated pair adopts the endpoint-level finding');
+  assert.equal(promoted.defect.selector, '#place-order', 'the control is backfilled onto the one finding');
+  assert.equal(h.finder.totalFound(), 1, 'still one finding, now correctly attributed');
+});
+
 check('bugId is stable across finder instances for the same signature', () => {
   const build = () => {
     const h = new Harness();

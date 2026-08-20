@@ -663,7 +663,6 @@ export class ExplorationEngine {
       bugId: bug.bugId,
       timestamp: bug.timestamp.toISOString(),
       reason: bug.message,
-      title: bug.title,
       url: this.activePage?.url() ?? this.targetUrl,
       stackTrace: bug.stackTrace,
       steps: bug.reproductionActions ?? [],

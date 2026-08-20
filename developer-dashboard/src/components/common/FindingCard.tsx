@@ -98,7 +98,7 @@ export default function FindingCard({
             <Bug className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
           </div>
           <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5">
-            <span title={view.headline ?? humanizeFindingTitle(view.title)} className={`truncate text-[13px] font-bold ${theme.cardTitle}`}>{view.headline ?? humanizeFindingTitle(view.title)}</span>
+            <span title={humanizeFindingTitle(view.title)} className={`truncate text-[13px] font-bold ${theme.cardTitle}`}>{humanizeFindingTitle(view.title)}</span>
             <SeverityBadge severity={view.severity} />
             {view.occurrences > 1 && (
               <span

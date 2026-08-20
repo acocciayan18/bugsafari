@@ -30,8 +30,6 @@ export interface ISessionStats {
 export interface ICaughtBug {
   bugId: string;
   type: string;
-  /** Finder display headline shown on the card instead of the humanized bug class. */
-  title?: string;
   message: string;
   /** Raw selector — internal only (replay/dedup); never rendered in the report. */
   selector: string;
@@ -376,8 +374,6 @@ const sessionSchema = new Schema(
             default: () => new Types.ObjectId().toString(),
           },
           type: { type: String, default: '' },
-          // Finder headline (verbatim) — falls back to the humanized bug class when absent.
-          title: { type: String, default: '' },
           message: { type: String, default: '' },
           selector: { type: String, default: '' },
           elementLabel: { type: String, default: '' },

@@ -70,10 +70,6 @@ export interface ConfirmedBug {
   bugId: string;
   type: string;
   message: string;
-  /** Finder-supplied display headline, rendered verbatim in place of the humanized bug
-   *  class ("Injected script ran on the page (reflected XSS)"). Absent ⇒ card humanizes
-   *  the bug class. Distinct from {@link message}, the full explanatory sentence. */
-  title?: string;
   /** Raw selector — internal only (replay, dedup, culprit upgrade); never rendered. */
   selector: string;
   /** Human name of the culprit control, rendered wherever the selector used to be. */

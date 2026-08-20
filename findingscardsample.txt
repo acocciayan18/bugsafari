@@ -1,30 +1,151 @@
-Fuzz Vulnerability Leak
+SQL Injection
 Critical
 
-
-CWE-79
+CWE
+CWE-89
 Status
-CONFIRMED 100%
+CONFIRMED 90%
 Message
-A value entered into this field executed as code in the browser (reflected XSS).
+the input field accepted a SQL operator value the server executed instead of treating as text, which can bypass the login or authorization check. Injected value: ' OR '1'='1
 Element
 input field
 Reproduction Playbook
 
 1
 open
-Navigate to /xss-injection
+Navigate to /sql-injection
 2
 type
-Type "<<SCRIPT>" into the "input field" field
+Type "onerror=" into the input field
 Route
-/xss-injection
+/sql-injection
+·
+Panel
+"SQL login"
 ·
 Element
-"input field" field
+input field
+3
+submit
+Click the "Login" button to submit the form
+Route
+/sql-injection
+4
+type
+Type "' OR '1'='1" into the input field
+Route
+/sql-injection
+·
+Element
+input field
 Suggested Fix
 
-Suggested fix: close the leak
-1. Escape output so the reflected payload can no longer run where it lands
-2. Stop returning raw database or server errors in the reply to the browser
-3. Add a test confirming the payload is neither reflected nor able to error the backend
+For this finding
+• Address: POST /api/login (HTTP 200)
+• Field: input field
+• Value that triggered it: ' OR '1'='1
+
+Suggested fix: never build SQL from raw input
+1. Use parameterized queries or prepared statements and never join input into SQL text
+2. Validate and cast input on the server, and reject values that break the column rules
+3. Stop sending raw SQL or driver errors to the browser, and log them on the server only
+4. Add a test that submits ' OR '1'='1 and expects a rejected request, not a wider result
+Injected value reflected unescaped (reflected XSS)
+Critical
+
+CWE
+CWE-79
+Status
+CONFIRMED 100%
+Message
+A value entered into this field was reflected back into the page without being escaped, so a user-supplied value can run as code in the browser (reflected XSS).
+Element
+input field
+Reproduction Playbook
+
+1
+open
+Navigate to /sql-injection
+2
+type
+Type "onerror=" into the input field
+Route
+/sql-injection
+·
+Element
+input field
+3
+submit
+Submit the form
+Route
+/sql-injection
+Suggested Fix
+
+Suggested fix: stop the reflected value from running as code
+1. Escape or encode user input everywhere it is written into the page (HTML, attribute, script, and style contexts)
+2. Prefer safe sinks (textContent or framework binding) over innerHTML, and add a Content-Security-Policy as defense in depth
+3. Add a test confirming the payload is rendered inert (escaped), not executed
+SPA State Race Condition
+High
+
+CWE-362
+Status
+CONFIRMED 100%
+Message
+POST /api/login was sent again 195ms later while the first was still running, and both requests succeeded, so the action ran twice.
+Element
+Login
+button.danger
+Reproduction Playbook
+
+1
+open
+Navigate to /sql-injection
+2
+click
+Click the "Login" control, repeated 2 times in quick succession
+Route
+/sql-injection
+·
+Element
+"Login" control
+Suggested Fix
+
+The control fired the same state-changing request twice with no debounce or disable-on-submit guard.
+Suggested fix: guard against overlapping actions
+1. Disable or debounce the control after the first interaction until it finishes
+2. Make each state change safe to run more than once under overlapping events
+3. Add a test that fires a fast burst and confirms only one result is committed
+
+
+
+SPA State Race Condition
+Medium
+
+CWE-362
+Status
+NEEDS VERIFICATION 70%
+Message
+POST /api/login was sent again 1ms later while the first was still running.
+API Endpoint
+POST /api/login
+Reproduction Playbook
+
+1
+open
+Navigate to /sql-injection
+2
+click
+Click the "the control that sends POST /api/login" control, repeated 2 times in quick succession
+Route
+/sql-injection
+·
+Element
+"the control that sends POST /api/login" control
+Suggested Fix
+
+The control fired the same state-changing request twice with no debounce or disable-on-submit guard.
+Suggested fix: guard against overlapping actions
+1. Disable or debounce the control after the first interaction until it finishes
+2. Make each state change safe to run more than once under overlapping events
+3. Add a test that fires a fast burst and confirms only one result is committed

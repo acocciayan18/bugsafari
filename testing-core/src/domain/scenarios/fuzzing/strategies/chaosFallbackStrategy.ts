@@ -142,7 +142,7 @@ const BOUNDARY_TOKENS = ['"', "'", '`', '\\', '/', '<', '>', '{', '}', '[', ']',
 
 const QUERY_TOKENS = [' OR 1=1 ', ' UNION SELECT NULL ', '$gt', '$ne', '../', '%00', '{{constructor}}'];
 
-const SCRIPT_TOKENS = ['<script>', '</script>', 'onerror=', 'obsLog.error(', 'javascript:'];
+const SCRIPT_TOKENS = ['<script>alert(1)</script>', '<img src=x onerror=alert(1)>', '<svg/onload=alert(1)>', 'javascript:alert(1)'];
 
 const TYPE_MISMATCH_TOKENS = ['null', 'undefined', 'NaN', '-0', 'Infinity', 'true', 'false'];
 
