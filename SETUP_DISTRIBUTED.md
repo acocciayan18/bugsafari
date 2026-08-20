@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Findings card XSS injection review"
+git commit -m "Findings card audit for sql-injection"
 git push origin HEAD:dev --force
 
 
