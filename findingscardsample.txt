@@ -5,7 +5,7 @@ CWE-362
 Status
 CONFIRMED 85%
 Message
-POST /api/compute was sent again 391ms later, after the first had already completed, and both requests succeeded, so the action ran twice.
+POST /api/compute was sent again 371ms later, after the first had already completed, and both requests succeeded, so the action ran twice.
 Element
 Compute
 Reproduction Playbook
@@ -37,8 +37,7 @@ Suggested fix: guard against overlapping actions
 2. Make each state change safe to run more than once under overlapping events
 3. Add a test that fires a fast burst and confirms only one result is committed
 
-Stack Trace
-Click to expand
+
 Server API Failure
 High
 
@@ -48,8 +47,8 @@ CONFIRMED 100%
 Message
 HTTP 500 POST /api/compute — HTTP 500 server error. The backend failed to process the request.
 Element
-config
-textarea[name="config"]
+email
+input[name="email"]
 Reproduction Playbook
 
 1
@@ -57,12 +56,12 @@ open
 Navigate to /input-fuzzing
 2
 type
-Type "{"a": [}" into the "config" text box
+Type "' UNION SELECT version()--" into the "email" field
 Route
 /input-fuzzing
 ·
 Element
-"config" text box
+"email" field
 Suggested Fix
 
 For this finding
