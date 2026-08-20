@@ -1,74 +1,30 @@
-SPA State Race Condition
-High
-
-CWE-362
-Status
-CONFIRMED 85%
-Message
-POST /api/compute was sent again 371ms later, after the first had already completed, and both requests succeeded, so the action ran twice.
-Element
-Compute
-Reproduction Playbook
-
-1
-open
-Navigate to /input-fuzzing
-2
-click
-Click the "Compute" control. Result: the server responded HTTP 200
-Route
-/input-fuzzing
-·
-Element
-"Compute" control
-3
-click
-Click the "Compute" control. Result: the server responded HTTP 200
-Route
-/input-fuzzing
-·
-Element
-"Compute" control
-Suggested Fix
-
-The control fired the same state-changing request twice with no debounce or disable-on-submit guard.
-Suggested fix: guard against overlapping actions
-1. Disable or debounce the control after the first interaction until it finishes
-2. Make each state change safe to run more than once under overlapping events
-3. Add a test that fires a fast burst and confirms only one result is committed
+Fuzz Vulnerability Leak
+Critical
 
 
-Server API Failure
-High
-
-CWE-755
+CWE-79
 Status
 CONFIRMED 100%
 Message
-HTTP 500 POST /api/compute — HTTP 500 server error. The backend failed to process the request.
+A value entered into this field executed as code in the browser (reflected XSS).
 Element
-email
-input[name="email"]
+input field
 Reproduction Playbook
 
 1
 open
-Navigate to /input-fuzzing
+Navigate to /xss-injection
 2
 type
-Type "' UNION SELECT version()--" into the "email" field
+Type "<<SCRIPT>" into the "input field" field
 Route
-/input-fuzzing
+/xss-injection
 ·
 Element
-"email" field
+"input field" field
 Suggested Fix
 
-For this finding
-• Address: POST /api/compute (HTTP 500)
-
-Suggested fix: find and fix the failing server call
-1. Check the server logs for this endpoint and fix the error or the upstream/gateway it depends on
-2. Return a clear error to the browser and show a retry or error state instead of a broken screen
-3. Add health checks and a timeout on upstream calls so a bad gateway fails fast with a proper status
-4. Add a test that forces the endpoint to 5xx and confirms the UI shows an error, not a crash
+Suggested fix: close the leak
+1. Escape output so the reflected payload can no longer run where it lands
+2. Stop returning raw database or server errors in the reply to the browser
+3. Add a test confirming the payload is neither reflected nor able to error the backend

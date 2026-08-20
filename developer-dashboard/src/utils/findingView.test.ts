@@ -202,4 +202,32 @@ check('a finding with no recorded trace yields empty actionSteps and keeps the n
   assert.deepEqual(view.reproductionSteps, ['Step 1. Do the thing'], 'narrative fallback intact');
 });
 
+check('a finder headline is surfaced verbatim and drives the copy summary, not the humanized enum', () => {
+  const bug = {
+    bugId: 'bug-xss',
+    type: 'FUZZ',
+    title: 'Injected script ran on the page (reflected XSS)',
+    message: 'A value entered into this field executed as code in the browser (reflected XSS).',
+    selector: '#q',
+    payloadUsed: '<script>alert(1)</script>',
+    advice: '',
+    timestamp: '2026-08-20T00:00:00.000Z',
+    attribution: { bugClass: 'FUZZ_VULNERABILITY_LEAK' },
+  } as unknown as ForensicCaughtBug;
+
+  const view = caughtBugToFindingView(bug);
+  assert.equal(view.headline, 'Injected script ran on the page (reflected XSS)');
+  assert.equal(view.title, 'FUZZ_VULNERABILITY_LEAK', 'raw enum kept for grouping/humanization');
+  assert.match(buildFindingSummary(view, 0), /^Finding #1: Injected script ran on the page \(reflected XSS\)/);
+});
+
+check('an empty/absent title falls back to the humanized bug class (no regression)', () => {
+  const withEmpty = caughtBugToFindingView({
+    bugId: 'b', type: 'FUZZ', title: '   ', message: 'm', selector: '#x', payloadUsed: '', advice: '',
+    timestamp: '2026-08-20T00:00:00.000Z', attribution: { bugClass: 'FUZZ_VULNERABILITY_LEAK' },
+  } as unknown as ForensicCaughtBug);
+  assert.equal(withEmpty.headline, undefined, 'blank title is not surfaced as a headline');
+  assert.match(buildFindingSummary(withEmpty, 0), /^Finding #1: Fuzz Vulnerability Leak/);
+});
+
 console.log(`\n${passed} assertions passed.`);

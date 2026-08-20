@@ -24,6 +24,10 @@ export interface FindingView {
   key: string;
   /** Headline — the knowledge-base bug class, falling back to a generic label. */
   title: string;
+  /** Finder-supplied display headline, rendered VERBATIM (never humanized). When present it
+   *  replaces the humanized `title` on the card — e.g. "Injected script ran on the page
+   *  (reflected XSS)" instead of the generic "Fuzz Vulnerability Leak" bucket enum. */
+  headline?: string;
   /** Primary human-readable fault text (reason ≡ message), with any leading [tag] removed. */
   message: string;
   /** Diagnostic tag lifted out of the message's leading [..] (e.g. "Double submit"). */
@@ -177,7 +181,7 @@ export function buildFindingSummary(view: FindingView, index: number): string {
   const { steps: narrativeSteps, observations } = splitObservations(view.reproductionSteps);
   const repro = toMarkdownChecklist(narrativeSteps, []);
   return [
-    `Finding #${index + 1}: ${humanizeFindingTitle(view.title)}`,
+    `Finding #${index + 1}: ${view.headline ?? humanizeFindingTitle(view.title)}`,
     view.message ? `Message: ${view.message}` : '',
     view.elementLabel ? `Element: ${view.elementLabel}` : '',
     !view.elementLabel && view.endpointLabel ? `Endpoint: ${view.endpointLabel}` : '',
@@ -194,6 +198,7 @@ export function incidentToFindingView(inc: IncidentReport, occurrences = inc.occ
   return {
     key: liveFaultSignature(inc),
     title: inc.attribution?.bugClass || 'Runtime Incident',
+    headline: inc.title?.trim() || undefined,
     message,
     badge,
     severity: resolveSeverity({
@@ -258,6 +263,7 @@ export function caughtBugToFindingView(bug: ForensicCaughtBug, occurrences = bug
   return {
     key: bug.bugId,
     title: bug.attribution?.bugClass || bug.type || 'UNKNOWN',
+    headline: bug.title?.trim() || undefined,
     message,
     badge,
     severity: resolveSeverity({

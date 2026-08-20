@@ -27,6 +27,16 @@ function remediation(...lines: string[]): string {
   return lines.join('\n');
 }
 
+// FUZZ_VULNERABILITY_LEAK is a multi-signal bucket (reflected XSS, raw datastore error,
+// server crash). Its catalog remediation is deliberately broad; a REFLECTED-XSS finding
+// must show XSS-only guidance, never the datastore/server-error lines that do not apply.
+export const FUZZ_XSS_REMEDIATION = remediation(
+  'Suggested fix: stop the reflected value from running as code',
+  '1. Escape or encode user input everywhere it is written into the page (HTML, attribute, script, and style contexts)',
+  '2. Prefer safe sinks (textContent or framework binding) over innerHTML, and add a Content-Security-Policy as defense in depth',
+  '3. Add a test confirming the payload is rendered inert (escaped), not executed',
+);
+
 export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
   INPUT_SANITIZATION_FAILURE: {
     title: 'Input was not cleaned before use',

@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "fix-input-fuzzing-misclassification"
+git commit -m "Findings card XSS injection review"
 git push origin HEAD:dev --force
 
 

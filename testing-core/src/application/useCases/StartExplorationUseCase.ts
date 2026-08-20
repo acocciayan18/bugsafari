@@ -81,6 +81,8 @@ export type SaveFailureCode =
 export interface ClientFinding {
     bugId?: string;
     type?: string;
+    /** Finder headline the live card showed, transferred so an API-only save keeps it. */
+    title?: string;
     message?: string;
     selector?: string;
     /** Human name of the culprit control, resolved client-side alongside the selector. */
@@ -320,6 +322,7 @@ export class StartExplorationUseCase {
             ? engineBugs.map((bug: {
                 bugId: string;
                 type: string;
+                title?: string;
                 message: string;
                 selector: string;
                 elementLabel?: string;
@@ -337,6 +340,7 @@ export class StartExplorationUseCase {
             }) => ({
                 bugId: bug.bugId,
                 type: bug.type,
+                title: bug.title,
                 message: bug.message,
                 selector: bug.selector,
                 elementLabel: bug.elementLabel ?? '',
@@ -362,6 +366,7 @@ export class StartExplorationUseCase {
             : clientFindings.map((finding, index) => ({
                 bugId: finding.bugId && finding.bugId.trim() ? finding.bugId : `finding-${index + 1}`,
                 type: finding.type ?? 'EXCEPTION',
+                title: finding.title,
                 message: finding.message ?? '',
                 selector: finding.selector ?? '',
                 elementLabel: finding.culpritLabel ?? '',

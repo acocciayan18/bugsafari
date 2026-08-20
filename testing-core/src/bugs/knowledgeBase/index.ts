@@ -14,7 +14,7 @@ export {
   type SignalCategory,
 } from './signalPatterns.js';
 
-export { BUG_CATALOG, type BugDefinition, type Severity } from './bugCatalog.js';
+export { BUG_CATALOG, FUZZ_XSS_REMEDIATION, type BugDefinition, type Severity } from './bugCatalog.js';
 
 export {
   SCENARIO_CATALOG,

@@ -121,14 +121,21 @@ export function classifyReflectionDetailed(params: {
   executed: boolean;
 }): ReflectionResult {
   const { rawHtml, payload, executed } = params;
-  if (executed) return { verdict: 'CONFIRMED', executed: true }; // strongest proof: the payload ran
   if (!payload) return { verdict: 'ABSENT', executed: false };
+  // The execution witness is page-GLOBAL: it also fires when the app itself calls
+  // alert/confirm/prompt (the oracle overrides those sinks) or when a PRIOR injection
+  // executed. So "executed" is attributable to THIS payload only when the payload can
+  // actually BE code — it carries executable markup. A benign value that never had a
+  // script/handler cannot have "run", so a witness that fired came from elsewhere and
+  // must not label it "executed as code" (the cross-injection / app-dialog false positive).
+  const dangerous = hasDangerousMarkup(payload);
+  if (executed && dangerous) return { verdict: 'CONFIRMED', executed: true }; // strongest proof: the payload ran
   // Reflected raw/unescaped AND actually dangerous → the markup is live in the DOM.
   // The markup guard prevents a harmless plain-text reflection reading as a leak.
   // Exact match first; then a normalization-tolerant match so a payload the browser
   // round-tripped (quotes added, whitespace/void-tags normalized) is still caught.
   // CONFIRMED but executed:false — it CAN run, it did not necessarily run.
-  if (hasDangerousMarkup(payload)) {
+  if (dangerous) {
     if (rawHtml.includes(payload)) return { verdict: 'CONFIRMED', executed: false };
     if (normalizeMarkup(rawHtml).includes(normalizeMarkup(payload))) return { verdict: 'CONFIRMED', executed: false };
   }

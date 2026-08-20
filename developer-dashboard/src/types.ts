@@ -223,6 +223,8 @@ export interface ForensicReportError {
 export interface ForensicCaughtBug {
   bugId: string;
   type: string;
+  /** Finder display headline (verbatim) shown in place of the humanized bug class. */
+  title?: string;
   message: string;
   /** Raw selector — internal only (replay/dedup); never rendered. */
   selector: string;

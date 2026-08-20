@@ -487,6 +487,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
   public getConfirmedBugsFromMemory(): Array<{
     bugId: string;
     type: string;
+    title?: string;
     message: string;
     selector: string;
     payloadUsed: string;

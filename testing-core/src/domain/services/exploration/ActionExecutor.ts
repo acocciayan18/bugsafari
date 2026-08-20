@@ -43,7 +43,8 @@ import { fuzzGuard } from '../../../bugs/finders/fuzzGuard.js';
 import type { BugContext, BugFinding } from '../../../bugs/types.js';
 import { classifyFault } from '../../../bugs/knowledgeBase/index.js';
 import { ensureFindingEvidence } from '../../../bugs/knowledgeBase/findingEvidence.js';
-import { BUG_CATALOG } from '../../../bugs/knowledgeBase/bugCatalog.js';
+import { BUG_CATALOG, FUZZ_XSS_REMEDIATION } from '../../../bugs/knowledgeBase/bugCatalog.js';
+import { buildFuzzReproductionActions } from './fuzzReproduction.js';
 import { scoreFinding } from '../verification/confidenceScore.js';
 import type { ActionRecord } from '../../../../../shared/types.js';
 import { OBSERVATION_PREFIX } from '../../../../../shared/types.js';
@@ -1365,13 +1366,21 @@ export class ActionExecutor {
     const cwe = isReflectedXss ? BUG_CATALOG.FUZZ_VULNERABILITY_LEAK.cwe : classification.cwe;
 
     // Replayable trace + narrative: navigate to the fault page, type the payload into the
-    // exact field, then the observed leak. ensureFindingEvidence guarantees non-empty steps.
+    // exact field, submit the form that sends it, then the observed leak. The submit is not
+    // optional — the fuzz engine reaches the backend by submitting, so a repro that stops at
+    // the keystroke sends nothing and cannot reproduce the leak. ensureFindingEvidence
+    // guarantees non-empty steps.
     const now = new Date().toISOString();
     const pageUrl = page.url();
-    const reproductionActions: ActionRecord[] = [
-      { timestamp: now, type: 'NAVIGATE', selector: pageUrl, url: pageUrl },
-      { timestamp: now, type: 'INPUT', selector, url: pageUrl, payload, elementLabel, elementKind: kind, redactValue },
-    ];
+    const reproductionActions: ActionRecord[] = buildFuzzReproductionActions({
+      timestamp: now,
+      pageUrl,
+      selector,
+      payload,
+      elementLabel,
+      elementKind: kind,
+      redactValue,
+    });
     const reproductionSteps = [
       ...narrateActionRecords(reproductionActions),
       `${OBSERVATION_PREFIX}${finding.title}`,
@@ -1396,7 +1405,7 @@ export class ActionExecutor {
     };
     const ensured = ensureFindingEvidence({
       attribution,
-      advice: isReflectedXss ? BUG_CATALOG.FUZZ_VULNERABILITY_LEAK.remediation : classification.advice,
+      advice: isReflectedXss ? FUZZ_XSS_REMEDIATION : classification.advice,
       reproductionPlaybook: reproductionSteps,
       context: `${finding.title} (${safeRoutePath(page)})`,
     });
@@ -1405,6 +1414,9 @@ export class ActionExecutor {
     this.deps.registerConfirmedBug({
       bugId: deriveStableBugId(`fuzz-${bugClass}`, [selector, payload, finding.title, safeRoutePath(page)]),
       type: 'FUZZ',
+      // The finder's precise headline (exec vs reflected; NoSQL; crash) — shown on the
+      // card instead of the generic "Fuzz Vulnerability Leak" bucket enum.
+      title: finding.title,
       message: finding.evidence?.message ?? finding.title,
       selector,
       elementLabel,

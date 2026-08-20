@@ -11,6 +11,8 @@ import {
   semanticFallbackFromSelector,
   describeConstraintBypass,
   describeInputInjection,
+  describeTarget,
+  isGenericElementLabel,
   describeConstraintBypassPlaybook,
   describeConcurrentBurstIntent,
   describeConcurrentBurstSiblingsIntent,
@@ -107,6 +109,18 @@ check('input-injection differentiates control type (textarea → text box, selec
   assert.equal(describeInputInjection('Country', 'ZZ', false, 'dropdown'), 'Select "ZZ" from the "Country" dropdown');
   // A field is a field — never a button.
   assert.equal(describeInputInjection('Email', 'a@b', false, 'field'), 'Type "a@b" into the "Email" field');
+});
+
+check('a generic type-noun label reads plainly, never quoted-and-doubled', () => {
+  // The bug: an unnamed field falls back to the "input field" type noun, which then
+  // rendered as `the "input field" field`. It must read `the input field` instead.
+  assert.equal(describeInputInjection('input field', 'x', false, 'field'), 'Type "x" into the input field');
+  assert.equal(describeTarget('input field', 'field'), 'the input field');
+  assert.equal(describeTarget('button', 'button'), 'the button');
+  // A real, human-resolved name is still quoted with its noun.
+  assert.equal(describeTarget('Register', 'button'), 'the "Register" button');
+  assert.ok(isGenericElementLabel('input field'));
+  assert.ok(!isGenericElementLabel('Email'));
 });
 
 check('constraint-bypass step names the exact stripped guard and control noun', () => {

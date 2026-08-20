@@ -155,7 +155,6 @@ const RANDOM_STRINGS = [
   '%00',
   '\x00',
   '\\x00',
-  '<<SCRIPT>',
   'RAW_RELAY',
 ];
 

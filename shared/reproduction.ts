@@ -206,11 +206,31 @@ export function scrubSelectors(text: string): string {
     .replace(POSITIONAL_TOKEN, (match) => semanticFallbackFromSelector(match));
 }
 
+// The structural fallback names an element gets when it has no accessible name
+// ({@link genericElementLabel} outputs). These are TYPE nouns, not proper names, so a
+// step must read `the input field`, never quote-and-double them into `the "input field" field`.
+const GENERIC_ELEMENT_LABELS: ReadonlySet<string> = new Set(['input field', 'link', 'button', 'element']);
+
+/** True when a label is a bare structural type noun, not a human-resolved control name. */
+export function isGenericElementLabel(label?: string): boolean {
+  return GENERIC_ELEMENT_LABELS.has(collapse(label).toLowerCase());
+}
+
 /** Name one control the way a step should read it — `the "Register" button`. */
 export function describeTarget(label?: string, kind?: string): string {
   const noun = collapse(kind) || 'element';
   const name = collapse(label);
-  return name && !isSelectorLike(name) ? `the "${truncate(name, MAX_LABEL_LENGTH)}" ${noun}` : `the ${noun}`;
+  if (!name || isSelectorLike(name)) return `the ${noun}`;
+  // A generic type-noun label is not a proper name: read it plainly and never double it
+  // against the noun. When the label already ends with the noun ("input field" + "field"),
+  // the label is the fuller phrase; when the noun is a distinct, more specific word
+  // ("checkbox", "dropdown"), prefer it. Result: `the input field` / `the checkbox`.
+  if (isGenericElementLabel(name)) {
+    const lname = name.toLowerCase();
+    const lnoun = noun.toLowerCase();
+    return lnoun === 'element' || lname.endsWith(lnoun) ? `the ${name}` : `the ${noun}`;
+  }
+  return `the "${truncate(name, MAX_LABEL_LENGTH)}" ${noun}`;
 }
 
 /** Name a set of controls, capped so a wide burst stays one readable line. */

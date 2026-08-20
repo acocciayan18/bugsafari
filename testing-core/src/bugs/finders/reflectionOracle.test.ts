@@ -79,6 +79,22 @@ check('detailed: raw unescaped reflection ⇒ CONFIRMED but executed:false (can 
   assert.equal(r.executed, false);
 });
 
+check('executed witness but benign (no-markup) payload ⇒ NOT executed, NOT a leak', () => {
+  // The page-global witness fires for the app's OWN alert/confirm/prompt or a prior
+  // injection. A value that never carried a script/handler cannot have "run", so a
+  // fired witness must not label it "executed as code" — the cross-injection / app-dialog
+  // false positive this guard exists to kill.
+  const r = classifyReflectionDetailed({ rawHtml: '<div>echo: BugSafari</div>', payload: 'BugSafari', executed: true });
+  assert.equal(r.verdict, 'ABSENT');
+  assert.equal(r.executed, false);
+});
+
+check('executed witness + genuinely dangerous payload ⇒ executed:true (attribution holds)', () => {
+  const r = classifyReflectionDetailed({ rawHtml: '', payload: '<img src=x onerror=alert(1)>', executed: true });
+  assert.equal(r.verdict, 'CONFIRMED');
+  assert.equal(r.executed, true);
+});
+
 check('detailed: SANITIZED / ABSENT ⇒ executed:false', () => {
   assert.equal(classifyReflectionDetailed({ rawHtml: '<div>&lt;script&gt;</div>', payload: '<script>x</script>', executed: false }).executed, false);
   assert.equal(classifyReflectionDetailed({ rawHtml: '<div>clean</div>', payload: '<script>x</script>', executed: false }).executed, false);
