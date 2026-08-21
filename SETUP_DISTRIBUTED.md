@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Findings card audit for nosql-injections"
+git commit -m "enforce-behavioral-evidence-gate"
 git push origin HEAD:dev --force
 
 
