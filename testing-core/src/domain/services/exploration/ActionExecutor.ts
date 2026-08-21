@@ -43,6 +43,7 @@ import { fuzzGuard } from '../../../bugs/finders/fuzzGuard.js';
 import type { BugContext, BugFinding } from '../../../bugs/types.js';
 import { classifyFault } from '../../../bugs/knowledgeBase/index.js';
 import { ensureFindingEvidence } from '../../../bugs/knowledgeBase/findingEvidence.js';
+import { isReportableSecurityFinding } from '../../../bugs/knowledgeBase/securityEvidenceGate.js';
 import { BUG_CATALOG, FUZZ_XSS_REMEDIATION } from '../../../bugs/knowledgeBase/bugCatalog.js';
 import { buildFuzzReproductionActions } from './fuzzReproduction.js';
 import { scoreFinding } from '../verification/confidenceScore.js';
@@ -1340,6 +1341,15 @@ export class ActionExecutor {
    */
   private async registerFuzzFinding(finding: BugFinding, payload: string, target: InteractiveElement, page: Page): Promise<void> {
     const selector = target.selector;
+    // Evidence invariant: a fuzz-leak class must carry behavioral proof (oracle signal) to promote.
+    if (!isReportableSecurityFinding(finding)) {
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: 'fuzz-finding-unproven-dropped',
+        selector,
+        message: `Dropped ${finding.bugClass} fuzz finding without behavioral evidence.`,
+      });
+      return;
+    }
     // elementLabel is value-free (resolveElementLabel skips a field's live value), so the
     // just-injected payload never becomes the element name.
     const elementLabel = resolveElementLabel(target);

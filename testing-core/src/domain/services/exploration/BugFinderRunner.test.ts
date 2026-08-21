@@ -169,7 +169,8 @@ async function main(): Promise<void> {
     });
     const quiet = alwaysFinder({
       bugClass: 'NOSQL_INJECTION',
-      run: async () => [finding({ bugClass: 'NOSQL_INJECTION' })],
+      // Carry a proof marker so the evidence gate promotes it; this test exercises budget isolation, not the gate.
+      run: async () => [finding({ bugClass: 'NOSQL_INJECTION', evidence: { selector: '#q', message: 'driver error leaked', signals: ['NOSQL_ERROR'] } })],
     });
     const { runner, registered } = makeRunner([chatty, quiet], { budget: 2 });
     for (let i = 0; i < 6; i += 1) await runner.sweep(fakeContext({ stateHash: `s${i}` }));
@@ -276,6 +277,31 @@ async function main(): Promise<void> {
     const bug = registered[0];
     assert.deepEqual(bug.reproductionSteps, playbook, 'the finder-owned narrative wins');
     assert.deepEqual(bug.reproductionActions, actions, 'the replayable timeline is carried');
+  });
+
+  await check('a security finding with no behavioral proof is dropped, not registered', async () => {
+    // Policy: a field that merely accepts special characters is not a vulnerability.
+    const { runner, registered } = makeRunner([
+      alwaysFinder({
+        bugClass: 'NOSQL_INJECTION',
+        run: async () => [finding({ bugClass: 'NOSQL_INJECTION', evidence: { selector: '#q', message: 'the field accepted the value', payload: "' OR '1'='1" } })],
+      }),
+    ]);
+    await runner.sweep(fakeContext());
+    assert.equal(registered.length, 0, 'input characteristics alone never register a vuln finding');
+    assert.equal(runner.coverageReport().perClass.NOSQL_INJECTION ?? 0, 0, 'the class counter does not advance on a dropped finding');
+  });
+
+  await check('a security finding with behavioral proof registers as CONFIRMED', async () => {
+    const { runner, registered } = makeRunner([
+      alwaysFinder({
+        bugClass: 'NOSQL_INJECTION',
+        run: async () => [finding({ bugClass: 'NOSQL_INJECTION', evidence: { selector: '#q', message: 'driver error leaked', payload: '{"$ne":null}', signals: ['NOSQL_ERROR'] } })],
+      }),
+    ]);
+    await runner.sweep(fakeContext());
+    assert.equal(registered.length, 1, 'a proven vuln finding is registered');
+    assert.equal(registered[0].attribution?.verificationStatus, 'CONFIRMED', 'a proof-carrying leak class reads CONFIRMED');
   });
 
   console.log(`\nBugFinderRunner: ${passed} checks passed.`);

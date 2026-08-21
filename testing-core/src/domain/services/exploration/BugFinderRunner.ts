@@ -10,21 +10,12 @@ import {
 } from '../forensics/narration.js';
 import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
 import { ensureFindingEvidence } from '../../../bugs/knowledgeBase/findingEvidence.js';
+import { requiresBehavioralProof, hasBehavioralProof } from '../../../bugs/knowledgeBase/securityEvidenceGate.js';
 import { scoreFinding } from '../verification/confidenceScore.js';
 import type { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
 import type { ScenarioGate } from '../scenarioGate.js';
 import type { ConfirmedBug } from './types.js';
 import type { ActionRecord, FaultConfidence } from '../../../../../shared/types.js';
-
-// Bug classes whose finders fire only on a positively-observed oracle (payload reflected
-// / leaked) — strong enough to seed a CONFIRMED base confidence like a replayable finding.
-const SECURITY_LEAK_CLASSES: ReadonlySet<string> = new Set([
-  'NOSQL_INJECTION',
-  'SQL_INJECTION',
-  'FUZZ_VULNERABILITY_LEAK',
-  'SECURITY_VULNERABILITY_LEAK',
-  'CLIENT_TRUST_BOUNDARY_VIOLATION',
-]);
 
 export interface BugFinderRunnerDeps {
   finders: readonly BugFinder[];
@@ -151,6 +142,14 @@ export class BugFinderRunner {
   }
 
   private async register(finding: BugFinding, budgetClass: BugClass, ctx: BugContext): Promise<void> {
+    // Evidence invariant: drop a proof-required vuln class that carries no behavioral proof.
+    if (requiresBehavioralProof(finding.bugClass) && !hasBehavioralProof(finding)) {
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: 'finder-finding-unproven-dropped',
+        message: `Dropped ${finding.bugClass} finding without behavioral evidence (input characteristics are not proof).`,
+      });
+      return;
+    }
     const definition = BUG_CATALOG[finding.bugClass];
     const attribution = resolveScenarioAttribution();
     const stateFingerprint = await captureStateFingerprint(ctx.page).catch(() => undefined);
@@ -233,12 +232,14 @@ export class BugFinderRunner {
     // Confidence/status the SAME way every graded finding gets them, so a finder finding
     // is not the one surface that reaches the dashboard with no status. A finder fires on a
     // concrete observed fault (origin is the target app); a replayable trace or a leak-class
-    // oracle is CONFIRMED-strength, everything else a SIGNAL. scoreFinding + its bands then
-    // decide the label: strong findings read CONFIRMED, weak single-shot ones NEEDS_VERIFICATION
-    // (capping severity at MEDIUM until a repeat/repro corroborates them).
+    // finding that carries real behavioral proof is CONFIRMED-strength, everything else a
+    // SIGNAL. scoreFinding + its bands then decide the label: strong findings read CONFIRMED,
+    // weak single-shot ones NEEDS_VERIFICATION (capping severity at MEDIUM until a repeat/repro corroborates them).
     const replayable = Boolean(finding.evidence?.reproductionActions ?? reproductionActions);
     const findingConfidence: FaultConfidence =
-      replayable || SECURITY_LEAK_CLASSES.has(finding.bugClass) ? 'CONFIRMED' : 'SIGNAL';
+      replayable || (requiresBehavioralProof(finding.bugClass) && hasBehavioralProof(finding))
+        ? 'CONFIRMED'
+        : 'SIGNAL';
     const graded = scoreFinding({
       confidence: findingConfidence,
       origin: 'TARGET_APP',

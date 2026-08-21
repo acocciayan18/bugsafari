@@ -218,6 +218,8 @@ export const noSqlInjectionFinder: BugFinder = {
           reproductionPlaybook: parts.reproductionPlaybook,
           reproductionActions: parts.reproductionActions,
           specifics: parts.specifics,
+          // Structural proof marker: this finder fires only on a matched NOSQL_ERROR signature.
+          signals: ['NOSQL_ERROR'],
         },
       },
     ];
