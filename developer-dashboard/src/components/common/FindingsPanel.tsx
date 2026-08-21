@@ -52,6 +52,16 @@ const timeOf = (view: FindingView): number => {
 
 type SortMode = 'severity' | 'newest';
 
+// Display order for a finding list. 'severity': Critical→Info groups, oldest→newest
+// (queue) inside each so new findings append to the bottom. 'newest': strict newest-first.
+export function sortFindingEntries(entries: FindingEntry[], sort: SortMode): FindingEntry[] {
+  return [...entries].sort((a, b) => {
+    if (sort === 'newest') return timeOf(b.view) - timeOf(a.view);
+    const rank = SEVERITY_RANK[severityOf(b.view)] - SEVERITY_RANK[severityOf(a.view)];
+    return rank !== 0 ? rank : timeOf(a.view) - timeOf(b.view);
+  });
+}
+
 // A toggle chip used for both the category and severity filter rows.
 function FilterChip({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
   return (
@@ -108,12 +118,7 @@ export default function FindingsPanel({
       if (sevFilter.size > 0 && !sevFilter.has(severityOf(view))) return false;
       return true;
     });
-    rows.sort((a, b) => {
-      if (sort === 'newest') return timeOf(b.view) - timeOf(a.view);
-      const rank = SEVERITY_RANK[severityOf(b.view)] - SEVERITY_RANK[severityOf(a.view)];
-      return rank !== 0 ? rank : timeOf(b.view) - timeOf(a.view);
-    });
-    return rows;
+    return sortFindingEntries(rows, sort);
   }, [entries, catFilter, sevFilter, sort]);
 
   // Contiguous severity runs (severity sort keeps same-severity findings adjacent).

@@ -1,7 +1,6 @@
 SQL Injection
 Critical
 
-CWE
 CWE-89
 Status
 CONFIRMED 90%
@@ -34,73 +33,6 @@ Suggested fix: never build SQL from raw input
 2. Validate and cast input on the server, and reject values that break the column rules
 3. Stop sending raw SQL or driver errors to the browser, and log them on the server only
 4. Add a test that submits ' OR '1'='1 and expects a rejected request, not a wider result
-Unhandled Client Error
-Medium
-
-CWE-754
-Status
-NEEDS VERIFICATION 46%
-Message
-HTTP 401 POST /api/login — Injected network fault. The application failed to handle the simulated failure properly.
-API Endpoint
-POST /api/login
-Reproduction Playbook
-
-1
-open
-Navigate to /sql-injection
-2
-click
-Click the "🦁 BugSafari Target" home link
-Route
-/sql-injection
-·
-Element
-"🦁 BugSafari Target" home link
-3
-click
-Click the "Login" button
-Route
-/sql-injection
-·
-Element
-"Login" button
-4
-click
-Click the "← all scenarios" home link
-Route
-/sql-injection
-·
-Element
-"← all scenarios" home link
-5
-click
-Click the "Use benign value" button
-Route
-/sql-injection
-·
-Element
-"Use benign value" button
-6
-type
-Type " UNION SELECT NULL " into the input field
-Route
-/sql-injection
-·
-Element
-input field
-Suggested Fix
-
-For this finding
-• Address: POST /api/login (HTTP 401)
-
-Suggested fix: handle failed responses on purpose
-1. Check response.ok / the HTTP status on every call and branch on failure, not only on success
-2. On 401/403 route to sign-in or an access-denied screen; on 400/404 show a clear error state instead of a broken view
-3. Add a test that returns a 4xx and confirms the UI shows an error rather than breaking or reporting success
-
-
-
 SPA State Race Condition
 Medium
 
@@ -108,7 +40,7 @@ CWE-362
 Status
 CONFIRMED 90%
 Message
-POST /api/login was sent again 1ms later while the first was still running.
+POST /api/login was sent again 2ms later while the first was still running.
 Element
 Login
 button.danger

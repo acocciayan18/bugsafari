@@ -6,14 +6,14 @@
 // by the shared <FindingCard>, which owns the header/metadata above it.
 // ═══════════════════════════════════════════════════════════════
 
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import type { ForensicActionStep } from '../../types';
 import type { SuggestFixRequest } from '../../../../shared/types.js';
 import type { FindingView } from '../../utils/findingView';
 import { chipClass, chipLabel, humanizeActionStep, whereSegments } from '../../utils/reproductionFormat';
 import ReproductionChecklist from '../telemetry/ReproductionChecklist';
 import ReproNotice from './ReproNotice';
-import { ExpandableCodeBlock, SuggestedFixBlock } from './ForensicCardKit';
+import { SuggestedFixBlock } from './ForensicCardKit';
 
 // Per-step WHERE context — labeled segments (Route / container kind / Element) so a
 // developer knows exactly where to act. The first token of each segment is its label
@@ -174,8 +174,6 @@ function toSuggestFixContext(view: FindingView, sessionId?: string): SuggestFixR
 // to stay compact during a run — the data is untouched and the saved report shows it.
 // `aiFix` gates the on-demand AI remediation button — enabled on the saved report only.
 export default function FindingEvidence({ view, showBypass = true, aiFix = false, sessionId }: { view: FindingView; showBypass?: boolean; aiFix?: boolean; sessionId?: string }) {
-  const [stackExpanded, setStackExpanded] = useState(false);
-
   return (
     <>
       {/* Structured bypass evidence — constraint-bypass findings only */}
@@ -204,17 +202,6 @@ export default function FindingEvidence({ view, showBypass = true, aiFix = false
       <div className="px-4 pt-3">
         <SuggestedFixBlock advice={view.advice} savedAiAdvice={view.aiAdvice} context={aiFix ? toSuggestFixContext(view, sessionId) : undefined} />
       </div>
-
-      {/* Stack trace — disclosure since it's verbose/noisy evidence, not primary narrative */}
-      {view.stackTrace && (
-        <ExpandableCodeBlock
-          title="Stack Trace"
-          content={view.stackTrace}
-          isExpanded={stackExpanded}
-          onToggle={() => setStackExpanded((prev) => !prev)}
-          className="max-h-96"
-        />
-      )}
     </>
   );
 }
