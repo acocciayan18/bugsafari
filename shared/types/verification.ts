@@ -1,6 +1,8 @@
 // ═══════════════════════════════════════════════════════════════
 // shared/types/verification.ts - FINDING VERIFICATION CONTRACT
 // ═══════════════════════════════════════════════════════════════
+import type { FaultSeverity } from './bug.js';
+
 // Shared vocabulary for the finding-verification pipeline. A raw fault caught by
 // the engine is only a CANDIDATE; before it is reported it must pass provenance
 // (does the root cause belong to the target app?) and evidence scoring. These
@@ -47,6 +49,25 @@ export interface ReproductionVerdict {
   reproductionRate?: number;
   /** Number of decidable replay attempts behind {@link reproductionRate}. */
   attempts?: number;
+}
+
+/** Socket channel carrying an in-run severity/verdict upgrade for an already-reported finding. */
+export const FINDING_UPGRADE_EVENT = 'finding-upgrade' as const;
+
+/**
+ * A later, stronger judgement of a finding whose card already exists (e.g. a
+ * duplicate-action defect that rose SUSPECTED → CONFIRMED once its control was
+ * correlated). Emitted ONLY on a genuine upgrade, never on a plain recurrence, so the
+ * live/History card's severity and message never lag the final verdict. The dashboard
+ * patches the matching card by `bugId` in place rather than rendering a second one.
+ */
+export interface FindingUpgrade {
+  bugId: string;
+  severity: FaultSeverity;
+  message: string;
+  confidence?: FaultConfidence;
+  confidenceScore?: number;
+  verificationStatus?: VerificationStatus;
 }
 
 /** Verification verdict attached to a finding once the pipeline has evaluated it. */

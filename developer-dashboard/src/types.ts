@@ -49,6 +49,8 @@ export type {
   ReplayStepStats,
   // In-run reproduction confirmation (patches a streamed finding's confidence)
   ReproductionVerdict,
+  // In-run verdict upgrade (patches a streamed finding's severity/message in place)
+  FindingUpgrade,
   // Session recovery & reconnection
   ActiveSessionSnapshot,
   TimeSyncPayload,
@@ -89,6 +91,7 @@ export {
   ACCESSIBILITY_EVENT,
   ACCESSIBILITY_BANNER_THRESHOLD,
   REPRODUCTION_VERDICT_EVENT,
+  FINDING_UPGRADE_EVENT,
   QUEUE_SUBSCRIBE_EVENT,
   QUEUE_UPDATE_EVENT,
   TERMINATION_COPY,

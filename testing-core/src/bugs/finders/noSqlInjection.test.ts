@@ -4,7 +4,7 @@
 // Exits non-zero on the first failed assertion.
 
 import assert from 'node:assert/strict';
-import { describeInjectedValue, isNosqlInjectionConfirmed } from './noSqlInjection.js';
+import { describeInjectedValue, isNosqlInjectionConfirmed, carriesAttackSurface } from './noSqlInjection.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -43,6 +43,24 @@ check('a leaked Mongo driver error confirms the injection', () => {
 check('a bare 5xx with no driver error is NOT injection (leaves it to SERVER_API_FAILURE)', () => {
   assert.equal(isNosqlInjectionConfirmed({ operatorLeak: undefined }), false);
   assert.equal(isNosqlInjectionConfirmed({}), false);
+});
+
+console.log('\nnoSqlInjection — a field accepting text/special chars alone is not injection');
+
+check('a blank or whitespace payload carries no attack surface', () => {
+  assert.equal(carriesAttackSurface(''), false);
+  assert.equal(carriesAttackSurface('   '), false);
+});
+
+check('a benign plain value carries no attack surface', () => {
+  assert.equal(carriesAttackSurface('bugsafari'), false);
+  assert.equal(carriesAttackSurface('9999999'), false);
+});
+
+check('an operator or metacharacter payload does carry attack surface', () => {
+  assert.equal(carriesAttackSurface('{"$ne":null}'), true);
+  assert.equal(carriesAttackSurface("' OR '1'='1"), true);
+  assert.equal(carriesAttackSurface('<img src=x onerror=1>'), true);
 });
 
 console.log(`\nAll ${passed} assertions passed.`);

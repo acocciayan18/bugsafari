@@ -1107,7 +1107,7 @@ export class StabilityMonitor {
         failed,
         timestampMs: Date.now(),
       });
-      if (result) void this.reportDuplicateAction(page, result.defect, result.isNew);
+      if (result) void this.reportDuplicateAction(page, result.defect, result.isNew, result.upgraded);
     } catch {
       // never let the reporter hook throw inside a page listener
     }
@@ -1118,7 +1118,7 @@ export class StabilityMonitor {
   // response validation already self-gates, so this bypasses verifyFault and reports with
   // the finder's stable, signature-derived bugId. A recurrence re-registers under the same
   // bugId so the persisted record carries the final occurrence count and verdict.
-  private async reportDuplicateAction(page: Page, defect: DuplicateActionDefect, isNew: boolean): Promise<void> {
+  private async reportDuplicateAction(page: Page, defect: DuplicateActionDefect, isNew: boolean, upgraded: boolean): Promise<void> {
     const t = this.deps.telemetry;
     const url = defect.endpoint || page.url();
     const timestamp = new Date().toISOString();
@@ -1214,6 +1214,22 @@ export class StabilityMonitor {
       // did not, so a double-submit first seen during an uncorrelated burst
       // (path replay, a finder driving the page) stayed permanently unattributed.
       if (defect.selector) this.deps.upgradeFindingCulprit(defect.bugId, defect.selector);
+      // A stronger verdict (SUSPECTED → CONFIRMED once the control correlates) must patch
+      // the already-emitted card by bugId — re-emitting the incident would spawn a second
+      // card (the live buffer keys on message content, which changed with the verdict). The
+      // ledger severity is refreshed by registerConfirmedBug below; this syncs the card.
+      if (upgraded) {
+        t.gateway.emitFindingUpgrade?.({
+          bugId: defect.bugId,
+          severity,
+          // Same shape as the emitted incident's reason (no leading space) so the badge tag
+          // still parses after the patch.
+          message: defect.message,
+          confidence: defect.faultConfidence,
+          confidenceScore: defect.confidenceScore,
+          verificationStatus,
+        });
+      }
       if (defect.occurrence === 3 || defect.occurrence % 25 === 0) {
         t.emit('ACTION', {
           actionExecuted: 'duplicate-action-recurred',

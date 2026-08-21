@@ -1,46 +1,76 @@
-SQL Injection
-Critical
+NoSQL Injection
+High
 
-CWE-89
+-943
 Status
 CONFIRMED 90%
 Message
-the input field accepted a SQL operator value the server executed instead of treating as text, which can bypass the login or authorization check. Injected value: ' OR '1'='1
+the input field accepted an unexpected value the server did not treat as plain text. Injected value: 
 Element
 input field
 Reproduction Playbook
 
 1
 open
-Navigate to /sql-injection
+Navigate to /nosql-injection
 2
 type
-Type "' OR '1'='1" into the input field
+Type "" into the input field
 Route
-/sql-injection
+/nosql-injection
 ·
 Element
 input field
 Suggested Fix
 
 For this finding
-• Address: POST /api/login (HTTP 200)
 • Field: input field
-• Value that triggered it: ' OR '1'='1
+• Value that triggered it: 
 
-Suggested fix: never build SQL from raw input
-1. Use parameterized queries or prepared statements and never join input into SQL text
-2. Validate and cast input on the server, and reject values that break the column rules
-3. Stop sending raw SQL or driver errors to the browser, and log them on the server only
-4. Add a test that submits ' OR '1'='1 and expects a rejected request, not a wider result
-SPA State Race Condition
-Medium
-
-CWE-362
+Suggested fix: stop query operators from reaching the database
+1. Check and cast input types before building a query, and reject fields that arrive as objects
+2. Use parameterized query builders and turn off operator interpolation
+3. Add a test that injects {"$ne":""} and expects the request to be rejected
+NoSQL Injection
+High
+-943
 Status
 CONFIRMED 90%
 Message
-POST /api/login was sent again 2ms later while the first was still running.
+the input field accepted a NoSQL operator value the server executed instead of treating as text, which can bypass the login or authorization check. Injected value: {"$ne":null}
+Element
+input field
+Reproduction Playbook
+
+1
+open
+Navigate to /nosql-injection
+2
+type
+Type "{"$ne":null}" into the input field
+Route
+/nosql-injection
+·
+Element
+input field
+Suggested Fix
+
+For this finding
+• Address: POST /api/login-nosql (HTTP 200)
+• Field: input field
+• Value that triggered it: {"$ne":null}
+
+Suggested fix: stop query operators from reaching the database
+1. Check and cast input types before building a query, and reject fields that arrive as objects
+2. Use parameterized query builders and turn off operator interpolation
+3. Add a test that injects {"$ne":""} and expects the request to be rejected
+SPA State Race Condition
+High
+-362
+Status
+CONFIRMED 100%
+Message
+POST /api/login-nosql was sent again 0ms later while the first was still running, and both requests succeeded, so the action ran twice.
 Element
 Login
 button.danger
@@ -48,15 +78,44 @@ Reproduction Playbook
 
 1
 open
-Navigate to /sql-injection
+Navigate to /nosql-injection
 2
 click
 Click the "Login" control, repeated 2 times in quick succession
 Route
-/sql-injection
+/nosql-injection
 ·
 Element
 "Login" control
+Suggested Fix
+
+The control fired the same state-changing request twice with no debounce or disable-on-submit guard.
+Suggested fix: guard against overlapping actions
+1. Disable or debounce the control after the first interaction until it finishes
+2. Make each state change safe to run more than once under overlapping events
+3. Add a test that fires a fast burst and confirms only one result is committed
+SPA State Race Condition
+Medium
+-362
+Status
+NEEDS VERIFICATION 70%
+Message
+POST /api/login-nosql was sent again 2ms later while the first was still running.
+API Endpoint
+POST /api/login-nosql
+Reproduction Playbook
+
+1
+open
+Navigate to /nosql-injection
+2
+click
+Click the "the control that sends POST /api/login-nosql" control, repeated 2 times in quick succession
+Route
+/nosql-injection
+·
+Element
+"the control that sends POST /api/login-nosql" control
 Suggested Fix
 
 The control fired the same state-changing request twice with no debounce or disable-on-submit guard.

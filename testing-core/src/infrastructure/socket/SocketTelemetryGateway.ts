@@ -1,5 +1,5 @@
-import type { AccessibilityFinding, DiscoveredElement, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent, TelemetryDeduper, TimeSyncPayload } from '../../../../shared/types.js';
-import { ACCESSIBILITY_EVENT, REPRODUCTION_VERDICT_EVENT, TIME_SYNC_EVENT, createTelemetryDeduper } from '../../../../shared/types.js';
+import type { AccessibilityFinding, DiscoveredElement, FindingUpgrade, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent, TelemetryDeduper, TimeSyncPayload } from '../../../../shared/types.js';
+import { ACCESSIBILITY_EVENT, FINDING_UPGRADE_EVENT, REPRODUCTION_VERDICT_EVENT, TIME_SYNC_EVENT, createTelemetryDeduper } from '../../../../shared/types.js';
 import type { BrowserConsoleMessage, TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import { scrubCredentials } from '../../domain/services/telemetry/credentialScrub.js';
 import { scrubSelectors } from '../../../../shared/reproduction.js';
@@ -22,7 +22,7 @@ export interface RoomEmitter {
 }
 
 /** Outbound wire channels the recorder buffers for reconnect replay. */
-export type TelemetryRecordKind = 'telemetry' | 'url-changed' | 'live-frame' | 'forensic-report' | 'incident-report' | 'accessibility' | 'browser-console' | 'reproduction-verdict';
+export type TelemetryRecordKind = 'telemetry' | 'url-changed' | 'live-frame' | 'forensic-report' | 'incident-report' | 'accessibility' | 'browser-console' | 'reproduction-verdict' | 'finding-upgrade';
 
 /** Sink that captures every outbound payload so a returning client can be replayed. */
 export interface TelemetryRecorder {
@@ -168,6 +168,14 @@ export class SocketTelemetryGateway implements TelemetryGateway {
   public emitReproductionVerdict(verdict: ReproductionVerdict): void {
     this.recorder?.record('reproduction-verdict', verdict);
     this.channel().emit(REPRODUCTION_VERDICT_EVENT, verdict);
+  }
+
+  // Buffered like the reproduction verdict: the upgrade lands after its card, so a
+  // reconnecting client must still receive the patch on replay.
+  public emitFindingUpgrade(upgrade: FindingUpgrade): void {
+    const safe = { ...upgrade, message: safeText(upgrade.message) };
+    this.recorder?.record('finding-upgrade', safe);
+    this.channel().emit(FINDING_UPGRADE_EVENT, safe);
   }
 
   // WCAG findings ride their own channel so the dashboard's Accessibility tab

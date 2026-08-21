@@ -602,6 +602,35 @@ check('the same endpoint reported uncorrelated FIRST then correlated adopts and 
   assert.equal(h.finder.totalFound(), 1, 'still one finding, now correctly attributed');
 });
 
+check('uncorrelated orphan then a control that settles BOTH requests stays ONE finding (the /nosql-injection card leak)', () => {
+  // The real double-card: an injection burst posts to /api/login-nosql first (uncorrelated,
+  // MEDIUM placeholder), then the Login button double-submits the same endpoint. The button's
+  // first request cross-pairs with the lingering orphan (shared signature, inside the grace
+  // window), so the control produces TWO judged pairs. The first adopts the endpoint-level id;
+  // the second must reuse it, not mint a fresh selector id — else one control shows as two cards.
+  const h = new Harness();
+  const a = h.send(1000);
+  const b = h.send(1002);
+  h.settle(a, 1050, 401);
+  const orphan = h.settle(b, 1060, 200)!;
+  assert.equal(orphan.selector, '', 'the injection burst is an uncorrelated endpoint-level finding');
+  assert.equal(h.finder.totalFound(), 1);
+
+  const c = h.send(1200, { interaction });
+  const d = h.send(1300, { interaction });
+  const first = h.settleFull(c, 1400, 200)!;
+  assert.equal(first.isNew, false, 'the control adopts the existing endpoint finding, not a new card');
+  assert.equal(first.upgraded, true, 'the stronger verdict flags an upgrade so the card is patched');
+  assert.equal(first.defect.verdict, 'CONFIRMED_DUPLICATE');
+  assert.equal(first.defect.severity, 'HIGH', 'the patched card carries the upgraded severity');
+  const second = h.settleFull(d, 1500, 200)!;
+  assert.equal(second.isNew, false, 'the control second pair reuses its own id, never a fresh card');
+  assert.equal(second.upgraded, false, 'a same-verdict recurrence is not an upgrade, so no redundant patch');
+  assert.equal(second.defect.bugId, orphan.bugId, 'both control pairs fold into the one endpoint finding');
+  assert.equal(second.defect.selector, '#place-order', 'the control is backfilled, not blanked');
+  assert.equal(h.finder.totalFound(), 1, 'one finding for the endpoint, not a real card plus a placeholder');
+});
+
 check('bugId is stable across finder instances for the same signature', () => {
   const build = () => {
     const h = new Harness();

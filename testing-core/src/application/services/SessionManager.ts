@@ -4,6 +4,7 @@ import type {
   AccessibilityFinding,
   ActiveSessionSnapshot,
   BrowserConsoleMessage,
+  FindingUpgrade,
   ForensicCrashReport,
   IncidentReport,
   ReproductionVerdict,
@@ -596,6 +597,29 @@ export class SessionManager implements TelemetryRecorder {
         // reconnect replays the already-corrected card and needs no event ordering.
         this.applyReproductionVerdict(payload as ReproductionVerdict);
         break;
+      case 'finding-upgrade':
+        // Same in-place patch: fold a stronger verdict into the buffered card so a
+        // reconnect replays the upgraded severity/message, not the first weak sighting.
+        this.applyFindingUpgrade(payload as FindingUpgrade);
+        break;
+    }
+  }
+
+  /** Fold a late severity/verdict upgrade into the buffered incident it belongs to. */
+  private applyFindingUpgrade(upgrade: FindingUpgrade): void {
+    const run = this.run;
+    if (!run || !upgrade?.bugId) return;
+    const incident = run.incidents.find((entry) => entry.bugId === upgrade.bugId);
+    if (!incident) return;
+    incident.severity = upgrade.severity;
+    incident.reason = upgrade.message;
+    if (incident.attribution) {
+      incident.attribution = {
+        ...incident.attribution,
+        ...(upgrade.confidence ? { confidence: upgrade.confidence } : {}),
+        ...(upgrade.confidenceScore !== undefined ? { confidenceScore: upgrade.confidenceScore } : {}),
+        ...(upgrade.verificationStatus ? { verificationStatus: upgrade.verificationStatus } : {}),
+      };
     }
   }
 

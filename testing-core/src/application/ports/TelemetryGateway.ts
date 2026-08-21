@@ -1,4 +1,4 @@
-import type { AccessibilityFinding, BrowserConsoleLevel, BrowserConsoleMessage, DiscoveredElement, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent, TimeSyncPayload } from '../../../../shared/types.js';
+import type { AccessibilityFinding, BrowserConsoleLevel, BrowserConsoleMessage, DiscoveredElement, FindingUpgrade, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent, TimeSyncPayload } from '../../../../shared/types.js';
 
 export type { BrowserConsoleLevel, BrowserConsoleMessage };
 
@@ -15,6 +15,9 @@ export interface TelemetryGateway {
 
   /** Late verdict patching an already-streamed finding with its reproduction result. */
   emitReproductionVerdict?(verdict: ReproductionVerdict): void;
+
+  /** Late patch raising an already-streamed finding's severity/message to a stronger verdict. */
+  emitFindingUpgrade?(upgrade: FindingUpgrade): void;
 
   /** Specialized socket event for dashboard URL bar updates. */
   emitUrlChanged(url: string): void;

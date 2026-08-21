@@ -3,6 +3,7 @@ import { toast } from '../../infrastructure/notifications/ToastProvider';
 import type { BrowserConsoleMessage } from '../../application/ports/EngineGateway';
 import type {
     ActiveSessionSnapshot,
+    FindingUpgrade,
     ForensicCrashReport,
     IncidentReport,
     NetworkPhase,
@@ -150,6 +151,7 @@ export interface RunState {
     addIncident: (incident: IncidentReport) => void;
     addIncidents: (incidents: IncidentReport[]) => void;
     applyReproductionVerdict: (verdict: ReproductionVerdict) => void;
+    applyFindingUpgrade: (upgrade: FindingUpgrade) => void;
     appendConsole: (message: BrowserConsoleMessage) => void;
     appendConsoleBatch: (messages: BrowserConsoleMessage[]) => void;
     ingestTelemetry: (event: TelemetryEvent) => void;
@@ -250,6 +252,28 @@ export const useRunStore = create<RunState>((set, get) => ({
                         confidenceScore: verdict.confidenceScore,
                         verificationStatus: verdict.verificationStatus,
                     },
+                }
+                : incident,
+        ),
+    })),
+    // A later, stronger verdict (e.g. a double-submit that rose SUSPECTED → CONFIRMED once
+    // its control correlated) patches the existing card in place by bugId. Re-emitting the
+    // incident would append a second card, since the live buffer keys on message content.
+    applyFindingUpgrade: (upgrade) => set((s) => ({
+        incidents: s.incidents.map((incident) =>
+            incident.bugId === upgrade.bugId
+                ? {
+                    ...incident,
+                    severity: upgrade.severity,
+                    reason: upgrade.message,
+                    attribution: incident.attribution
+                        ? {
+                            ...incident.attribution,
+                            ...(upgrade.confidence ? { confidence: upgrade.confidence } : {}),
+                            ...(upgrade.confidenceScore !== undefined ? { confidenceScore: upgrade.confidenceScore } : {}),
+                            ...(upgrade.verificationStatus ? { verificationStatus: upgrade.verificationStatus } : {}),
+                        }
+                        : incident.attribution,
                 }
                 : incident,
         ),

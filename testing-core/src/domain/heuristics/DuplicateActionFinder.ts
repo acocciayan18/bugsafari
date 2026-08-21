@@ -133,6 +133,9 @@ export class DuplicateActionFinder {
   private readonly judged = new Map<string, DuplicateVerdict>();
   private readonly reported = new Map<string, number>();
   private readonly reportedVerdict = new Map<string, DuplicateVerdict>();
+  // Verdict last EMITTED to the operator per finding, so a later, stronger judgement is
+  // flagged as an upgrade (patch the existing card) instead of a silent ledger-only change.
+  private readonly emittedVerdict = new Map<string, DuplicateVerdict>();
   // Best control correlated to each reported finding — reused so an uncorrelated re-emit
   // keeps the resolved selector/label instead of the "the control that sends …" placeholder.
   private readonly reportedInteraction = new Map<string, InteractionContext>();
@@ -142,6 +145,13 @@ export class DuplicateActionFinder {
   // two genuinely distinct controls on that endpoint as two findings.
   private readonly correlatedByEndpoint = new Map<string, Set<string>>();
   private readonly endpointLevelBugId = new Map<string, string>();
+  // Stable bugId per (endpoint, control), so every judged pair for one control resolves to
+  // the SAME finding — a later pair can never mint a second id for a control that already
+  // adopted the endpoint-level orphan on an earlier pair.
+  private readonly selectorBugId = new Map<string, string>();
+  // Endpoints whose uncorrelated orphan has been claimed by a control, so only the FIRST
+  // control to correlate adopts it; a second, distinct control keeps its own identity.
+  private readonly adoptedEndpointLevel = new Set<string>();
   private observations = 0;
 
   // Phase 1. Track the request and open a duplicate candidate when it repeats one that
@@ -197,7 +207,7 @@ export class DuplicateActionFinder {
   // Phase 2. Settle a request and judge any candidate it completes. Returns a defect the
   // first time a pair is judged reportable, and again only when a later settlement
   // upgrades the verdict (occurrence carries the running repeat count).
-  public observeSettlement(s: RequestSettlement): { defect: DuplicateActionDefect; isNew: boolean } | null {
+  public observeSettlement(s: RequestSettlement): { defect: DuplicateActionDefect; isNew: boolean; upgraded: boolean } | null {
     const record = this.byId.get(s.requestId);
     if (!record) return null;
     record.settledAtMs = s.timestampMs;
@@ -228,7 +238,7 @@ export class DuplicateActionFinder {
   }
 
   // Classify a settled (or half-settled) pair and build the defect if it is reportable.
-  private judge(first: TrackedRequest, second: TrackedRequest): { defect: DuplicateActionDefect; isNew: boolean } | null {
+  private judge(first: TrackedRequest, second: TrackedRequest): { defect: DuplicateActionDefect; isNew: boolean; upgraded: boolean } | null {
     // A repeat that followed an outright failure is a retry, not a double-submit.
     const firstFailed = first.failed === true || (first.status !== undefined && first.status >= 500);
     if (firstFailed && first.settledAtMs !== undefined && first.settledAtMs <= second.startedAtMs) return null;
@@ -263,7 +273,15 @@ export class DuplicateActionFinder {
     // already-counted pair (the first response arriving late) must not inflate it.
     const occurrence = previous ? this.reported.get(bugId)! : (this.reported.get(bugId) ?? 1) + 1;
     this.reported.set(bugId, occurrence);
-    return { defect: this.build(bugId, first, second, effective, overlapped, occurrence, interaction), isNew: !alreadyReported };
+
+    // An upgrade is an ALREADY-reported finding whose effective verdict now outranks what
+    // was last emitted for it — the card must be patched so its severity/message match the
+    // final verdict. A first report is isNew, a same-or-weaker recurrence is neither.
+    const isNew = !alreadyReported;
+    const lastEmitted = this.emittedVerdict.get(bugId);
+    const upgraded = alreadyReported && (lastEmitted === undefined || VERDICT_RANK[effective] > VERDICT_RANK[lastEmitted]);
+    if (isNew || upgraded) this.emittedVerdict.set(bugId, effective);
+    return { defect: this.build(bugId, first, second, effective, overlapped, occurrence, interaction), isNew, upgraded };
   }
 
   private build(
@@ -552,12 +570,23 @@ export class DuplicateActionFinder {
     const selector = pairInteraction?.selector ?? '';
 
     if (selector) {
-      const correlated = this.correlatedByEndpoint.get(endpointKey);
-      const endpointLevel = this.endpointLevelBugId.get(endpointKey);
-      // Adopt an existing endpoint-level finding only when no correlated finding exists yet,
-      // so the uncorrelated-first sighting of THIS control is promoted rather than duplicated.
-      const bugId = endpointLevel && !correlated ? endpointLevel : this.bugIdFor(method, signature, selector);
-      const set = correlated ?? new Set<string>();
+      const selectorKey = `${endpointKey} ${selector}`;
+      // This control's identity is decided ONCE and reused. Without this, a control that
+      // adopted the endpoint-level orphan on its first pair minted a fresh selector id on a
+      // later pair (the `!correlated` gate flipped once correlatedByEndpoint filled), so one
+      // control surfaced as two cards.
+      let bugId = this.selectorBugId.get(selectorKey);
+      if (!bugId) {
+        const endpointLevel = this.endpointLevelBugId.get(endpointKey);
+        // The uncorrelated orphan is adopted by the FIRST control to correlate on this
+        // endpoint, promoting an uncorrelated-first sighting instead of duplicating it; a
+        // second, genuinely distinct control keeps its own identity.
+        const adopt = Boolean(endpointLevel) && !this.adoptedEndpointLevel.has(endpointKey);
+        bugId = adopt ? endpointLevel! : this.bugIdFor(method, signature, selector);
+        if (adopt) this.adoptedEndpointLevel.add(endpointKey);
+        this.selectorBugId.set(selectorKey, bugId);
+      }
+      const set = this.correlatedByEndpoint.get(endpointKey) ?? new Set<string>();
       set.add(bugId);
       this.correlatedByEndpoint.set(endpointKey, set);
       if (!this.reportedInteraction.has(bugId)) this.reportedInteraction.set(bugId, pairInteraction!);

@@ -30,6 +30,13 @@ export function describeInjectedValue(payload: string): string {
   return 'an unexpected value';
 }
 
+// A field accepting text or special characters is not injection; the DELIVERED payload
+// must carry an operator/metacharacter for a leaked driver error to be attributable to it.
+// A blank or benign value (nothing but 'an unexpected value') can never confirm this finder.
+export function carriesAttackSurface(payload: string): boolean {
+  return Boolean(payload?.trim()) && describeInjectedValue(payload) !== 'an unexpected value';
+}
+
 // Fields already probed this run — one injection attempt per field is enough. Lets the
 // finder run 'transactional' (every step the field is the acted element) without
 // re-fuzzing a field it already tested. Mirrors the differential oracle's guard.
@@ -60,8 +67,10 @@ export function isNosqlInjectionConfirmed(evidence: Pick<InjectionEvidence, 'ope
 // response can never be mistaken for a driver error, then return the first line that
 // carries a genuine NoSQL signature. undefined when only the reflection matched.
 function extractNosqlError(text: string, payload: string): string | undefined {
-  if (!text) return undefined;
-  const cleaned = payload ? text.split(payload).join(' ') : text;
+  // No payload to strip means a match cannot be told apart from a reflected/static
+  // error, so it is never attributable to injection — bail instead of matching raw text.
+  if (!text || !payload) return undefined;
+  const cleaned = text.split(payload).join(' ');
   if (!matchesCategory('NOSQL_ERROR', cleaned)) return undefined;
   for (const line of cleaned.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -175,6 +184,10 @@ export const noSqlInjectionFinder: BugFinder = {
       return value;
     });
 
+    // A field merely accepting the fuzz value is not evidence; unless the payload the
+    // fuzzer actually delivered carried an operator/metacharacter, a leak is not
+    // attributable to injection. Suppresses the blank/benign-payload false positive.
+    if (!carriesAttackSurface(payload)) return [];
     if (!isNosqlInjectionConfirmed(evidence)) return [];
 
     const responseUrl = evidence.responseUrl ?? evidence.serverFault?.url;
