@@ -279,6 +279,28 @@ function AuthAppContent() {
     );
   }
 
+  // Public, view-only shared report. Rendered OUTSIDE the auth gate and never inside
+  // DashboardWorkspace, so an anonymous visitor opens it without any socket or
+  // protected request firing. The token in the URL is the only credential.
+  if (location.pathname.startsWith('/shared/')) {
+    return (
+      <ThemeProvider>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route
+              path="/shared/:token"
+              element={
+                <RouteErrorBoundary resetKey={location.pathname} label="SharedReport">
+                  <ForensicReport shared />
+                </RouteErrorBoundary>
+              }
+            />
+          </Routes>
+        </Suspense>
+      </ThemeProvider>
+    );
+  }
+
   // A stored token whose user has not been restored yet is neither signed in nor
   // a guest. Mounting the workspace here would fire protected calls against a
   // half-initialized session, so the public shell holds until auth settles.

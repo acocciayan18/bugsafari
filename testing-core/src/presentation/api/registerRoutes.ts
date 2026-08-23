@@ -8,6 +8,7 @@ import type { QueueStatusBroadcaster } from '../../infrastructure/queue/QueueSta
 import type { AuthVault } from '../../infrastructure/queue/AuthVault.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { requireAuth, optionalAuth, type AuthRequest } from '../authentication/authMiddleware.js';
+import { signShareToken, verifyShareToken, isAllowedShareTtl } from '../authentication/shareToken.js';
 import { startTestLimiter, analyzeLimiter, writeLimiter, readLimiter } from '../middleware/rateLimiter.js';
 import { sessionManager } from '../../application/services/SessionManager.js';
 import { isReady as isDbReady } from '../../infrastructure/database/mongooseClient.js';
@@ -23,10 +24,10 @@ import { networkLogRepository } from '../../infrastructure/database/repositories
 import { consoleLogRepository } from '../../infrastructure/database/repositories/ConsoleLogRepository.js';
 import { telemetryEventRepository } from '../../infrastructure/database/repositories/TelemetryEventRepository.js';
 import { SNAPSHOT_TELEMETRY_LIMIT } from '../../infrastructure/database/queryLimits.js';
-import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
+import { SessionModel, type ISession } from '../../infrastructure/database/models/SessionModel.js';
 import { generateRunCode, generateUniqueRunCode } from '../../infrastructure/database/runCodeGenerator.js';
 import { normalizeRunCode } from '../../../../shared/runCode.js';
-import { Types } from 'mongoose';
+import { Types, type FilterQuery } from 'mongoose';
 import { extractStringParam, extractIntParam } from './queryParams.js';
 import { parsePagination, buildPage, isPaginatedRequest } from './pagination.js';
 import { deleteSessionCascade, TRASH_RETENTION_DAYS } from '../../infrastructure/database/retentionReaper.js';
@@ -232,7 +233,279 @@ interface SessionReportData {
   }>;
 }
 
+// Parse the opt-in log pagination query (?logsLimit&logsOffset) into report options.
+function parseLogsPaging(query: Request['query']): { logsLimit?: number; logsOffset?: number } {
+  const parseIntParam = (raw: unknown, min: number): number | undefined => {
+    const n = typeof raw === 'string' ? Number.parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) && n >= min ? n : undefined;
+  };
+  return { logsLimit: parseIntParam(query.logsLimit, 1), logsOffset: parseIntParam(query.logsOffset, 0) };
+}
 
+// Assemble the complete forensic report for one session. Fetches the session by the
+// caller's filter (owner routes add a userId clause, the public share route does not)
+// and fans out to the user-agnostic forensic child collections. Returns null when no
+// session matches the filter so callers can 404. Single source of truth for both the
+// authed report route and the public share route.
+async function buildForensicReport(
+  filter: FilterQuery<ISession>,
+  opts: { logsLimit?: number; logsOffset?: number } = {},
+): Promise<Record<string, unknown> | null> {
+  const sessionDoc = await SessionModel.findOne(filter).lean();
+  if (!sessionDoc) return null;
+
+  // Lazy Phase-3 backfill so even a legacy doc surfaces a public code.
+  const runCode = await ensureRunId(sessionDoc);
+  // Forensic CHILDREN are keyed by the session's _id (forensicRunId), never the
+  // RUN- code — resolve the doc first, then hand its _id string to the repos.
+  const sessionId = String(sessionDoc._id);
+
+  // Convert to SessionReportData format
+  const session: SessionReportData = {
+    _id: sessionDoc._id,
+    targetUrl: sessionDoc.targetUrl,
+    executionDate: sessionDoc.startedAt,
+    timeElapsed: sessionDoc.stats?.runtimeMs || 0,
+    status: sessionDoc.status,
+    outcome: sessionDoc.outcome,
+    endedReason: sessionDoc.endedReason,
+    infiltrationProfile: sessionDoc.infiltrationProfile,
+    coveragePercentage: sessionDoc.stats?.coveragePercentage,
+    metrics: {
+      totalActions: sessionDoc.stats?.actionsExecuted || 0,
+      totalBugsFound: sessionDoc.findingCount || 0,
+      bugsByCategory: sessionDoc.metrics?.bugsByCategory || {},
+    },
+    forensicTrace: sessionDoc.forensicTrace || {
+      finalBreadcrumbSteps: [],
+      caughtBugs: [],
+    },
+    actionSteps: sessionDoc.actionSteps ?? [],
+  };
+
+  // BK8: opt-in pagination for the three heavy log arrays. Absent params keep the
+  // full-report response byte-for-byte; when a limit is supplied the arrays are
+  // page-bounded at the DB layer and accurate run-wide counts come from dedicated
+  // count queries so the summary totals stay correct regardless of the page fetched.
+  const logsLimit = opts.logsLimit;
+  const logsOffset = opts.logsOffset ?? 0;
+  const paginate = logsLimit !== undefined;
+
+  // Independent per-run reads — issued together, not serially. The count
+  // queries only run in paginated mode; otherwise they resolve to no-ops.
+  const [errors, networkLog, consoleLog, telemetry, analysis, errorCounts, errorTotal, networkTotal, consoleTotal] = await Promise.all([
+    paginate
+      ? forensicErrorRepository.findPageByRunId(sessionId, logsLimit, logsOffset).catch(() => [])
+      : forensicErrorRepository.findByRunId(sessionId).catch(() => []),
+    paginate
+      ? networkLogRepository.findPageByRunId(sessionId, logsLimit, logsOffset).catch(() => [])
+      : networkLogRepository.findByRunId(sessionId).catch(() => []),
+    paginate
+      ? consoleLogRepository.findPageByRunId(sessionId, logsLimit, logsOffset).catch(() => [])
+      : consoleLogRepository.findByRunId(sessionId).catch(() => []),
+    forensicTelemetryRepository.findLatestByForensicRunId(sessionId).catch(() => null),
+    forensicAnalysisRepository.findByRunId(sessionId).catch(() => null),
+    paginate ? forensicErrorRepository.getCountByType(sessionId).catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
+    paginate ? forensicErrorRepository.countByRunId(sessionId).catch(() => 0) : Promise.resolve(0),
+    paginate ? networkLogRepository.countByRunId(sessionId).catch(() => 0) : Promise.resolve(0),
+    paginate ? consoleLogRepository.countByRunId(sessionId).catch(() => 0) : Promise.resolve(0),
+  ]);
+
+  // Error summary counts must reflect the WHOLE run, not the returned page —
+  // page-local in default mode (from the full array), count-query-backed when paginated.
+  const errorTypeCount = (type: string): number =>
+    paginate ? (errorCounts[type] ?? 0) : errors.filter((e) => e.type === type).length;
+  const totalErrorRows = paginate ? errorTotal : errors.length;
+
+  // Authoritative findings source. forensic_errors is a live-stream mirror
+  // that is empty for manually-saved runs, so the risk score/level are
+  // derived from the persisted caughtBugs — the same findings the report
+  // lists — and fall back to the forensic_errors analysis only when absent.
+  const caughtBugs = sessionDoc.forensicTrace?.caughtBugs ?? [];
+  // Read-side guarantee: derive a severity from the bug class when a legacy/null
+  // value was stored, so risk score, badges, and counts are correct for old runs.
+  for (const bug of caughtBugs) {
+    bug.severity = resolveSeverity({
+      severity: bug.severity,
+      bugClass: bug.attribution?.bugClass,
+      confidence: bug.attribution?.confidence,
+      verificationStatus: bug.attribution?.verificationStatus,
+    });
+  }
+  const findingsRiskScore = forensicAnalysisService.scoreFindings(caughtBugs);
+  const effectiveRiskScore = caughtBugs.length > 0 ? findingsRiskScore : (analysis?.riskScore ?? 0);
+  // Cap the level by the worst finding present: a pile of MEDIUM findings saturates
+  // the score into the HIGH band, but the header must not claim a danger no single
+  // finding supports (forensic_errors fallback keeps the uncapped level — no severities here).
+  const severityRank: Record<string, number> = { INFO: 0, LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 };
+  const maxBugSeverity = caughtBugs.reduce<string | undefined>((top, b) => {
+    const s = (b.severity ?? '').toUpperCase();
+    if (!(s in severityRank)) return top;
+    return top === undefined || severityRank[s] > severityRank[top] ? s : top;
+  }, undefined);
+  const effectiveRiskLevel = caughtBugs.length > 0
+    ? capRiskLevelByMaxSeverity(determineRiskLevel(effectiveRiskScore), maxBugSeverity)
+    : determineRiskLevel(effectiveRiskScore);
+
+  // Timestamp columns arrive as Date (Mongo) or string (client-transferred
+  // logs). ?. only guards null, not a string, so coerce both forms to ISO.
+  const toIso = (v: unknown): string | undefined =>
+    v instanceof Date ? v.toISOString() : typeof v === 'string' ? v : undefined;
+
+  const formattedErrors = errors.map(e => ({
+    id: e._id?.toString(),
+    type: e.type,
+    severity: e.severity,
+    message: e.message,
+    stackTrace: e.stackTrace,
+    url: e.url,
+    endpoint: e.endpoint,
+    method: e.method,
+    statusCode: e.statusCode,
+    filename: e.filename,
+    lineNumber: e.lineNumber,
+    columnNumber: e.columnNumber,
+    selector: e.selector,
+    action: e.action,
+    // Deterministic knowledge-base attribution.
+    bugClass: e.bugClass,
+    scenario: e.scenario,
+    cwe: e.cwe,
+    createdAt: toIso(e.createdAt),
+  }));
+
+  // Full per-run network + console logs — mirror the live dashboard tabs.
+  const formattedNetworkLog = networkLog.map(n => ({
+    timestamp: toIso(n.timestamp),
+    method: n.method,
+    url: n.url,
+    statusCode: n.statusCode,
+    durationMs: n.durationMs,
+    resourceType: n.resourceType,
+    ok: n.ok,
+    message: n.message,
+    errorText: n.errorText,
+    traceId: n.traceId,
+    requestHeaders: n.requestHeaders,
+    responseHeaders: n.responseHeaders,
+    repeatCount: n.repeatCount,
+  }));
+  const formattedConsoleLog = consoleLog.map(c => ({
+    timestamp: toIso(c.timestamp),
+    level: c.level,
+    type: c.type,
+    message: c.message,
+    url: c.url,
+    line: c.line,
+    column: c.column,
+    stackTrace: c.stackTrace,
+  }));
+
+  const formattedTelemetry = telemetry ? {
+    browser: telemetry.browser,
+    browserVersion: telemetry.browserVersion,
+    browserEngine: telemetry.browserEngine,
+    operatingSystem: telemetry.operatingSystem,
+    platform: telemetry.platform,
+    screenResolution: telemetry.screenResolution,
+    viewportWidth: telemetry.viewportWidth,
+    viewportHeight: telemetry.viewportHeight,
+    memoryUsage: telemetry.memoryUsage,
+    cpuUsage: telemetry.cpuUsage,
+    executionDuration: telemetry.executionDuration,
+    requestsCount: telemetry.requestsCount,
+    pageCount: telemetry.pageCount,
+    interactionCount: telemetry.interactionCount,
+    failureCount: telemetry.failureCount,
+    loadTimes: telemetry.loadTimes,
+    timestamp: toIso(telemetry.timestamp),
+  } : null;
+
+  // Findings-derived root cause when forensic_errors is empty but caughtBugs exist.
+  const rank = (s?: string | null): number =>
+    ({ CRITICAL: 5, HIGH: 4, MEDIUM: 3, LOW: 2, INFO: 1 })[(s ?? 'MEDIUM').toUpperCase()] ?? 3;
+  const topBug = caughtBugs.length > 0
+    ? [...caughtBugs].sort((a, b) => rank(b.severity) - rank(a.severity))[0]
+    : null;
+  const findingsRootCause = topBug
+    ? `${caughtBugs.length} issue${caughtBugs.length === 1 ? '' : 's'} detected; most severe: ${topBug.type} (${(topBug.severity ?? 'MEDIUM').toUpperCase()}).`
+    : null;
+
+  // Persisted on-demand AI Insights take precedence over the deterministic analysis.
+  const aiInsights = sessionDoc.aiInsights;
+  const hasAiInsights = Boolean(aiInsights && (aiInsights.rootCause || aiInsights.recommendations?.length));
+  const formattedAnalysis = (analysis || caughtBugs.length > 0) ? {
+    rootCause: hasAiInsights ? aiInsights!.rootCause : (caughtBugs.length > 0 ? (findingsRootCause ?? analysis?.rootCause ?? '') : (analysis?.rootCause ?? '')),
+    riskScore: effectiveRiskScore,
+    riskLevel: effectiveRiskLevel,
+    recommendations: hasAiInsights && aiInsights!.recommendations?.length ? aiInsights!.recommendations : (analysis?.recommendations ?? []),
+    aiGenerated: hasAiInsights,
+    errorCount: analysis?.errorCount ?? caughtBugs.length,
+    apiFailureCount: analysis?.apiFailureCount ?? 0,
+    criticalErrorCount: analysis?.criticalErrorCount ?? caughtBugs.filter(b => (b.severity ?? '').toUpperCase() === 'CRITICAL').length,
+    jsExceptionCount: analysis?.jsExceptionCount ?? 0,
+    createdAt: analysis?.createdAt ? toIso(analysis.createdAt) : undefined,
+  } : null;
+
+  // Build complete report. `runId` is the PUBLIC RUN- code only — the internal
+  // _id is never emitted to the client (safe for public share reads).
+  const report = {
+    runId: runCode ?? sessionDoc.runId ?? '',
+    url: session.targetUrl,
+    date: session.executionDate,
+    status: session.status,
+    outcome: session.outcome,
+    endedReason: session.endedReason,
+    infiltrationProfile: session.infiltrationProfile,
+    coverage: session.coveragePercentage ?? 0,
+    duration: session.timeElapsed,
+    riskScore: effectiveRiskScore,
+
+    findings: {
+      vulnerabilities: session.forensicTrace?.caughtBugs?.filter(b => b.type === 'EXCEPTION').length || 0,
+      securityIssues: session.forensicTrace?.caughtBugs?.filter(b => b.type === 'SECURITY').length || 0,
+      functionalFailures: session.forensicTrace?.caughtBugs?.filter(b => b.type === 'RUNTIME_UI_FREEZE').length || 0,
+      totalBugsFound: session.metrics?.totalBugsFound || 0,
+      bugsByCategory: session.metrics?.bugsByCategory || {},
+    },
+
+    errorLogs: {
+      consoleErrors: errorTypeCount('CONSOLE_ERROR'),
+      apiFailures: errorTypeCount('API_FAILURE'),
+      jsExceptions: errorTypeCount('JS_EXCEPTION'),
+      totalErrors: totalErrorRows,
+      errors: formattedErrors,
+    },
+
+    telemetry: formattedTelemetry,
+
+    // Full network + console logs (all requests / all levels) — mirror live tabs.
+    networkLog: formattedNetworkLog,
+    consoleLog: formattedConsoleLog,
+
+    aiAnalysis: formattedAnalysis,
+
+    metrics: session.metrics,
+    forensicTrace: session.forensicTrace,
+    actionSteps: session.actionSteps ?? [],
+
+    // Session-global execution context — rehydrates the live tabbed layout.
+    visitedRoutes: sessionDoc.visitedRoutes ?? [],
+    pagesVisited: sessionDoc.stats?.pagesVisited ?? 0,
+
+    // Present only when the client opted into pagination — lets a lazy-loading
+    // tab know the run-wide totals and how much of each array it just received.
+    pagination: paginate ? {
+      limit: logsLimit,
+      offset: logsOffset,
+      errors: { total: errorTotal, returned: formattedErrors.length },
+      network: { total: networkTotal, returned: formattedNetworkLog.length },
+      console: { total: consoleTotal, returned: formattedConsoleLog.length },
+    } : undefined,
+  };
+
+  return report;
+}
 
 function sanitizeTargetUrl(targetUrl: unknown): string | null {
   if (typeof targetUrl !== 'string') {
@@ -1109,54 +1382,34 @@ obsLog.info('[API] Saved to sessions:', result.message, '| runId:', result.runId
     }
   });
 
-// Export a session record as JSON (using sessions collection)
-  app.get('/api/history/export/:id', readLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
-    obsLog.info('[API] GET /api/history/export/:id called');
-    obsLog.info('[API] Record ID to export:', request.params.id);
-    obsLog.info('[API] Authenticated user:', request.userId ?? 'none');
-
+  // Mint a view-only share link for an owned session. Stateless: signs a
+  // self-expiring JWT bound to the session _id — nothing is persisted, and the
+  // owner-selected lifetime (validated against the allowlist) lives in the token.
+  app.post('/api/history/:id/share', writeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+    obsLog.info('[API] POST /api/history/:id/share called for:', request.params.id);
     try {
       const userId = request.userId;
-      if (!userId) {
-        obsLog.warn('[API] No userId in authenticated request');
-        response.status(401).json({ error: 'Authentication required.' });
+      if (!userId) { response.status(401).json({ error: 'Authentication required.' }); return; }
+
+      const ttl = (request.body as { expiresIn?: unknown } | undefined)?.expiresIn;
+      if (!isAllowedShareTtl(ttl)) {
+        response.status(400).json({ error: 'Invalid expiration. Choose 1h, 24h, 7d, or 30d.' });
         return;
       }
 
-      // Accept either an ObjectId or a public RUN- code.
       const selector = resolveSessionSelector(extractStringParam(request.params.id) ?? '');
-      if (!selector) {
-        response.status(400).json({ error: 'Invalid record ID format.' });
-        return;
-      }
+      if (!selector) { response.status(400).json({ error: 'Invalid record ID format.' }); return; }
 
-      obsLog.info('[API] Fetching session record for export:', selector, 'for user:', userId);
+      // Ownership gate: a user can only mint links for their own runs.
+      const owned = await SessionModel.findOne({ ...selector, userId: new Types.ObjectId(userId) })
+        .select('_id').lean();
+      if (!owned) { response.status(404).json({ error: 'Record not found or access denied.' }); return; }
 
-      // Use SessionModel.findOne with userId for ownership check
-      const record = await SessionModel.findOne({
-        ...selector,
-        userId: new Types.ObjectId(userId),
-      }).lean();
-
-      if (!record) {
-        obsLog.warn('[API] Record not found or access denied:', selector);
-        response.status(404).json({ error: 'Record not found or access denied.' });
-        return;
-      }
-
-      // Prefer the public code in the filename; fall back to the _id for legacy docs.
-      const exportName = record.runId ?? String(record._id);
-      obsLog.info('[API] Record found for export:', exportName);
-      // Strip internal identifiers from the downloaded payload — the export keys
-      // off the public runId, never the Mongo _id / owner userId.
-      const { _id: _ignoredId, userId: _ignoredUser, __v: _ignoredVersion, ...safeRecord } =
-        record as typeof record & { __v?: unknown };
-      response.setHeader('Content-Type', 'application/json');
-      response.setHeader('Content-Disposition', `attachment; filename="safari-${exportName}.json"`);
-      response.json(safeRecord);
+      const shareToken = signShareToken(String(owned._id), ttl);
+      response.json({ shareToken, expiresIn: ttl });
     } catch (error) {
-      obsLog.error('[API] Error in GET /api/history/export/:id:', error);
-      response.status(500).json({ error: 'Failed to export the record.' });
+      obsLog.error('[API] Error in POST /api/history/:id/share:', error);
+      response.status(500).json({ error: 'Failed to create a share link.' });
     }
   });
 
@@ -1395,287 +1648,48 @@ obsLog.info('[API] Saved to sessions:', result.message, '| runId:', result.runId
         return;
       }
 
-obsLog.info('[API] Fetching complete forensic report for session:', selector, 'user:', userId);
+      obsLog.info('[API] Fetching complete forensic report for session:', selector, 'user:', userId);
 
-      // Fetch session data from sessions collection (unified history)
-      const sessionDoc = await SessionModel.findOne({
-        ...selector,
-        userId: new Types.ObjectId(userId),
-      }).lean();
-
-      if (!sessionDoc) {
+      const report = await buildForensicReport(
+        { ...selector, userId: new Types.ObjectId(userId) },
+        parseLogsPaging(request.query),
+      );
+      if (!report) {
         response.status(404).json({ error: 'Session not found or access denied.' });
         return;
       }
 
-      // Lazy Phase-3 backfill so even a legacy doc surfaces a public code.
-      const runCode = await ensureRunId(sessionDoc);
-      // Forensic CHILDREN are keyed by the session's _id (forensicRunId), never the
-      // RUN- code — resolve the doc first, then hand its _id string to the repos.
-      const sessionId = String(sessionDoc._id);
-
-      // Convert to SessionReportData format
-      const session: SessionReportData = {
-        _id: sessionDoc._id,
-        targetUrl: sessionDoc.targetUrl,
-        executionDate: sessionDoc.startedAt,
-        timeElapsed: sessionDoc.stats?.runtimeMs || 0,
-        status: sessionDoc.status,
-        outcome: sessionDoc.outcome,
-        endedReason: sessionDoc.endedReason,
-        infiltrationProfile: sessionDoc.infiltrationProfile,
-        coveragePercentage: sessionDoc.stats?.coveragePercentage,
-        metrics: {
-          totalActions: sessionDoc.stats?.actionsExecuted || 0,
-          totalBugsFound: sessionDoc.findingCount || 0,
-          bugsByCategory: sessionDoc.metrics?.bugsByCategory || {},
-        },
-        forensicTrace: sessionDoc.forensicTrace || {
-          finalBreadcrumbSteps: [],
-          caughtBugs: [],
-        },
-        actionSteps: sessionDoc.actionSteps ?? [],
-      };
-
-      // BK8: opt-in pagination for the three heavy log arrays. Absent params keep
-      // the original full-report response byte-for-byte; when a limit is supplied
-      // the arrays are page-bounded at the DB layer (per-run indexes) and accurate
-      // run-wide counts come from dedicated count queries so the summary and the
-      // dashboard's error totals stay correct regardless of the page fetched.
-      const parseIntParam = (raw: unknown, min: number): number | undefined => {
-        const n = typeof raw === 'string' ? Number.parseInt(raw, 10) : NaN;
-        return Number.isFinite(n) && n >= min ? n : undefined;
-      };
-      const logsLimit = parseIntParam(request.query.logsLimit, 1);
-      const logsOffset = parseIntParam(request.query.logsOffset, 0) ?? 0;
-      const paginate = logsLimit !== undefined;
-
-      // Independent per-run reads — issued together, not serially. The count
-      // queries only run in paginated mode; otherwise they resolve to no-ops.
-      const [errors, networkLog, consoleLog, telemetry, analysis, errorCounts, errorTotal, networkTotal, consoleTotal] = await Promise.all([
-        paginate
-          ? forensicErrorRepository.findPageByRunId(sessionId, logsLimit, logsOffset).catch(() => [])
-          : forensicErrorRepository.findByRunId(sessionId).catch(() => []),
-        paginate
-          ? networkLogRepository.findPageByRunId(sessionId, logsLimit, logsOffset).catch(() => [])
-          : networkLogRepository.findByRunId(sessionId).catch(() => []),
-        paginate
-          ? consoleLogRepository.findPageByRunId(sessionId, logsLimit, logsOffset).catch(() => [])
-          : consoleLogRepository.findByRunId(sessionId).catch(() => []),
-        forensicTelemetryRepository.findLatestByForensicRunId(sessionId).catch(() => null),
-        forensicAnalysisRepository.findByRunId(sessionId).catch(() => null),
-        paginate ? forensicErrorRepository.getCountByType(sessionId).catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
-        paginate ? forensicErrorRepository.countByRunId(sessionId).catch(() => 0) : Promise.resolve(0),
-        paginate ? networkLogRepository.countByRunId(sessionId).catch(() => 0) : Promise.resolve(0),
-        paginate ? consoleLogRepository.countByRunId(sessionId).catch(() => 0) : Promise.resolve(0),
-      ]);
-
-      // Error summary counts must reflect the WHOLE run, not the returned page —
-      // page-local in default mode (from the full array), count-query-backed when paginated.
-      const errorTypeCount = (type: string): number =>
-        paginate ? (errorCounts[type] ?? 0) : errors.filter((e) => e.type === type).length;
-      const totalErrorRows = paginate ? errorTotal : errors.length;
-
-      // Authoritative findings source. forensic_errors is a live-stream mirror
-      // that is empty for manually-saved runs, so the risk score/level are
-      // derived from the persisted caughtBugs — the same findings the report
-      // lists — and fall back to the forensic_errors analysis only when absent.
-      const caughtBugs = sessionDoc.forensicTrace?.caughtBugs ?? [];
-      // Read-side guarantee: derive a severity from the bug class when a legacy/null
-      // value was stored, so risk score, badges, and counts are correct for old runs.
-      // Same array is embedded in the report below, so this normalizes every surface.
-      for (const bug of caughtBugs) {
-        bug.severity = resolveSeverity({
-          severity: bug.severity,
-          bugClass: bug.attribution?.bugClass,
-          confidence: bug.attribution?.confidence,
-          verificationStatus: bug.attribution?.verificationStatus,
-        });
-      }
-      const findingsRiskScore = forensicAnalysisService.scoreFindings(caughtBugs);
-      const effectiveRiskScore = caughtBugs.length > 0 ? findingsRiskScore : (analysis?.riskScore ?? 0);
-      // Cap the level by the worst finding present: a pile of MEDIUM findings saturates
-      // the score into the HIGH band, but the header must not claim a danger no single
-      // finding supports (forensic_errors fallback keeps the uncapped level — no severities here).
-      const severityRank: Record<string, number> = { INFO: 0, LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 };
-      const maxBugSeverity = caughtBugs.reduce<string | undefined>((top, b) => {
-        const s = (b.severity ?? '').toUpperCase();
-        if (!(s in severityRank)) return top;
-        return top === undefined || severityRank[s] > severityRank[top] ? s : top;
-      }, undefined);
-      const effectiveRiskLevel = caughtBugs.length > 0
-        ? capRiskLevelByMaxSeverity(determineRiskLevel(effectiveRiskScore), maxBugSeverity)
-        : determineRiskLevel(effectiveRiskScore);
-
-      // Timestamp columns arrive as Date (Mongo) or string (client-transferred
-      // logs). ?. only guards null, not a string, so coerce both forms to ISO.
-      const toIso = (v: unknown): string | undefined =>
-        v instanceof Date ? v.toISOString() : typeof v === 'string' ? v : undefined;
-
-      const formattedErrors = errors.map(e => ({
-        id: e._id?.toString(),
-        type: e.type,
-        severity: e.severity,
-        message: e.message,
-        stackTrace: e.stackTrace,
-        url: e.url,
-        endpoint: e.endpoint,
-        method: e.method,
-        statusCode: e.statusCode,
-        filename: e.filename,
-        lineNumber: e.lineNumber,
-        columnNumber: e.columnNumber,
-        selector: e.selector,
-        action: e.action,
-        // Deterministic knowledge-base attribution.
-        bugClass: e.bugClass,
-        scenario: e.scenario,
-        cwe: e.cwe,
-        createdAt: toIso(e.createdAt),
-      }));
-
-      // Full per-run network + console logs — mirror the live dashboard tabs.
-      // timestamp is a Date column; the wire contract stays an ISO string.
-      const formattedNetworkLog = networkLog.map(n => ({
-        timestamp: toIso(n.timestamp),
-        method: n.method,
-        url: n.url,
-        statusCode: n.statusCode,
-        durationMs: n.durationMs,
-        resourceType: n.resourceType,
-        ok: n.ok,
-        message: n.message,
-        errorText: n.errorText,
-        traceId: n.traceId,
-        requestHeaders: n.requestHeaders,
-        responseHeaders: n.responseHeaders,
-        repeatCount: n.repeatCount,
-      }));
-      const formattedConsoleLog = consoleLog.map(c => ({
-        timestamp: toIso(c.timestamp),
-        level: c.level,
-        type: c.type,
-        message: c.message,
-        url: c.url,
-        line: c.line,
-        column: c.column,
-        stackTrace: c.stackTrace,
-      }));
-
-      const formattedTelemetry = telemetry ? {
-        browser: telemetry.browser,
-        browserVersion: telemetry.browserVersion,
-        browserEngine: telemetry.browserEngine,
-        operatingSystem: telemetry.operatingSystem,
-        platform: telemetry.platform,
-        screenResolution: telemetry.screenResolution,
-        viewportWidth: telemetry.viewportWidth,
-        viewportHeight: telemetry.viewportHeight,
-        memoryUsage: telemetry.memoryUsage,
-        cpuUsage: telemetry.cpuUsage,
-        executionDuration: telemetry.executionDuration,
-        requestsCount: telemetry.requestsCount,
-        pageCount: telemetry.pageCount,
-        interactionCount: telemetry.interactionCount,
-        failureCount: telemetry.failureCount,
-        loadTimes: telemetry.loadTimes,
-        timestamp: toIso(telemetry.timestamp),
-      } : null;
-
-      // Findings-derived root cause when forensic_errors is empty but caughtBugs exist.
-      const rank = (s?: string | null): number =>
-        ({ CRITICAL: 5, HIGH: 4, MEDIUM: 3, LOW: 2, INFO: 1 })[(s ?? 'MEDIUM').toUpperCase()] ?? 3;
-      const topBug = caughtBugs.length > 0
-        ? [...caughtBugs].sort((a, b) => rank(b.severity) - rank(a.severity))[0]
-        : null;
-      const findingsRootCause = topBug
-        ? `${caughtBugs.length} issue${caughtBugs.length === 1 ? '' : 's'} detected; most severe: ${topBug.type} (${(topBug.severity ?? 'MEDIUM').toUpperCase()}).`
-        : null;
-
-      // Persisted on-demand AI Insights take precedence over the deterministic analysis.
-      const aiInsights = sessionDoc.aiInsights;
-      const hasAiInsights = Boolean(aiInsights && (aiInsights.rootCause || aiInsights.recommendations?.length));
-      const formattedAnalysis = (analysis || caughtBugs.length > 0) ? {
-        rootCause: hasAiInsights ? aiInsights!.rootCause : (caughtBugs.length > 0 ? (findingsRootCause ?? analysis?.rootCause ?? '') : (analysis?.rootCause ?? '')),
-        riskScore: effectiveRiskScore,
-        riskLevel: effectiveRiskLevel,
-        recommendations: hasAiInsights && aiInsights!.recommendations?.length ? aiInsights!.recommendations : (analysis?.recommendations ?? []),
-        aiGenerated: hasAiInsights,
-        errorCount: analysis?.errorCount ?? caughtBugs.length,
-        apiFailureCount: analysis?.apiFailureCount ?? 0,
-        criticalErrorCount: analysis?.criticalErrorCount ?? caughtBugs.filter(b => (b.severity ?? '').toUpperCase() === 'CRITICAL').length,
-        jsExceptionCount: analysis?.jsExceptionCount ?? 0,
-        createdAt: analysis?.createdAt ? toIso(analysis.createdAt) : undefined,
-      } : null;
-
-      // Build complete report
-      const report = {
-        // Executive Summary. `runId` is the PUBLIC RUN- code only — the internal
-        // _id is never emitted to the client.
-        runId: runCode ?? sessionDoc.runId ?? '',
-        url: session.targetUrl,
-        date: session.executionDate,
-        status: session.status,
-        outcome: session.outcome,
-        endedReason: session.endedReason,
-        infiltrationProfile: session.infiltrationProfile,
-        coverage: session.coveragePercentage ?? 0,
-        duration: session.timeElapsed,
-        riskScore: effectiveRiskScore,
-
-        // Findings
-        findings: {
-          vulnerabilities: session.forensicTrace?.caughtBugs?.filter(b => b.type === 'EXCEPTION').length || 0,
-          securityIssues: session.forensicTrace?.caughtBugs?.filter(b => b.type === 'SECURITY').length || 0,
-          functionalFailures: session.forensicTrace?.caughtBugs?.filter(b => b.type === 'RUNTIME_UI_FREEZE').length || 0,
-          totalBugsFound: session.metrics?.totalBugsFound || 0,
-          bugsByCategory: session.metrics?.bugsByCategory || {},
-        },
-
-        // Error Logs
-        errorLogs: {
-          consoleErrors: errorTypeCount('CONSOLE_ERROR'),
-          apiFailures: errorTypeCount('API_FAILURE'),
-          jsExceptions: errorTypeCount('JS_EXCEPTION'),
-          totalErrors: totalErrorRows,
-          errors: formattedErrors,
-        },
-
-        // Telemetry
-        telemetry: formattedTelemetry,
-
-        // Full network + console logs (all requests / all levels) — mirror live tabs.
-        networkLog: formattedNetworkLog,
-        consoleLog: formattedConsoleLog,
-
-        // AI Analysis
-        aiAnalysis: formattedAnalysis,
-
-        // Metadata
-        metrics: session.metrics,
-        forensicTrace: session.forensicTrace,
-        actionSteps: session.actionSteps ?? [],
-
-        // Session-global execution context — rehydrates the live tabbed layout.
-        visitedRoutes: sessionDoc.visitedRoutes ?? [],
-        pagesVisited: sessionDoc.stats?.pagesVisited ?? 0,
-
-        // Present only when the client opted into pagination — lets a lazy-loading
-        // tab know the run-wide totals and how much of each array it just received.
-        pagination: paginate ? {
-          limit: logsLimit,
-          offset: logsOffset,
-          errors: { total: errorTotal, returned: formattedErrors.length },
-          network: { total: networkTotal, returned: formattedNetworkLog.length },
-          console: { total: consoleTotal, returned: formattedConsoleLog.length },
-        } : undefined,
-      };
-
-      obsLog.info('[API] Returning complete forensic report for session:', sessionId);
+      obsLog.info('[API] Returning complete forensic report for session:', String(report.runId));
       response.json({ report });
     } catch (error) {
       obsLog.error('[API] Error in /api/forensic/report:', error);
       response.status(500).json({ error: 'Failed to fetch the report.', report: null });
+    }
+  });
+
+  // Public, view-only forensic report behind a signed self-expiring share token.
+  // No requireAuth: the token IS the credential. It verifies to a session _id, which
+  // is fed to the SAME assembler minus the userId ownership clause — reusing the
+  // user-agnostic child fan-out. The response never emits _id/userId.
+  app.get('/api/public/report/:token', readLimiter, async (request: Request, response: Response): Promise<void> => {
+    obsLog.info('[API] GET /api/public/report/:token called');
+    try {
+      const sid = verifyShareToken(extractStringParam(request.params.token) ?? '');
+      if (!sid || !Types.ObjectId.isValid(sid)) {
+        response.status(401).json({ error: 'This share link is invalid or has expired.' });
+        return;
+      }
+
+      const report = await buildForensicReport({ _id: new Types.ObjectId(sid) }, parseLogsPaging(request.query));
+      if (!report) {
+        response.status(404).json({ error: 'The shared report no longer exists.' });
+        return;
+      }
+
+      response.json({ report });
+    } catch (error) {
+      obsLog.error('[API] Error in /api/public/report:', error);
+      response.status(500).json({ error: 'Failed to load the shared report.', report: null });
     }
   });
 }

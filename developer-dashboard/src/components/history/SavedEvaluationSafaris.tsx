@@ -11,12 +11,12 @@ import { Skeleton } from '../ui/Skeleton';
 import { TerminationBadge } from '../common/TerminationBadge';
 import { RowActionMenu } from '../common/RowActionMenu';
 import { DeleteConfirmDialog } from '../common/DeleteConfirmDialog';
+import { ShareLinkModal } from './ShareLinkModal';
 import {
   deleteRecord as trashSafariRecord,
   archiveRecord,
   restoreRecord,
   permanentlyDeleteRecord,
-  exportRecord,
 } from '../../services/historyService';
 import { toast } from '../../infrastructure/notifications/ToastProvider';
 import { useHistoryStore } from '../../stores/history/historyStore';
@@ -168,6 +168,9 @@ export default function SavedEvaluationSafaris() {
     isOpen: false, record: null, isDeleting: false,
   });
 
+  // Record whose view-only share link is being minted; null closes the dialog.
+  const [shareRecordId, setShareRecordId] = useState<string | null>(null);
+
   // Intercept transitional mounting frames so no request fires on an uninitialized token
   useEffect(() => {
     if (!token || isAuthLoading) return;
@@ -179,15 +182,6 @@ export default function SavedEvaluationSafaris() {
     navigate(`/history/forensic-report/${recordId}`);
   };
 
-  const handleExportRecord = async (recordId: string) => {
-    try {
-      await exportRecord(recordId);
-      toast.success('Record exported successfully');
-    } catch (err) {
-      console.error('[SavedEvaluations] Export error:', err);
-      toast.error("We couldn't export that record. Try again.");
-    }
-  };
 
   // Reversible transitions share one shape: drop the row from the current bucket
   // optimistically, call the server, then reconcile. A failure refetches so the row
@@ -507,7 +501,7 @@ export default function SavedEvaluationSafaris() {
                           targetUrl={evalItem.targetUrl}
                           state={evalItem.state}
                           onViewReport={() => handleViewReport(evalItem.id)}
-                          onExportRecord={() => handleExportRecord(evalItem.id)}
+                          onShare={() => setShareRecordId(evalItem.id)}
                           onArchive={() => void handleArchive(evalItem.id)}
                           onRestore={() => void handleRestore(evalItem.id)}
                           onMoveToTrash={() => void handleMoveToTrash(evalItem.id)}
@@ -586,6 +580,13 @@ export default function SavedEvaluationSafaris() {
         confirmLabel="Delete forever"
         isLoading={purgeState.isDeleting}
         confirmationPhrase={purgeState.record && isImportantSession(purgeState.record.severityCount) ? purgeState.record.id : undefined}
+      />
+
+      {/* View-only share link — picks an expiry, mints a signed self-expiring link. */}
+      <ShareLinkModal
+        recordId={shareRecordId}
+        isOpen={shareRecordId !== null}
+        onClose={() => setShareRecordId(null)}
       />
     </motion.div>
   );

@@ -48,7 +48,7 @@ import NetworkFailureList, { type NetworkFailureRow } from '../common/NetworkFai
 import ConsoleMessageList from '../common/ConsoleMessageCard';
 import { ConsoleFilterBar, type ConsoleFilter } from '../telemetry';
 import { caughtBugToFindingView, humanizeFindingTitle } from '../../utils/findingView';
-import { requestAiInsights } from '../../services/historyService';
+import { requestAiInsights, fetchPublicForensicReport } from '../../services/historyService';
 import { Modal } from '../ui/Modal';
 import {
   useRegressionVerifier,
@@ -224,10 +224,12 @@ function AiInsightsPanel({
   aiAnalysis,
   sessionId,
   findings,
+  readOnly = false,
 }: {
   aiAnalysis: ForensicReportResponse['aiAnalysis'];
   sessionId?: string;
   findings: ForensicCaughtBug[];
+  readOnly?: boolean;
 }) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [reason, setReason] = useState<RemediationFailureReason | undefined>();
@@ -236,7 +238,8 @@ function AiInsightsPanel({
   const rootCause = override?.rootCause ?? aiAnalysis?.rootCause;
   const recommendations = override?.recommendations ?? aiAnalysis?.recommendations ?? [];
   const aiGenerated = Boolean(override) || Boolean(aiAnalysis?.aiGenerated);
-  const canGenerate = Boolean(sessionId) && findings.length > 0;
+  // Public share viewers can never trigger generation — the button is owner-only.
+  const canGenerate = !readOnly && Boolean(sessionId) && findings.length > 0;
 
   // Navigating off the report mid-request must not setState on an unmounted tree.
   const mountedRef = useRef(true);
@@ -724,6 +727,7 @@ function ReportFindingCard({
   sessionId,
   status,
   onVerify,
+  readOnly = false,
 }: {
   bug: ForensicCaughtBug;
   index: number;
@@ -731,6 +735,7 @@ function ReportFindingCard({
   sessionId?: string;
   status: VerifyStatus;
   onVerify: (request: VerifyFixRequest) => void;
+  readOnly?: boolean;
 }) {
   const [showResult, setShowResult] = useState(false);
   // True only after a user-initiated verify/re-verify this session, so the result
@@ -771,25 +776,30 @@ function ReportFindingCard({
 
   return (
     <>
+      {/* Read-only (public share): keep the settled verdict THEME but drop the
+          AI suggested-fix button (aiFix) and the Verify Fix control (actions),
+          so nothing mutates or calls back. Saved fix text still renders. */}
       <FindingCard
         view={view}
         index={index}
-        aiFix
+        aiFix={!readOnly}
         sessionId={sessionId}
         theme={verdictMeta ?? BASE_FINDING_THEME}
         actions={
-          <VerifyFixControl
-            status={status}
-            disabled={!canVerify || status.state === 'running'}
-            disabledReason={disabledReason}
-            onVerify={triggerVerify}
-            onOpenResult={() => setShowResult(true)}
-          />
+          readOnly ? undefined : (
+            <VerifyFixControl
+              status={status}
+              disabled={!canVerify || status.state === 'running'}
+              disabledReason={disabledReason}
+              onVerify={triggerVerify}
+              onOpenResult={() => setShowResult(true)}
+            />
+          )
         }
       />
 
       {/* Dedicated verification outcome surface (auto-opens on completion) */}
-      {settled && showResult && (
+      {!readOnly && settled && showResult && (
         <VerificationResultModal
           result={settled}
           onReverify={() => {
@@ -962,18 +972,20 @@ function ForensicReportSkeleton() {
   );
 }
 
-export default function ForensicReport() {
-  const { sessionId } = useParams<{ sessionId: string }>();
+export default function ForensicReport({ shared = false }: { shared?: boolean } = {}) {
+  // Owner route param is :sessionId; the public share route param is :token.
+  const { sessionId, token } = useParams<{ sessionId?: string; token?: string }>();
+  const reportKey = shared ? token : sessionId;
   const navigate = useNavigate();
   const [report, setReport] = useState<ForensicReportResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Viewing a report makes it the remembered session, so re-entering History from
-  // Dashboard/Settings reopens it. Survives deep links and refreshes onto this route.
+  // Dashboard/Settings reopens it. Public viewers have no history to pin into.
   useEffect(() => {
-    if (sessionId) useHistoryStore.getState().setPinnedReportId(sessionId);
-  }, [sessionId]);
+    if (!shared && sessionId) useHistoryStore.getState().setPinnedReportId(sessionId);
+  }, [shared, sessionId]);
 
   // Back is an explicit "done with this session": drop the pin and return to the list.
   const handleBack = () => {
@@ -982,8 +994,8 @@ export default function ForensicReport() {
   };
 
   useEffect(() => {
-    if (!sessionId) {
-      setError('This report link is missing its ID.');
+    if (!reportKey) {
+      setError(shared ? 'This share link is missing its token.' : 'This report link is missing its ID.');
       setIsLoading(false);
       return;
     }
@@ -995,14 +1007,18 @@ export default function ForensicReport() {
       setError(null);
 
       try {
-        const data = await useHistoryStore.getState().loadReport(sessionId);
+        // Public viewers fetch the token-gated endpoint directly (no auth, no history
+        // store); owners go through the cached, pin-aware history store as before.
+        const data = shared
+          ? await fetchPublicForensicReport(reportKey)
+          : await useHistoryStore.getState().loadReport(reportKey);
         if (!cancelled) {
           setReport(data);
         }
       } catch (err) {
         if (!cancelled) {
           console.error('[ForensicReport] Failed to load report:', err);
-          setError("We couldn't load this report. Try again in a moment.");
+          setError(shared && err instanceof Error ? err.message : "We couldn't load this report. Try again in a moment.");
         }
       } finally {
         if (!cancelled) {
@@ -1016,7 +1032,7 @@ export default function ForensicReport() {
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, [shared, reportKey]);
 
   const bugs = useMemo(() => report?.forensicTrace?.caughtBugs ?? [], [report]);
   // Collapse identical repeats (same fault registered per-occurrence) into one
@@ -1084,14 +1100,21 @@ export default function ForensicReport() {
     <div className="flex h-full w-full flex-col bg-(--surface-app)">
       {/* Header */}
       <header className="flex items-center justify-between gap-2 border-b border-(--border-hairline) bg-(--surface-panel) px-4 py-3 sm:px-6 sm:py-3">
-        {/* Back leads the header (left) for intuitive back-navigation flow. */}
-        <button
-          onClick={handleBack}
-          className="flex shrink-0 items-center cursor-pointer  gap-2 rounded px-3 py-1.5 text-sm font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
-        >
-         <ArrowLeft className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-         Back
-        </button>
+        {/* Back leads the header (left) for intuitive back-navigation flow. A public
+            share viewer has no history to return to, so the control is owner-only. */}
+        {!shared ? (
+          <button
+            onClick={handleBack}
+            className="flex shrink-0 items-center cursor-pointer  gap-2 rounded px-3 py-1.5 text-sm font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
+          >
+           <ArrowLeft className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+           Back
+          </button>
+        ) : (
+          <div className="flex min-w-0 items-center lg:hidden">
+            <span className="text-sm font-bold text-(--text-primary)">BUGSAFARI</span>
+          </div>
+        )}
         {/* Breadcrumb duplicates the compact top bar — desktop only, pushed right. */}
         <div className="hidden min-w-0 items-center lg:ml-auto lg:flex">
           <span className="text-sm font-bold  text-(--text-primary)">BUGSAFARI</span>
@@ -1103,9 +1126,9 @@ export default function ForensicReport() {
       {/* Report Body */}
       <main className="custom-scrollbar flex-1 overflow-auto p-3  sm:p-4 lg:p-6">
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 sm:gap-6">
-          <ExecutiveSummary report={report} sessionId={sessionId || 'N/A'} findingsCount={runtimeBugs.length} />
+          <ExecutiveSummary report={report} sessionId={(shared ? report.runId : sessionId) || 'N/A'} findingsCount={runtimeBugs.length} />
 
-          <AiInsightsPanel aiAnalysis={report.aiAnalysis} sessionId={sessionId} findings={runtimeBugs} />
+          <AiInsightsPanel aiAnalysis={report.aiAnalysis} sessionId={sessionId} findings={runtimeBugs} readOnly={shared} />
 
           {/* Tabbed panels — same categorized layout as the live execution. */}
           <section>
@@ -1130,6 +1153,7 @@ export default function ForensicReport() {
                       sessionId={sessionId}
                       status={statuses[bug.bugId] ?? (bug.verification ? { state: 'done', result: bug.verification } : IDLE_VERIFY_STATUS)}
                       onVerify={handleVerify}
+                      readOnly={shared}
                     />
                   ),
                 }))}

@@ -2,7 +2,7 @@
 // RowActionMenu.tsx - Three-dot Action Menu for Forensic Records
 // ═══════════════════════════════════════════════════════════════
 // A dropdown menu for each forensic record with actions:
-// - Export Record
+// - Share (view-only link)
 // - Delete Record
 //
 // Features:
@@ -15,7 +15,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { SessionHistoryState } from '../../types';
 import { useDismissableLayer } from '../../hooks/useDismissableLayer';
-import { Archive, ArchiveRestore, Download, EllipsisVertical, Flame, LoaderCircle, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, EllipsisVertical, Flame, LoaderCircle, Share2, Trash2 } from 'lucide-react';
 
 const MENU_WIDTH = 192;
 const MENU_HEIGHT_ESTIMATE = 200;
@@ -26,7 +26,7 @@ interface RowActionMenuProps {
   /** Row's lifecycle bucket — decides which actions are offered. */
   state: SessionHistoryState;
   onViewReport: () => void;
-  onExportRecord: () => void;
+  onShare: () => void;
   onArchive: () => void;
   onRestore: () => void;
   onMoveToTrash: () => void;
@@ -47,7 +47,7 @@ interface RowActionMenuProps {
 export function RowActionMenu({
   recordId,
   state,
-  onExportRecord,
+  onShare,
   onArchive,
   onRestore,
   onMoveToTrash,
@@ -139,13 +139,13 @@ export function RowActionMenu({
         >
           {state !== 'trashed' && (
             <button
-              onClick={() => handleItemClick(onExportRecord)}
+              onClick={() => handleItemClick(onShare)}
               disabled={disabled || isLoading}
               className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
               role="menuitem"
             >
-              <Download className="h-4 w-4 shrink-0 text-(--text-secondary)" aria-hidden="true" />
-              Export Record
+              <Share2 className="h-4 w-4 shrink-0 text-(--text-secondary)" aria-hidden="true" />
+              Share
             </button>
           )}
           {state === 'active' && (

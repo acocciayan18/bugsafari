@@ -368,67 +368,66 @@ export async function fetchSafariDocuments(): Promise<unknown[]> {
   }
 }
 
+// Owner-selectable share-link lifetimes. Kept in lockstep with the backend
+// allowlist in testing-core `shareToken.ts`; the server re-validates every value.
+export const SHARE_TTL_PRESETS = ['1h', '24h', '7d', '30d'] as const;
+export type ShareTtl = (typeof SHARE_TTL_PRESETS)[number];
+export const SHARE_TTL_LABELS: Record<ShareTtl, string> = {
+  '1h': '1 hour',
+  '24h': '24 hours',
+  '7d': '7 days',
+  '30d': '30 days',
+};
+
 /**
- * Export a safari record as JSON file
- * @param recordId - The ID of the record to export
- * @returns Promise<void> - Triggers file download on success
+ * Mint a view-only share link for a saved record. Returns the signed, self-expiring
+ * token; the caller builds the public `/shared/:token` URL. The server proves
+ * ownership before signing and re-validates the expiry against its allowlist.
  */
-export async function exportRecord(recordId: string): Promise<void> {
-  console.log('[historyService] exportRecord called with recordId:', recordId);
-
-  if (!recordId || typeof recordId !== 'string') {
-    const error = 'Invalid recordId: must be a non-empty string';
-    console.error('[historyService]  Validation error:', error);
-    throw new Error(error);
-  }
-
-  try {
-    console.log('[historyService]  Fetching record for export from /api/history/export/:id...');
-
-const response = await fetchWithAuthRetry(`/api/history/export/${encodeURIComponent(recordId)}`, getFetchOptions('GET'));
-
-    console.log('[historyService] Export response status:', response.status);
-    console.log('[historyService] Export response ok:', response.ok);
-
-    if (!response.ok) {
-      let responseData;
-      try {
-        responseData = await response.json();
-      } catch {
-        responseData = null;
-      }
-      const errorMessage = responseData?.error || `Server returned ${response.status}`;
-      console.error('[historyService]  Export failed:', errorMessage);
-      throw new Error(errorMessage);
+export async function createShareLink(
+  recordId: string,
+  expiresIn: ShareTtl,
+): Promise<{ shareToken: string; expiresIn: string }> {
+  assertValidRecordId(recordId);
+  const response = await fetchWithAuthRetry(
+    `/api/history/${encodeURIComponent(recordId)}/share`,
+    getFetchOptions('POST', { expiresIn }),
+  );
+  if (!response.ok) {
+    let message = `Could not create a share link (${response.status})`;
+    try {
+      const data = await response.json() as { error?: string };
+      if (data?.error) message = data.error;
+    } catch {
+      // Non-JSON error body — keep the status-based message.
     }
-
-    // Get the blob/data from response
-    const blob = await response.blob();
-    console.log('[historyService] Blob size:', blob.size);
-
-    // Create download link
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `safari-${recordId}.json`;
-    document.body.appendChild(a);
-    a.click();
-    
-    // Cleanup
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-
-    console.log('[historyService] Record exported successfully!');
-    return;
-
-  } catch (error) {
-    if (error instanceof TypeError && error.message.includes('fetch')) {
-      console.error('[historyService]  Network error - could not reach API:', error.message);
-    } else if (error instanceof Error) {
-      console.error('[historyService]  Error:', error.message);
-    } else {
-      console.error('[historyService]  Unknown error:', error);
-    }
-    throw error;
+    throw new Error(message);
   }
+  return (await response.json()) as { shareToken: string; expiresIn: string };
+}
+
+/**
+ * Fetch a shared forensic report by its public token. Unauthenticated by design:
+ * the token is the credential, so this bypasses auth headers/credentials entirely.
+ */
+export async function fetchPublicForensicReport(token: string): Promise<ForensicReportResponse> {
+  if (!token || typeof token !== 'string') {
+    throw new Error('This share link is missing its token.');
+  }
+  const response = await fetch(apiUrl(`/api/public/report/${encodeURIComponent(token)}`), { method: 'GET' });
+  if (!response.ok) {
+    let message = response.status === 401 || response.status === 404
+      ? 'This share link is invalid or has expired.'
+      : `Could not load the shared report (${response.status})`;
+    try {
+      const data = await response.json() as { error?: string };
+      if (data?.error) message = data.error;
+    } catch {
+      // Non-JSON error body — keep the status-based message.
+    }
+    throw new Error(message);
+  }
+  const data = (await response.json()) as { report?: ForensicReportResponse };
+  if (!data.report) throw new Error('Report payload missing from server response');
+  return data.report;
 }
