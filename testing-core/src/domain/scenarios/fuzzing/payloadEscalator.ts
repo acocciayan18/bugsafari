@@ -29,6 +29,7 @@ import {
   getAllDateVectors,
   getAllJsonVectors,
 } from './strategies/index.js';
+import { getUnicodeChaosTokens } from './strategies/chaosFallbackStrategy.js';
 
 /** Highest escalation level (inclusive). Levels 0..MAX ⇒ MAX+1 attempts. */
 export const MAX_ESCALATION_LEVEL = 4;
@@ -81,6 +82,20 @@ function baseVectorsFor(category: FieldCategory): string[] {
 // Parser-breaking suffix appended at L1+: unbalanced quotes/brackets, NUL, and
 // newline injection that commonly trips validators, loggers, and query builders.
 const STRUCTURE_BREAKERS = `"'\`)}]>\\\x00\n\r\t<!--`;
+
+// Categories whose values are typed as free text and therefore carry a real
+// unicode surface. NUMERIC/DATE are excluded (chaos is type-rejected there and
+// only pollutes boundary probing); CHAOS_FALLBACK is excluded because it already
+// draws chaos as its BASE vector — layering it again would double-dose.
+const TEXT_ACCEPTING: ReadonlySet<FieldCategory> = new Set<FieldCategory>([
+  'TEXT_SEARCH',
+  'DATABASE_AUTH',
+  'EMAIL',
+  'JSON',
+]);
+
+// The cross-cutting unicode-chaos corpus, cached once (pure + stable).
+const UNICODE_CHAOS = getUnicodeChaosTokens();
 
 // Cross-context polyglot (L4): a single string that is simultaneously live in
 // HTML/JS, SQL, NoSQL, and template-injection interpreters.
@@ -165,6 +180,16 @@ export function synthesizeEscalatedPayload(
     vectors.length > 0 ? (fnv1a(`${seed}:${lvl}`) + Math.max(0, Math.floor(cursor))) % vectors.length : 0;
   let value = vectors[idx] ?? '';
   const layers: string[] = [`base[${idx}]`];
+
+  // Cross-cutting unicode-chaos: from L1, prepend a deterministically-picked chaos
+  // token to text-accepting fields so Zalgo/zero-width/emoji/control probing reaches
+  // every text input, not just unclassified (CHAOS_FALLBACK) ones. Cursor sweeps the
+  // corpus across revisits; L0 stays clean for the L0-only callers.
+  if (lvl >= 1 && TEXT_ACCEPTING.has(category) && UNICODE_CHAOS.length > 0) {
+    const cIdx = (fnv1a(`${seed}:${lvl}:chaos`) + Math.max(0, Math.floor(cursor))) % UNICODE_CHAOS.length;
+    value = UNICODE_CHAOS[cIdx] + value;
+    layers.push('unicode-chaos');
+  }
 
   if (lvl >= 1) {
     value = value + STRUCTURE_BREAKERS;

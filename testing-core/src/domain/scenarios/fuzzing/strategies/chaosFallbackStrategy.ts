@@ -51,6 +51,36 @@ const ZERO_WIDTH_CORRUPTORS = [
 // Purpose: Forces component layout breakage, element overlapping in React virtual DOM
 // ============================================================================
 
+// Deterministic 32-bit FNV-1a — no Math.random/clock, so buildZalgo is pure and
+// its module-scope output stays byte-stable across processes (isChaosToken relies
+// on corpus membership).
+function fnv1a(input: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = (hash + ((hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24))) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+// Combining diacritical marks block (U+0300..U+036F): the marks a Zalgo stack is
+// built from. 112 marks.
+const COMBINING_MIN = 0x0300;
+const COMBINING_MAX = 0x036f;
+const COMBINING_SPAN = COMBINING_MAX - COMBINING_MIN + 1;
+
+// Deterministically stack `depth` combining marks onto `base`. Same (base, depth,
+// seed) always yields the same string — replayable and testable.
+export function buildZalgo(base: string, depth: number, seed: number): string {
+  let out = base;
+  let h = seed >>> 0;
+  for (let i = 0; i < depth; i++) {
+    h = fnv1a(`${h}:${i}`);
+    out += String.fromCharCode(COMBINING_MIN + (h % COMBINING_SPAN));
+  }
+  return out;
+}
+
 const ZALGA_TEXT_STRINGS = [
   // Stacked combining characters using String.fromCharCode for safety
   String.fromCharCode(77, 805, 787, 856, 866, 868, 847, 856, 866, 868, 841, 866, 776, 805, 816, 824, 855, 823, 855, 776, 824),  // Maleware variant
@@ -63,6 +93,15 @@ const ZALGA_TEXT_STRINGS = [
   String.fromCharCode(3242, 3242, 3322, 3322, 3344, 3344, 3294, 3294),  // Kannara stacked
   String.fromCharCode(1072, 1072, 1072, 824, 855, 823),  // Cyrillic a stacked
   String.fromCharCode(1392, 1392, 1392, 824, 855, 823),  // Armenian stacked
+];
+
+// Deeply-stacked Zalgo generated deterministically at module load (fixed base,
+// depth, seed) — probes regex catastrophic backtracking, grapheme-count bypasses,
+// and layout breakage that the shallow static strings above miss.
+const GENERATED_ZALGO = [
+  buildZalgo('a', 24, 0x5a1a0001),
+  buildZalgo('E', 64, 0x5a1a0002),
+  buildZalgo('test', 128, 0x5a1a0003),
 ];
 
 // ============================================================================
@@ -91,6 +130,18 @@ const MULTIBYTE_STRINGS = [
   'שלום עולם',  // Hebrew peace world
   // Thai
   'สวัสดีโลก',  // Thai hello world
+];
+
+// Emoji & variation sequences — grapheme clusters whose code-unit length differs
+// from their visible length. Break naive length limits, ZWJ-unaware segmenters,
+// and encoders. Extends class C.
+const EMOJI_VECTORS = [
+  '👨‍👩‍👧‍👦',  // family ZWJ (4 people, 1 grapheme)
+  '👍🏿',  // thumbs-up + dark skin-tone modifier
+  '🇺🇸',  // regional-indicator flag (US)
+  '1️⃣',  // keycap sequence
+  '❤️',  // heart + emoji variation selector
+  '\uD83D',  // lone high surrogate — encoding-robustness probe
 ];
 
 // ============================================================================
@@ -240,13 +291,31 @@ export function getAllChaosTokens(): string[] {
   return [
     ...ZERO_WIDTH_CORRUPTORS,
     ...ZALGA_TEXT_STRINGS,
+    ...GENERATED_ZALGO,
     ...MULTIBYTE_STRINGS,
+    ...EMOJI_VECTORS,
     ...CONTROL_CHARACTERS,
     ...BOUNDARY_TOKENS,
     ...QUERY_TOKENS,
     ...SCRIPT_TOKENS,
     ...TYPE_MISMATCH_TOKENS,
     ...RANDOM_STRINGS,
+  ];
+}
+
+/**
+ * Unicode-chaos tokens only (classes A-D + emoji), excluding LEGACY SQL/XSS/script/
+ * boundary vectors. The curated feed for the cross-cutting escalation layer, which
+ * blends chaos into fields that already own their own injection vectors.
+ */
+export function getUnicodeChaosTokens(): string[] {
+  return [
+    ...ZERO_WIDTH_CORRUPTORS,
+    ...ZALGA_TEXT_STRINGS,
+    ...GENERATED_ZALGO,
+    ...MULTIBYTE_STRINGS,
+    ...EMOJI_VECTORS,
+    ...CONTROL_CHARACTERS,
   ];
 }
 
@@ -260,9 +329,9 @@ export function getChaosTokensByCategory(category: 'A' | 'B' | 'C' | 'D' | 'LEGA
     case 'A':
       return [...ZERO_WIDTH_CORRUPTORS];
     case 'B':
-      return [...ZALGA_TEXT_STRINGS];
+      return [...ZALGA_TEXT_STRINGS, ...GENERATED_ZALGO];
     case 'C':
-      return [...MULTIBYTE_STRINGS];
+      return [...MULTIBYTE_STRINGS, ...EMOJI_VECTORS];
     case 'D':
       return [...CONTROL_CHARACTERS];
     case 'LEGACY':
