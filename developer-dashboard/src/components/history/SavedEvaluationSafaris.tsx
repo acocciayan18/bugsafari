@@ -168,7 +168,7 @@ export default function SavedEvaluationSafaris() {
     isOpen: false, record: null, isDeleting: false,
   });
 
-  // Record whose view-only share link is being minted; null closes the dialog.
+  // Record whose view-only share links are being managed; null closes the dialog.
   const [shareRecordId, setShareRecordId] = useState<string | null>(null);
 
   // Intercept transitional mounting frames so no request fires on an uninitialized token
@@ -582,7 +582,7 @@ export default function SavedEvaluationSafaris() {
         confirmationPhrase={purgeState.record && isImportantSession(purgeState.record.severityCount) ? purgeState.record.id : undefined}
       />
 
-      {/* View-only share link — picks an expiry, mints a signed self-expiring link. */}
+      {/* View-only share links — create with an expiry, then list, copy, and revoke. */}
       <ShareLinkModal
         recordId={shareRecordId}
         isOpen={shareRecordId !== null}

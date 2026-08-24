@@ -8,11 +8,12 @@ import type { QueueStatusBroadcaster } from '../../infrastructure/queue/QueueSta
 import type { AuthVault } from '../../infrastructure/queue/AuthVault.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { requireAuth, optionalAuth, type AuthRequest } from '../authentication/authMiddleware.js';
-import { signShareToken, verifyShareToken, isAllowedShareTtl } from '../authentication/shareToken.js';
+import { verifyShareToken } from '../authentication/shareToken.js';
 import { startTestLimiter, analyzeLimiter, writeLimiter, readLimiter } from '../middleware/rateLimiter.js';
 import { sessionManager } from '../../application/services/SessionManager.js';
 import { isReady as isDbReady } from '../../infrastructure/database/mongooseClient.js';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomBytes } from 'node:crypto';
+import { ShareLinkModel } from '../../infrastructure/database/models/ShareLinkModel.js';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { forensicAnalysisRepository } from '../../infrastructure/database/repositories/ForensicAnalysisRepository.js';
 import { forensicAnalysisService } from '../../domain/services/ForensicAnalysisService.js';
@@ -56,6 +57,10 @@ import {
   type TelemetryEvent,
   clampTimebox,
   defaultOptimizationSettings,
+  isAllowedShareTtl,
+  SHARE_TTL_MS,
+  type ShareTtl,
+  type ShareLinkView,
 } from '../../../../shared/types.js';
 
 import { createLogger } from '../../infrastructure/observability/logger.js';
@@ -135,6 +140,29 @@ async function ensureRunId(doc: { _id: Types.ObjectId; runId?: string | null }):
     obsLog.error('[API] Lazy runId backfill failed for', String(doc._id), error instanceof Error ? error.message : error);
     return undefined;
   }
+}
+
+// Opaque, URL-safe share credential — 256 bits of entropy, unguessable.
+function generateShareToken(): string {
+  return randomBytes(32).toString('base64url');
+}
+
+// Owner cap: at most this many share links may be live (unexpired, unrevoked) per
+// record — bounds snapshot storage and keeps the management list finite.
+const MAX_ACTIVE_SHARE_LINKS = 10;
+
+// Sanitized owner-facing projection of a share link — never leaks the snapshot body.
+function toShareLinkView(link: {
+  _id: Types.ObjectId; token: string; expiresIn: string; expiresAt: Date; createdAt: Date; revokedAt?: Date | null;
+}): ShareLinkView {
+  return {
+    id: String(link._id),
+    token: link.token,
+    expiresIn: link.expiresIn as ShareTtl,
+    expiresAt: link.expiresAt.toISOString(),
+    createdAt: link.createdAt.toISOString(),
+    revokedAt: link.revokedAt ? link.revokedAt.toISOString() : null,
+  };
 }
 
 /**
@@ -1382,9 +1410,9 @@ obsLog.info('[API] Saved to sessions:', result.message, '| runId:', result.runId
     }
   });
 
-  // Mint a view-only share link for an owned session. Stateless: signs a
-  // self-expiring JWT bound to the session _id — nothing is persisted, and the
-  // owner-selected lifetime (validated against the allowlist) lives in the token.
+  // Mint a view-only share link for an owned session. Persists a ShareLink carrying
+  // a FROZEN report snapshot (so the shared view never drifts from what was shared)
+  // and an owner-selected expiry — revocable, and Mongo-reaped at expiresAt.
   app.post('/api/history/:id/share', writeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     obsLog.info('[API] POST /api/history/:id/share called for:', request.params.id);
     try {
@@ -1401,15 +1429,93 @@ obsLog.info('[API] Saved to sessions:', result.message, '| runId:', result.runId
       if (!selector) { response.status(400).json({ error: 'Invalid record ID format.' }); return; }
 
       // Ownership gate: a user can only mint links for their own runs.
-      const owned = await SessionModel.findOne({ ...selector, userId: new Types.ObjectId(userId) })
-        .select('_id').lean();
+      const ownerFilter = { ...selector, userId: new Types.ObjectId(userId) };
+      const owned = await SessionModel.findOne(ownerFilter).select('_id runId').lean();
       if (!owned) { response.status(404).json({ error: 'Record not found or access denied.' }); return; }
 
-      const shareToken = signShareToken(String(owned._id), ttl);
-      response.json({ shareToken, expiresIn: ttl });
+      // Bound live links per record so snapshot storage can't grow without limit.
+      const activeCount = await ShareLinkModel.countDocuments({
+        userId: new Types.ObjectId(userId), sessionId: owned._id, revokedAt: null, expiresAt: { $gt: new Date() },
+      });
+      if (activeCount >= MAX_ACTIVE_SHARE_LINKS) {
+        response.status(409).json({ error: `You already have ${MAX_ACTIVE_SHARE_LINKS} active links for this report. Revoke one before adding another.` });
+        return;
+      }
+
+      // Freeze the report exactly as it is now — the public read serves only this.
+      const snapshot = await buildForensicReport(ownerFilter);
+      if (!snapshot) { response.status(404).json({ error: 'Record not found or access denied.' }); return; }
+
+      const runCode = await ensureRunId(owned);
+      const created = await ShareLinkModel.create({
+        token: generateShareToken(),
+        sessionId: owned._id,
+        runId: runCode ?? owned.runId ?? '',
+        userId: new Types.ObjectId(userId),
+        expiresIn: ttl,
+        expiresAt: new Date(Date.now() + SHARE_TTL_MS[ttl]),
+        snapshot,
+      });
+
+      // `shareToken` retained for backward-compatible clients; `link` is the managed view.
+      response.status(201).json({ shareToken: created.token, expiresIn: ttl, link: toShareLinkView(created) });
     } catch (error) {
       obsLog.error('[API] Error in POST /api/history/:id/share:', error);
       response.status(500).json({ error: 'Failed to create a share link.' });
+    }
+  });
+
+  // List an owned record's share links (management surface). Sanitized — the frozen
+  // snapshot body is never included, only link metadata + the re-copyable token.
+  app.get('/api/history/:id/shares', readLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+    try {
+      const userId = request.userId;
+      if (!userId) { response.status(401).json({ error: 'Authentication required.' }); return; }
+
+      const selector = resolveSessionSelector(extractStringParam(request.params.id) ?? '');
+      if (!selector) { response.status(400).json({ error: 'Invalid record ID format.' }); return; }
+
+      const owned = await SessionModel.findOne({ ...selector, userId: new Types.ObjectId(userId) }).select('_id').lean();
+      if (!owned) { response.status(404).json({ error: 'Record not found or access denied.' }); return; }
+
+      const links = await ShareLinkModel.find({ userId: new Types.ObjectId(userId), sessionId: owned._id })
+        .sort({ createdAt: -1 })
+        .select('token expiresIn expiresAt createdAt revokedAt')
+        .limit(50)
+        .lean();
+      response.json({ links: links.map(toShareLinkView) });
+    } catch (error) {
+      obsLog.error('[API] Error in GET /api/history/:id/shares:', error);
+      response.status(500).json({ error: 'Failed to load share links.' });
+    }
+  });
+
+  // Revoke one share link — owner + record scoped. Idempotent: an already-revoked
+  // link stays revoked. The row is retained (and rejected on read) until its expiry.
+  app.delete('/api/history/:id/shares/:shareId', writeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+    try {
+      const userId = request.userId;
+      if (!userId) { response.status(401).json({ error: 'Authentication required.' }); return; }
+
+      const shareId = extractStringParam(request.params.shareId) ?? '';
+      if (!Types.ObjectId.isValid(shareId)) { response.status(400).json({ error: 'Invalid link id.' }); return; }
+
+      const selector = resolveSessionSelector(extractStringParam(request.params.id) ?? '');
+      if (!selector) { response.status(400).json({ error: 'Invalid record ID format.' }); return; }
+
+      const owned = await SessionModel.findOne({ ...selector, userId: new Types.ObjectId(userId) }).select('_id').lean();
+      if (!owned) { response.status(404).json({ error: 'Record not found or access denied.' }); return; }
+
+      const link = await ShareLinkModel.findOne({
+        _id: new Types.ObjectId(shareId), userId: new Types.ObjectId(userId), sessionId: owned._id,
+      });
+      if (!link) { response.status(404).json({ error: 'Link not found or access denied.' }); return; }
+
+      if (!link.revokedAt) { link.revokedAt = new Date(); await link.save(); }
+      response.json({ ok: true, link: toShareLinkView(link) });
+    } catch (error) {
+      obsLog.error('[API] Error in DELETE /api/history/:id/shares/:shareId:', error);
+      response.status(500).json({ error: 'Failed to revoke the share link.' });
     }
   });
 
@@ -1667,25 +1773,40 @@ obsLog.info('[API] Saved to sessions:', result.message, '| runId:', result.runId
     }
   });
 
-  // Public, view-only forensic report behind a signed self-expiring share token.
-  // No requireAuth: the token IS the credential. It verifies to a session _id, which
-  // is fed to the SAME assembler minus the userId ownership clause — reusing the
-  // user-agnostic child fan-out. The response never emits _id/userId.
+  // Public, view-only forensic report behind an opaque share token. No requireAuth:
+  // the token IS the credential. The primary path serves the FROZEN snapshot persisted
+  // at share time — self-contained, so it is immune to later edits and outlives the
+  // origin session's deletion. A legacy stateless JWT (minted before the migration)
+  // falls back to a user-agnostic live rebuild until it expires. No mutation ever runs.
   app.get('/api/public/report/:token', readLimiter, async (request: Request, response: Response): Promise<void> => {
     obsLog.info('[API] GET /api/public/report/:token called');
     try {
-      const sid = verifyShareToken(extractStringParam(request.params.token) ?? '');
+      const token = extractStringParam(request.params.token) ?? '';
+      if (!token) { response.status(401).json({ error: 'This share link is invalid or has expired.' }); return; }
+
+      // Primary: persisted snapshot. Reject revoked or expired (defensive — Mongo
+      // TTL-reaps at expiresAt, but the window between expiry and reap is guarded here).
+      const link = await ShareLinkModel.findOne({ token }).select('snapshot expiresAt revokedAt').lean();
+      if (link) {
+        if (link.revokedAt || link.expiresAt.getTime() <= Date.now()) {
+          response.status(401).json({ error: 'This share link is invalid or has expired.' });
+          return;
+        }
+        response.json({ report: link.snapshot });
+        return;
+      }
+
+      // Legacy fallback: a pre-migration JWT verifies to a session _id → live rebuild.
+      const sid = verifyShareToken(token);
       if (!sid || !Types.ObjectId.isValid(sid)) {
         response.status(401).json({ error: 'This share link is invalid or has expired.' });
         return;
       }
-
       const report = await buildForensicReport({ _id: new Types.ObjectId(sid) }, parseLogsPaging(request.query));
       if (!report) {
         response.status(404).json({ error: 'The shared report no longer exists.' });
         return;
       }
-
       response.json({ report });
     } catch (error) {
       obsLog.error('[API] Error in /api/public/report:', error);

@@ -6,6 +6,7 @@
 import type { SessionHistoryEntry, ForensicReportResponse, FindingAttribution, SessionHistoryState } from '../types';
 import type { ActionRecord, StateFingerprint, SuggestFixRequest, SuggestFixResponse, SuggestInsightsRequest, SuggestInsightsResponse } from '../../../shared/types.js';
 import { isRunCode } from '../../../shared/runCode.js';
+import { SHARE_TTL_PRESETS, SHARE_TTL_LABELS, type ShareTtl, type ShareLinkView } from '../../../shared/types.js';
 import { buildAuthHeaders } from '../utils/authHeaders';
 import { apiUrl } from '../utils/apiBase';
 import { refreshAuthToken } from '../utils/authRefresh';
@@ -368,42 +369,68 @@ export async function fetchSafariDocuments(): Promise<unknown[]> {
   }
 }
 
-// Owner-selectable share-link lifetimes. Kept in lockstep with the backend
-// allowlist in testing-core `shareToken.ts`; the server re-validates every value.
-export const SHARE_TTL_PRESETS = ['1h', '24h', '7d', '30d'] as const;
-export type ShareTtl = (typeof SHARE_TTL_PRESETS)[number];
-export const SHARE_TTL_LABELS: Record<ShareTtl, string> = {
-  '1h': '1 hour',
-  '24h': '24 hours',
-  '7d': '7 days',
-  '30d': '30 days',
-};
+// Re-exported from the shared contract (single source of truth); the server
+// re-validates every value against the same allowlist.
+export { SHARE_TTL_PRESETS, SHARE_TTL_LABELS };
+export type { ShareTtl, ShareLinkView };
+
+// Surface the server's error body verbatim (falls back to a status message).
+async function readErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const data = await response.json() as { error?: string };
+    if (data?.error) return data.error;
+  } catch {
+    // Non-JSON error body — keep the fallback.
+  }
+  return fallback;
+}
 
 /**
- * Mint a view-only share link for a saved record. Returns the signed, self-expiring
- * token; the caller builds the public `/shared/:token` URL. The server proves
- * ownership before signing and re-validates the expiry against its allowlist.
+ * Mint a view-only share link for a saved record. The server freezes a report
+ * snapshot, persists a revocable link, and returns the opaque token plus the managed
+ * link view. The caller builds the public `/shared/:token` URL from `shareToken`.
  */
 export async function createShareLink(
   recordId: string,
   expiresIn: ShareTtl,
-): Promise<{ shareToken: string; expiresIn: string }> {
+): Promise<{ shareToken: string; expiresIn: ShareTtl; link: ShareLinkView }> {
   assertValidRecordId(recordId);
   const response = await fetchWithAuthRetry(
     `/api/history/${encodeURIComponent(recordId)}/share`,
     getFetchOptions('POST', { expiresIn }),
   );
   if (!response.ok) {
-    let message = `Could not create a share link (${response.status})`;
-    try {
-      const data = await response.json() as { error?: string };
-      if (data?.error) message = data.error;
-    } catch {
-      // Non-JSON error body — keep the status-based message.
-    }
-    throw new Error(message);
+    throw new Error(await readErrorMessage(response, `Could not create a share link (${response.status})`));
   }
-  return (await response.json()) as { shareToken: string; expiresIn: string };
+  return (await response.json()) as { shareToken: string; expiresIn: ShareTtl; link: ShareLinkView };
+}
+
+/** List a record's share links (owner-only). Sanitized — no snapshot body. */
+export async function listShareLinks(recordId: string): Promise<ShareLinkView[]> {
+  assertValidRecordId(recordId);
+  const response = await fetchWithAuthRetry(
+    `/api/history/${encodeURIComponent(recordId)}/shares`,
+    getFetchOptions('GET'),
+  );
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, `Could not load share links (${response.status})`));
+  }
+  const data = (await response.json()) as { links?: ShareLinkView[] };
+  return Array.isArray(data.links) ? data.links : [];
+}
+
+/** Revoke one share link (owner-only). Returns the updated, now-revoked link view. */
+export async function revokeShareLink(recordId: string, shareId: string): Promise<ShareLinkView> {
+  assertValidRecordId(recordId);
+  const response = await fetchWithAuthRetry(
+    `/api/history/${encodeURIComponent(recordId)}/shares/${encodeURIComponent(shareId)}`,
+    getFetchOptions('DELETE'),
+  );
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, `Could not revoke the share link (${response.status})`));
+  }
+  const data = (await response.json()) as { link: ShareLinkView };
+  return data.link;
 }
 
 /**
