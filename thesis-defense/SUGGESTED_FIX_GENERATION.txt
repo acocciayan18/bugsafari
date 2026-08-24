@@ -1,0 +1,287 @@
+================================================================
+BUGSAFARI — HOW "SUGGESTED FIX" RECOMMENDATIONS ARE GENERATED
+Thesis-defense audit (based on the actual codebase)
+================================================================
+
+SHORT ANSWER
+------------
+Two-track system. Every finding ALWAYS carries a deterministic,
+static "Suggested Fix" pulled from a hand-authored knowledge base
+(the bug catalog), mapped by BugClass + CWE. On the saved Forensic
+Report the operator can OPTIONALLY press "See More Suggestions" to
+ask an LLM (Google Gemini) for a tailored fix. The deterministic
+advice is the guaranteed baseline and the fallback; the AI text is
+an on-demand upgrade layered on top. Nothing is ever blank.
+
+So: PRIMARY = static/deterministic. SECONDARY = AI (opt-in, best
+effort, never required, never blocks the UI).
+
+
+================================================================
+1. WHERE THE SUGGESTIONS COME FROM
+================================================================
+
+Single source of truth for the deterministic advice:
+
+  testing-core/src/bugs/knowledgeBase/bugCatalog.ts
+
+BUG_CATALOG is a Record<BugClass, BugDefinition>. One authoritative
+entry per bug class. Each entry holds:
+  - title           human-readable card title
+  - description     one-line explanation of the failure mode
+  - defaultSeverity LOW | MEDIUM | HIGH | CRITICAL
+  - cwe             MITRE CWE identifier (e.g. "CWE-89")
+  - remediation     the copyable "Suggested fix:" checklist
+
+The remediation text is WRITTEN BY HAND, one per class, as a short
+numbered checklist. Every checklist ends with an "Add a test that…"
+step. Example (SQL_INJECTION):
+
+  Suggested fix: never build SQL from raw input
+  1. Use parameterized queries / prepared statements...
+  2. Validate and cast input on the server...
+  3. Stop sending raw SQL/driver errors to the browser...
+  4. Add a test that submits ' OR '1'='1 and expects rejection
+
+There are ~20 catalog entries covering the full bug taxonomy:
+injection (SQL/NoSQL), XSS/fuzz leak, info leak, input sanitization,
+client-side constraint bypass, client-trust-boundary violation,
+API contract violation, server 5xx, unhandled 4xx, boundary/stress,
+infinite loading, render freeze, navigation/route loops, race
+conditions, session sync fault, runtime exception, cascading fail.
+
+This file deliberately replaced the old ad-hoc titles/severities
+scattered across finder modules and a generic two-branch
+buildRemediation(). Everything now funnels through ONE catalog.
+
+
+================================================================
+2. HOW A FINDING / CWE MAPS TO THE RECOMMENDED FIX
+================================================================
+
+Chain:  caught fault → BugClass → CWE → catalog remediation.
+
+STEP A — Classify the fault into a BugClass (deterministic)
+  testing-core/src/bugs/knowledgeBase/FaultClassifier.ts
+  classifyFault(FaultInput) is pure and side-effect-free: same
+  input always yields the same BugClass, severity, CWE, advice.
+
+  It works off runtime SIGNALS, not guesses:
+   - signalPatterns.ts matches the error text / URL / response body
+     into signal categories (SQL_ERROR, NOSQL_ERROR, XSS_REFLECTION,
+     INFO_LEAK, SERVER_ERROR, API_CONTRACT, REDIRECT_LOOP, etc.).
+   - SIGNAL_TO_BUGCLASS maps each matched signal to candidate classes
+     in preference order.
+   - CATEGORY_PRIORITY sets deterministic tie-break order.
+   - HTTP status is authoritative: a real 5xx => SERVER_API_FAILURE,
+     a 4xx => UNHANDLED_CLIENT_ERROR, a 2xx-with-error-body (softFail)
+     => API_CONTRACT_VIOLATION.
+
+  Evidence gating (important for the defense):
+   - A SECURITY/injection class (SQL/NoSQL/XSS/leak) is NEVER assigned
+     from "the scenario was a security scenario" alone. It needs a
+     matched signal OR an oracle confirmation (confirmed=true).
+   - Confidence is tagged CONFIRMED / SIGNAL / INFERRED. INFERRED
+     (no signal, default only) is severity-capped at MEDIUM.
+
+STEP B — Resolve the CWE
+  Mostly 1:1 from the catalog entry's `cwe`. But some classes cover
+  several fault shapes, so refineCwe() picks the correct CWE from
+  the matched signal:
+   - FUZZ_VULNERABILITY_LEAK: SQL_ERROR→CWE-89, NOSQL_ERROR→CWE-943,
+     INFO_LEAK→CWE-209, XSS_REFLECTION→CWE-79.
+   - NAV/ROUTE classes: REDIRECT_LOOP→CWE-835, DEAD_END→CWE-670.
+
+STEP C — Pull the remediation
+  classifyFault returns advice = BUG_CATALOG[bugClass].remediation.
+  The CWE shown on the card and the fix text therefore always come
+  from the SAME catalog entry, so they never disagree.
+
+STEP D — Make the generic checklist concrete ("For this finding")
+  testing-core/src/bugs/knowledgeBase/findingEvidence.ts
+  ensureFindingEvidence() is the single promotion funnel. It:
+   - fills BugClass / CWE / advice from the catalog if a detector
+     left any of them blank (FALLBACK class = RUNTIME_STABILITY_
+     EXCEPTION),
+   - re-refines the CWE via refineCwe(),
+   - and prepends a "For this finding" block (withSpecifics) naming
+     the actual endpoint, HTTP status, field, payload, and source
+     file:line ABOVE the generic checklist.
+  Result: the static checklist is stapled to the concrete defect the
+  developer is actually looking at. No promotion path can emit an
+  incomplete finding.
+
+Special case: FUZZ_VULNERABILITY_LEAK is a multi-signal bucket, so
+the catalog also exports FUZZ_XSS_REMEDIATION — XSS-only guidance so
+a reflected-XSS finding never shows datastore/server-error lines.
+
+
+================================================================
+3. BACKEND FILES / SERVICES INVOLVED
+================================================================
+
+Deterministic track (always runs):
+  bugs/knowledgeBase/bugCatalog.ts       fix + CWE + severity source
+  bugs/knowledgeBase/FaultClassifier.ts  fault → class/CWE/advice
+  bugs/knowledgeBase/signalPatterns.ts   text/body → signal category
+  bugs/knowledgeBase/scenarioCatalog.ts  scenario attribution + bias
+  bugs/knowledgeBase/findingEvidence.ts  promotion funnel + specifics
+  domain/services/telemetry/StabilityMonitor.ts  live detection path
+    that calls classifyFault
+
+AI track (on demand only):
+  infrastructure/ai/GeminiRemediationAdvisor.ts
+    generateRemediation() builds the prompt, calls Gemini, returns
+    {ok,text} | {ok:false,reason}.
+  presentation/api/registerRoutes.ts
+    POST /api/findings/suggest-fix  (single finding)
+    POST /api/forensic/insights     (session-level root cause + fixes)
+    Both guarded by requireAuth + analyzeLimiter (rate-limited).
+  infrastructure/database/models/SessionModel.ts
+    a successful AI fix is persisted onto the finding
+    (forensicTrace.caughtBugs.$.aiAdvice) so it survives refresh.
+
+Shared contract:
+  shared/types/remediation.ts
+    SuggestFixRequest / SuggestFixResponse, SuggestFixSource
+    ('ai' | 'fallback'), RemediationFailureReason.
+
+
+================================================================
+4. STATIC vs DYNAMIC vs AI-GENERATED
+================================================================
+
+STATIC / DETERMINISTIC (default, always present)
+  - Hand-authored catalog checklists. Fixed text per BugClass.
+  - Deterministic: identical fault → identical advice.
+  - Generated 100% offline, no network, no model, no cost.
+
+DYNAMIC (per-finding tailoring of the static text)
+  - withSpecifics() injects the real endpoint / field / payload /
+    file:line for THIS finding above the static checklist.
+  - refineCwe() picks the right CWE per matched signal.
+  - Still deterministic, just parameterized by evidence.
+
+AI-GENERATED (optional, best-effort, opt-in)
+  - Google Gemini (default model gemini-flash-lite-latest, override
+    via GEMINI_MODEL). Called ONLY when the operator clicks the
+    button on the saved report.
+  - If GEMINI_API_KEY is missing, or the call errors/times out/returns
+    empty, the endpoint returns the deterministic advice as fallback
+    with a classified reason. The UI NEVER breaks.
+
+Key defense point: BugSafari does NOT depend on an LLM to produce a
+fix. AI is a convenience layer on top of a fully deterministic base.
+
+
+================================================================
+5. HOW THE SYSTEM PICKS THE RIGHT ADVICE PER VULNERABILITY
+================================================================
+
+Deterministic selection (no ML for the fix itself):
+  1. Detectors capture the fault (exception, console, network, freeze).
+  2. signalPatterns matches signatures in the message/body/URL.
+  3. classifyFault resolves BugClass using signal + HTTP status +
+     scenario bias, gated by the evidence rules (security classes need
+     hard evidence; INFERRED verdicts are severity-capped).
+  4. The BugClass keys directly into BUG_CATALOG → exact remediation.
+  5. refineCwe sharpens the CWE for multi-shape classes.
+  6. ensureFindingEvidence fills gaps + staples on the concrete facts.
+
+So "the right advice" = the catalog entry for the classified BugClass,
+with the CWE refined by the matched signal. It is a lookup keyed by a
+deterministic classifier, not a similarity search or a prompt.
+
+The AI track, when invoked, gets the already-classified context
+(bugClass, severity, CWE, message, element, stack, payload, repro
+steps) and returns 3-5 tailored numbered steps — but it only refines
+advice for a class the deterministic layer already chose.
+
+
+================================================================
+6. HOW SUGGESTIONS ARE DISPLAYED (Finding / Forensic cards)
+================================================================
+
+Frontend contract:
+  developer-dashboard/src/utils/findingView.ts
+    Normalizes any finding into a FindingView carrying:
+      advice     (deterministic catalog text)
+      aiAdvice   (persisted AI fix, if one was generated before)
+      attribution.cwe / severity / title
+
+Rendering:
+  components/common/FindingEvidence.tsx
+    Renders reproduction playbook, source frames, then the fix via
+    <SuggestedFixBlock>. Same component for the live Errors tab AND
+    the saved Forensic Report (one voice everywhere).
+  components/common/ForensicCardKit.tsx  → SuggestedFixBlock
+    - Heading "Suggested Fix".
+    - Shows aiAdvice if present, else the deterministic advice.
+    - Copy button.
+    - On the saved report only (aiFix=true) it shows the
+      "See More Suggestions" button (Sparkles icon). While waiting:
+      "Generating…". On failure/fallback the button becomes "Retry"
+      and a small line explains why the model was skipped
+      (fallbackReasonText(reason)) + "Showing the saved fix instead."
+    - Once a genuine AI fix exists (source==='ai', incl. a persisted
+      one), the button hides so it never regenerates / re-spends.
+  components/common/CweBadge.tsx
+    Renders the CWE identifier as a badge on the card header.
+
+Data flow for the AI upgrade:
+  Button → services/historyService.ts requestSuggestedFix()
+         → POST /api/findings/suggest-fix (with fallbackAdvice=advice)
+         → GeminiRemediationAdvisor.generateRemediation()
+         → response {advice, source:'ai'|'fallback', reason?}
+         → on 'ai' + sessionId+bugId, server persists aiAdvice on the
+           finding so a refresh shows it instantly (no re-call).
+
+Session-level equivalent: AiDiagnosticCard.tsx consumes
+POST /api/forensic/insights (generateInsights) for a run-wide root
+cause + prioritized recommendations, same fallback discipline.
+
+
+================================================================
+7. EXTRA CONTEXT WORTH SAYING IN THE DEFENSE
+================================================================
+
+- Determinism is a feature, not a limitation. A scriptless fuzzer
+  that emitted random LLM advice would be unreproducible; BugSafari's
+  fix for a given fault is stable and auditable.
+
+- Security hardening on the AI path (GeminiRemediationAdvisor.ts):
+  * Untrusted, target-derived fields are length-capped per field and
+    the whole prompt is capped (MAX_PROMPT_CHARS) — SEC-10.
+  * Those fields are fenced inside <untrusted_finding_data> and the
+    prompt tells the model to treat them as DATA, never instructions
+    — mitigation for indirect prompt injection.
+  * API key travels in an x-goog-api-key header (never in a URL/log);
+    provider messages are redacted before logging.
+  * Every failure maps to a typed reason (not_configured, auth,
+    rate_limited, model_unavailable, timeout, network, empty_response,
+    invalid_response) so the operator sees a cause, not a blank.
+
+- The whole design is "no incomplete finding": findingEvidence.ts
+  guarantees every promoted finding owes the developer three things —
+  reproduction steps, a CWE, and a fix — filling any gap from the
+  catalog.
+
+- Severity discipline ties in: severity comes from the same catalog
+  entry, capped at MEDIUM for evidence-weak (INFERRED) verdicts and
+  escalated to >=HIGH on a real 5xx, so the fix, CWE, and severity a
+  developer reads are all internally consistent.
+
+================================================================
+FILE MAP (quick reference)
+================================================================
+bugCatalog.ts ............ the fix text + CWE + severity (STATIC source)
+FaultClassifier.ts ....... fault → BugClass/CWE/advice (deterministic)
+signalPatterns.ts ........ signatures → signal categories
+findingEvidence.ts ....... promotion funnel + "For this finding" facts
+GeminiRemediationAdvisor. js  optional LLM fix (AI track)
+registerRoutes.ts ........ /api/findings/suggest-fix, /api/forensic/insights
+remediation.ts (shared) .. request/response contract
+FindingEvidence.tsx ...... card body (repro + fix)
+ForensicCardKit.tsx ...... SuggestedFixBlock (button, fallback UI)
+CweBadge.tsx ............. CWE badge on the card
+findingView.ts ........... normalizes advice / aiAdvice / cwe for the UI

@@ -166,7 +166,8 @@ export interface ControlIdentity {
  */
 export function resolveControlName(identity: ControlIdentity): string {
   const label = collapse(identity.label);
-  if (label && !isSelectorLike(label)) return truncate(label, MAX_LABEL_LENGTH);
+  // An API endpoint ("POST /api/x") is a request an action fires, never a control name.
+  if (label && !isSelectorLike(label) && !isApiEndpointLabel(label)) return truncate(label, MAX_LABEL_LENGTH);
   const fromSelector = semanticFallbackFromSelector(identity.selector);
   if (fromSelector !== GENERIC_FALLBACK) return fromSelector;
   const tag = collapse(identity.tagName).toLowerCase();
@@ -184,6 +185,8 @@ export function isDescriptiveControlName(label?: string): boolean {
   if (!value) return false;
   if (/^<[a-z][\w-]*>$/i.test(value)) return false;
   if (/^[+-]?\d[\d.,]*$/.test(value)) return false;
+  // An endpoint reference ("POST /api/x") is not a UI control — drop it as a culprit.
+  if (isApiEndpointLabel(value)) return false;
   return true;
 }
 
@@ -220,7 +223,8 @@ export function isGenericElementLabel(label?: string): boolean {
 export function describeTarget(label?: string, kind?: string): string {
   const noun = collapse(kind) || 'element';
   const name = collapse(label);
-  if (!name || isSelectorLike(name)) return `the ${noun}`;
+  // Never quote a selector or an API endpoint as a control name — fall back to the noun.
+  if (!name || isSelectorLike(name) || isApiEndpointLabel(name)) return `the ${noun}`;
   // A generic type-noun label is not a proper name: read it plainly and never double it
   // against the noun. When the label already ends with the noun ("input field" + "field"),
   // the label is the fuller phrase; when the noun is a distinct, more specific word

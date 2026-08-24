@@ -153,7 +153,7 @@ export function ShareLinkModal({ recordId, isOpen, onClose }: ShareLinkModalProp
             <h3 id="share-link-title" className="text-sm font-semibold text-(--text-primary)">
               Share this report
             </h3>
-            <p className="mt-0.5 text-[13px] text-(--text-tertiary)">
+            <p className="mt-0.5 text-sm text-(--text-tertiary)">
               Anyone with a link views a read-only snapshot, no sign-in. It is frozen at share time and can be revoked or expire.
             </p>
           </div>
@@ -171,12 +171,12 @@ export function ShareLinkModal({ recordId, isOpen, onClose }: ShareLinkModalProp
         {/* Create */}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <label className="flex min-w-0 flex-1 flex-col gap-1.5">
-            <span className="text-[13px] font-medium text-(--text-secondary)">Link expires after</span>
+            <span className="text-sm font-medium text-(--text-secondary)">Link expires after</span>
             <select
               value={duration}
               onChange={(e) => setDuration(e.target.value as ShareTtl)}
               disabled={creating}
-              className="w-full rounded-(--radius-sm) border border-(--border-strong) bg-(--surface-app) px-3 py-2 text-[13px] text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) disabled:opacity-50"
+              className="w-full rounded-(--radius-sm) cursor-pointer border border-(--border-strong) bg-(--surface-app) px-3 py-2 text-sm text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) disabled:opacity-50"
             >
               {SHARE_TTL_PRESETS.map((ttl) => (
                 <option key={ttl} value={ttl}>{SHARE_TTL_LABELS[ttl]}</option>
@@ -199,7 +199,7 @@ export function ShareLinkModal({ recordId, isOpen, onClose }: ShareLinkModalProp
         {/* Freshly minted link, featured for immediate copy */}
         {freshUrl && (
           <div className="flex flex-col gap-2 rounded-(--radius-sm) border border-(--status-stable-fg)/30 bg-(--status-stable-bg) p-3">
-            <div className="flex items-center gap-1.5 text-[13px] font-medium text-(--status-stable-fg)">
+            <div className="flex items-center gap-1.5 text-sm font-medium text-(--status-stable-fg)">
               <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden="true" /> New link ready to share
             </div>
             <div className="flex items-stretch gap-2">
@@ -213,7 +213,7 @@ export function ShareLinkModal({ recordId, isOpen, onClose }: ShareLinkModalProp
               <button
                 onClick={() => void copy(freshUrl, 'fresh')}
                 aria-label="Copy new link"
-                className="flex shrink-0 items-center gap-1.5 rounded-(--radius-sm) border border-(--border-strong) bg-(--surface-app) px-3 text-[13px] font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-hover) cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+                className="flex shrink-0 items-center gap-1.5 rounded-(--radius-sm) border border-(--border-strong) bg-(--surface-app) px-3 text-sm font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-hover) cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
               >
                 {copiedKey === 'fresh'
                   ? <><Check className="h-4 w-4 shrink-0 text-(--status-stable-fg)" aria-hidden="true" /> Copied</>
@@ -226,20 +226,20 @@ export function ShareLinkModal({ recordId, isOpen, onClose }: ShareLinkModalProp
         {/* Managed links */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="text-[13px] font-medium text-(--text-secondary)">Share links</span>
+            <span className="text-sm font-medium text-(--text-secondary)">Share links</span>
             {links.length > 0 && (
               <span className="text-xs text-(--text-tertiary)">{links.length}</span>
             )}
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center gap-2 rounded-(--radius-sm) border border-(--border-hairline) bg-(--surface-raised) py-6 text-[13px] text-(--text-tertiary)">
+            <div className="flex items-center justify-center gap-2 rounded-(--radius-sm) border border-(--border-hairline) bg-(--surface-raised) py-6 text-sm text-(--text-tertiary)">
               <LoaderCircle className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" /> Loading links
             </div>
           ) : links.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-1.5 rounded-(--radius-sm) border border-dashed border-(--border-hairline) bg-(--surface-raised) py-6 text-center">
               <Link2 className="h-5 w-5 text-(--text-tertiary)" strokeWidth={1.75} aria-hidden="true" />
-              <p className="text-[13px] text-(--text-tertiary)">No active share links yet</p>
+              <p className="text-sm text-(--text-tertiary)">No active share links yet</p>
             </div>
           ) : (
             <ul className="flex flex-col gap-2">
@@ -253,7 +253,7 @@ export function ShareLinkModal({ recordId, isOpen, onClose }: ShareLinkModalProp
                     className={`flex flex-col gap-2 rounded-(--radius-sm) border border-(--border-hairline) bg-(--surface-raised) p-3 transition-opacity duration-[160ms] ${dead ? 'opacity-60' : ''}`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className={`inline-flex items-center gap-1 rounded-(--radius-sm) px-1.5 py-0.5 text-[11px] font-medium ${BADGE[state].className}`}>
+                      <span className={`inline-flex items-center gap-1 rounded-(--radius-sm) px-1.5 py-0.5 text-[13px] font-medium ${BADGE[state].className}`}>
                         {state === 'active' && <ShieldCheck className="h-3 w-3 shrink-0" aria-hidden="true" />}
                         {state === 'revoked' && <Ban className="h-3 w-3 shrink-0" aria-hidden="true" />}
                         {state === 'expired' && <Clock className="h-3 w-3 shrink-0" aria-hidden="true" />}
@@ -323,7 +323,7 @@ export function ShareLinkModal({ recordId, isOpen, onClose }: ShareLinkModalProp
         </div>
       </div>
 
-      <div className="flex justify-end gap-2 pb-5 border-t border-(--border-hairline) px-3 py-3 sm:px-5">
+      <div className="flex justify-end gap-2 pb-5 border-t border-(--border-hairline) px-5 py-3">
         <Button variant="secondary" size="sm" className="w-full sm:w-auto" onClick={onClose}>
           Done
         </Button>

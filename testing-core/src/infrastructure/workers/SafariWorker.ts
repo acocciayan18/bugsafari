@@ -109,6 +109,9 @@ export async function createSafariWorker(
   // forceRelease() fires this; the processor sets it per-job and nulls it on return.
   let releaseActiveSlot: (() => void) | null = null;
   sessionManager.setActivationReleaser(() => releaseActiveSlot?.());
+  // A clean operator stop frees this worker's slot the instant engine.stop() resolves,
+  // so a retest promotes at once instead of queuing behind the old run's teardown tail.
+  sessionManager.setReleaseOnCleanStop(true);
 
   // Reverse of the telemetry bridge: apply operator pause/resume/stop clicks that
   // the API process publishes to this worker's live run.
@@ -195,7 +198,24 @@ async (job) => {
       // buffer into Redis so /api/session/active can serve it from the API process.
       // Match on the token (snapshot.runToken) — snapshot.runId is the public code.
       let lastPublishedRevision = -1;
+      // Dropped-stop backstop: the API dispatches stop over Redis pub/sub (no delivery
+      // guarantee) but always writes RunRegistry.stopRequestedAt. If the bridged 'stop'
+      // is lost, poll that flag on the snapshot cadence and self-stop — so a run can
+      // never run its full timebox and pin this worker's slot. Fires once; stopByOperator
+      // is idempotent against STOPPING.
+      let selfStopFired = false;
       const snapshotTimer = setInterval(() => {
+        if (!selfStopFired) {
+          void runRegistry.findByRunToken(payload.runToken)
+            .then((entry) => {
+              if (entry?.stopRequestedAt && !selfStopFired) {
+                selfStopFired = true;
+                obsLog.warn(`[SafariWorker] stop flag observed for runCode=${payload.runCode} (bridged stop likely dropped) — self-stopping.`);
+                void sessionManager.stopByOperator('operator');
+              }
+            })
+            .catch(() => undefined);
+        }
         // Dirty-flag: read the cheap meta first (no buffer copies) and skip the whole
         // serialize+write when the non-frame content is unchanged since last publish.
         const meta = sessionManager.getActiveSnapshotMeta();

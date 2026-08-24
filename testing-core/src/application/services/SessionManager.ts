@@ -15,7 +15,7 @@ import type {
   StopReason,
   TelemetryEvent,
 } from '../../../../shared/types.js';
-import { SESSION_SNAPSHOT_EVENT, NETWORK_ACTION } from '../../../../shared/types.js';
+import { SESSION_SNAPSHOT_EVENT, NETWORK_ACTION, STOP_REASON_OUTCOME } from '../../../../shared/types.js';
 import { SessionStatus } from '../../infrastructure/database/models/FindingType.js';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import type { SocketTelemetryGateway, TelemetryRecordKind, TelemetryRecorder } from '../../infrastructure/socket/SocketTelemetryGateway.js';
@@ -210,6 +210,11 @@ export class SessionManager implements TelemetryRecorder {
   // (→ useCase.releaseActivation); left null in the worker, whose slot is the BullMQ
   // job itself and settles when the processor returns.
   private onRelease: (() => void) | null = null;
+  // Worker-only: on a CLEAN operator stop, free the slot (onRelease) the instant
+  // engine.stop() resolves — the browser is already closed — instead of waiting for the
+  // detached run() loop + its DB-persist tail to unwind, which stranded the next run in
+  // a 5-20s false queue. Off on the sync path, which reuses one engine singleton.
+  private releaseOnCleanStop = false;
   // Stops that arrived for a run token before its engine began executing. The worker
   // reaches beginRun() only after async boot (SSRF re-check, vault open, Chromium
   // launch); a stop bridged in during that window has no run to act on and was
@@ -230,6 +235,11 @@ export class SessionManager implements TelemetryRecorder {
   /** Register the callback that frees the admission slot when a run is force-released. */
   public setActivationReleaser(release: (() => void) | null): void {
     this.onRelease = release;
+  }
+
+  /** Worker-only: free the slot on a clean operator stop (see releaseOnCleanStop). */
+  public setReleaseOnCleanStop(enabled: boolean): void {
+    this.releaseOnCleanStop = enabled;
   }
 
   public get graceMs(): number {
@@ -922,13 +932,38 @@ export class SessionManager implements TelemetryRecorder {
     // watchdog) and status settles to IDLE there. The deadline timer is always
     // cleared, so a fast stop leaves nothing pending on the event loop.
     let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    let engineStopSettled = false;
     const deadline = new Promise<void>((resolve) => { deadlineTimer = setTimeout(resolve, STOP_TIMEOUT_MS); });
     try {
-      await Promise.race([Promise.resolve(run.engine.stop(reason)), deadline]);
+      await Promise.race([
+        Promise.resolve(run.engine.stop(reason)).then(() => { engineStopSettled = true; }),
+        deadline,
+      ]);
     } catch (error) {
       obsLog.error('[SessionManager] engine.stop threw during operator stop:', error instanceof Error ? error.message : error);
     } finally {
       if (deadlineTimer) clearTimeout(deadlineTimer);
+    }
+    // Worker-only fast path: engine.stop() resolved cleanly (browser closed, writes
+    // flushed), so free the concurrency-1 slot NOW instead of waiting for the detached
+    // run() loop + its DB-persist tail — that tail is what stranded the next run in a
+    // 5-20s false queue. The deadline branch is untouched: a hung stop still relies on
+    // the watchdog's force-release. Safe here: endRun pins lastTerminal first and is
+    // guarded (isStaleSettle) against the run()'s own later settle.
+    if (engineStopSettled && this.releaseOnCleanStop && this.run === run && run.status === 'STOPPING') {
+      if (!run.terminationOutcome) {
+        run.terminationOutcome = STOP_REASON_OUTCOME[reason] ?? 'user-stopped';
+        run.terminationReason = reason;
+      }
+      this.emitEngineAction('engine-stopped', 'Safari session stopped.');
+      // Terminal IDLE handshake the detached run() would emit too late (teardown nulls the room).
+      this.gateway?.emitTelemetry({
+        timestamp: new Date().toISOString(),
+        type: 'ACTION',
+        meta: { actionExecuted: 'engine-status', message: 'IDLE' },
+      });
+      this.endRun('COMPLETED', run.runToken);
+      this.onRelease?.();
     }
   }
 

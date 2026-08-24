@@ -631,16 +631,11 @@ export function buildDuplicateReplaySteps(
   const nav: ActionRecord = { timestamp, type: 'NAVIGATE', selector: pageUrl, url: pageUrl };
   const outcome = (status?: number): ActionRecord['outcome'] => (status === undefined ? undefined : { httpStatus: status });
 
-  // No correlated culprit (the duplicate fired inside an ambiguous concurrent burst): anchor
-  // the replay to the repeated ENDPOINT instead of a wrong control or the multi-control burst
-  // snapshot. The label carries the request so the step reads "the control that sends
-  // POST /api/counter", never a sibling or an unrelated nav link.
-  if (!defect.selector) {
-    const endpointLabel = `the control that sends ${defect.method} ${defect.endpoint}`;
-    const endpointStep = { timestamp, type: 'CLICK' as const, selector: '', url: pageUrl, elementLabel: endpointLabel };
-    if (defect.overlapped) return [nav, { ...endpointStep, repeatCount: 2 }];
-    return [nav, { ...endpointStep, outcome: outcome(defect.firstStatus) }, { ...endpointStep, outcome: outcome(defect.secondStatus) }];
-  }
+  // No correlated culprit: the real control was never resolved, so inventing one (a
+  // "the control that sends POST /api/x" pseudo-control) would name a UI element that does
+  // not exist and leak the endpoint into the steps. Reproduce only the verified action —
+  // opening the page. The endpoint stays in the message, the API-endpoint field, and evidence.
+  if (!defect.selector) return [nav];
 
   const click = { timestamp, type: 'CLICK' as const, selector: defect.selector, url: pageUrl, elementLabel: defect.elementLabel };
   if (defect.overlapped) return [nav, { ...click, repeatCount: 2 }];

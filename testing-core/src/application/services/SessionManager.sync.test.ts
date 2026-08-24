@@ -306,5 +306,48 @@ function newManager(): { sm: InstanceType<typeof SessionManager>; gw: FakeGatewa
   assert.strictEqual(sm.getSnapshotFor(null, 'r13b')?.status, 'RUNNING', 'S13: the next start runs immediately, not queued');
 }
 
+// ── S14: queue-mode CLEAN stop frees the worker slot immediately (not via watchdog) ─
+// The prior bug: a fresh retest sat in QUEUED for the whole teardown tail because the
+// concurrency-1 slot freed only when the detached execute() unwound (or the 20s
+// watchdog fired). With releaseOnCleanStop enabled (worker path), a CLEAN engine.stop()
+// frees the slot the instant it resolves — before execute() unwinds — so the next start
+// runs at once. Unlike S13 (wedged stop → watchdog), this asserts release with NO delay,
+// proving it came from the clean-stop path, not the 40ms STOP_TIMEOUT_MS backstop.
+{
+  const { sm } = newManager();
+  let fireRelease = (): void => { /* set when the processor registers */ };
+  const slotReleased = new Promise<'released'>((res) => { fireRelease = () => res('released'); });
+  sm.setActivationReleaser(() => fireRelease());
+  sm.setReleaseOnCleanStop(true); // worker-scoped early clean release
+
+  const clean: EngineControl = {
+    // Resolves cleanly — models a browser closed + writes flushed, unlike S13's wedge.
+    async stop() { /* resolves immediately */ },
+    async settlePendingTasks() { /* no-op */ },
+    getElapsedActiveTimeMs() { return 0; },
+    getLastSessionId() { return null; },
+  };
+  sm.beginRun({ runToken: 'r14', runCode: 'RUN-0000E4', userId: null, targetUrl: 'http://t', timeboxMs: 1000, engine: clean });
+
+  // Model the processor: await execute() (never unwinds) OR the release signal.
+  const execute = new Promise<void>(() => { /* run() does NOT unwind promptly */ });
+  let slotFreed = false;
+  const processor = Promise.race([execute.then(() => 'completed' as const), slotReleased])
+    .then((outcome) => { slotFreed = outcome === 'released'; });
+
+  await sm.stopByOperator('operator'); // clean stop → early release fires inside this call
+  await processor;                     // NO delay: must NOT need the 40ms watchdog
+
+  assert.strictEqual(slotFreed, true, 'S14: a CLEAN stop frees the worker slot immediately, not via the watchdog');
+  assert.strictEqual(sm.hasActiveRun(), false, 'S14: the cleanly-stopped run was torn down');
+  const terminal = sm.getSnapshotFor(null, 'r14');
+  assert.notStrictEqual(terminal?.status, 'RUNNING', 'S14: terminal state is restorable after the early clean release');
+  assert.strictEqual(terminal?.terminationOutcome, 'user-stopped', 'S14: a clean operator stop is attributed as user-stopped');
+
+  // Start-again: a fresh run begins immediately — nothing queues behind the old slot.
+  sm.beginRun({ runToken: 'r14b', runCode: 'RUN-0000E5', userId: null, targetUrl: 'http://t', timeboxMs: 1000, engine: fakeEngine() });
+  assert.strictEqual(sm.getSnapshotFor(null, 'r14b')?.status, 'RUNNING', 'S14: the next start runs immediately, not queued');
+}
+
 console.log('SessionManager.sync.test.ts passed');
 process.exit(0);

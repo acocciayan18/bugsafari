@@ -1,0 +1,631 @@
+================================================================================
+BUGSAFARI — TARGET AUTHENTICATION ("Target Auth")
+Thesis Defense Reference (audited against the current codebase)
+================================================================================
+
+Everything below is taken from the real implementation. File paths and function
+names are cited so you can open any claim live during the defense. Nothing here
+is aspirational; where a limitation exists, it is stated as a limitation.
+
+Two different "auth" systems live in this repo. Do NOT confuse them:
+
+  1. OPERATOR auth  — how a developer logs into BugSafari itself (JWT, refresh
+     cookie, MongoDB users). Lives in testing-core/src/presentation/authentication/.
+     This is NOT what the panel is asking about.
+
+  2. TARGET auth    — how the ENGINE logs into the application UNDER TEST so it
+     can explore pages behind a login. THIS document is only about #2.
+
+The shared contract for #2 explicitly says so:
+  shared/types/auth.ts, line 4:
+  "Credentials for the application UNDER TEST — unrelated to BugSafari's own
+   operator accounts."
+
+
+--------------------------------------------------------------------------------
+1. WHAT TARGET AUTH IS, AND WHY BUGSAFARI NEEDS IT
+--------------------------------------------------------------------------------
+
+BugSafari is an autonomous exploratory tester. It opens a target SPA in a real
+Playwright browser and clicks/fuzzes its way through the DOM looking for bugs.
+
+Problem: most interesting surface (dashboards, account pages, checkout, admin
+panels) sits BEHIND a login. If the engine starts unauthenticated, it can only
+reach the public login/marketing pages, find nothing, and report a "clean" run.
+That is a silently wrong result — the dangerous kind, because it looks like a
+pass.
+
+Target Auth is the feature that lets the operator hand the engine a TEST ACCOUNT.
+Before exploration starts, the engine drives that account through the target's
+own login form, confirms it is signed in, and only THEN begins exploring — now
+on the authenticated surface.
+
+Design stance (one sentence for the panel):
+  "We would rather fail loudly than explore the wrong pages. If login fails, the
+   run stops and says why; it never downgrades to an unauthenticated crawl."
+
+Enforced at testing-core/src/infrastructure/playwright/PlaywrightBrowserEngine.ts
+lines 367-375: if auth is not 'authenticated', run() returns
+'graceful-shutdown' with the reason, and NO exploration happens.
+
+
+--------------------------------------------------------------------------------
+2. THE FRONTEND / CONFIGURATION UI
+--------------------------------------------------------------------------------
+
+Component: developer-dashboard/src/components/common/TargetAuthPanel.tsx
+
+What the operator sees:
+  - A toggle switch "Authenticate into target" (role="switch").
+  - Username / Email field.
+  - Password field (with a show/hide eye toggle).
+  - A collapsible "Advanced (custom selectors)" section holding five optional
+    fields: Login page URL, Success indicator, Username selector, Password
+    selector, Submit selector.
+  - A help panel and an inline security note.
+
+Draft shape (TargetAuthDraft, same file):
+  enabled, username, password, loginUrl, usernameSelector, passwordSelector,
+  submitSelector, successIndicator.
+
+Two important UI rules, both real in the code:
+
+  a) PASSWORD IS MEMORY-ONLY. The structural fields (username, URL, selectors)
+     persist across runs via the launch-config draft store
+     (developer-dashboard/src/stores/launchConfigDraft.ts). The password is NOT
+     persisted; it is re-typed each run. The panel states this to the user
+     (TargetAuthPanel.tsx lines 146, 203-210) and sets autoComplete="new-password"
+     / "off" so the browser never offers to save it.
+
+  b) VALIDATION BEFORE LAUNCH. isTargetAuthIncomplete() (lines 52-55) returns
+     true when auth is enabled but username or password is blank. The parent
+     launch flow blocks the run on that, and the panel shows a red
+     "Both a username and a password are required" alert. Everything else
+     (selectors, login URL, success indicator) is optional.
+
+The draft is converted to the wire contract by toTargetAuthConfig() (lines
+35-49). If auth is off or incomplete it returns undefined (no auth sent). Empty
+optional strings are trimmed to undefined so blank Advanced fields become "auto-
+detect", not empty selectors.
+
+
+--------------------------------------------------------------------------------
+3. HOW THE CREDENTIALS REACH THE BACKEND
+--------------------------------------------------------------------------------
+
+The dashboard POSTs the launch request to the testing-core API. The auth object
+rides in the request body as `targetAuth`.
+
+Server-side parse + validate: testing-core/src/presentation/api/registerRoutes.ts
+  function parseTargetAuth() (lines 196-219):
+    - Rejects anything whose mode is not 'credentials' (returns 'invalid').
+    - Requires username AND password to be non-empty strings.
+    - Trims the optional fields (loginUrl, selectors, successIndicator) to
+      undefined when blank.
+    - The header comment (lines 188-194) is explicit: "Never log the returned
+      object: it is the one value in the request that must not reach a log line,
+      a database, or the job queue."
+
+If parsing returns 'invalid', the route responds 400 AUTH_CONFIG_INVALID
+(lines 819-823).
+
+From here there are TWO execution paths:
+
+  A) SYNCHRONOUS path (queue disabled): the parsed targetAuth is passed straight
+     into the in-process use case:
+       registerRoutes.ts line 999: useCase.execute(targetUrl, ..., targetAuth, ...)
+     The object lives only in memory for that run.
+
+  B) QUEUED / DISTRIBUTED path (worker fleet): credentials must cross a process
+     boundary to a worker. They are NEVER put in the job payload, because BullMQ
+     keeps failed job payloads in Redis in plaintext for 24h. Instead:
+       - registerRoutes.ts line 908: authVault.put(queuedRunToken, targetAuth)
+         seals them in the AuthVault (see section 12).
+       - The job payload carries only a boolean marker `hasAuth`
+         (line 919, and TaskQueue.ts lines 31-33).
+       - If auth is requested but no vault key is configured, the run is REFUSED
+         with 400 AUTH_UNSUPPORTED_ON_QUEUE (lines 845-851) rather than
+         downgraded to an unauthenticated run.
+
+The port contract states the invariant too:
+  testing-core/src/application/ports/BrowserEngine.ts line 10:
+  "targetAuth is ephemeral: in-memory for this run only, never persisted or logged."
+
+
+--------------------------------------------------------------------------------
+4. HOW testing-core PROCESSES AND "STORES" THE CONFIGURATION
+--------------------------------------------------------------------------------
+
+Key point for the panel: the credentials are NEVER stored in a database. The
+only two places they exist are:
+
+  - In process memory, for the duration of one run (synchronous path), or
+  - Encrypted in Redis via the AuthVault for at most 10 minutes, single-read,
+    on the queued path.
+
+Queued worker read: testing-core/src/infrastructure/workers/SafariWorker.ts
+  lines 226-238:
+    if (payload.hasAuth) {
+      targetAuth = await authVault.take(payload.runToken);   // decrypt + delete
+      if (!targetAuth) { ...fail the run... }                // never downgrade
+    }
+    useCase.execute(engineUrl, ..., targetAuth ?? undefined, ...)
+
+  AuthVault.take() (AuthVault.ts lines 93-108) does a Redis GETDEL: it reads and
+  destroys the ciphertext in one atomic step, so credentials exist for exactly
+  one read. A miss (expired or already consumed) fails the run — it does not
+  silently continue unauthenticated (SafariWorker.ts lines 229-236).
+
+The application-layer entry point is StartExplorationUseCase.execute()
+(StartExplorationUseCase.ts lines 631-633). It threads targetAuth down into
+browserEngine.run() (line 728) and otherwise does nothing with it — it never
+writes it to the session document. The session document it later saves
+(manualSaveToHistory) contains findings, action steps, metrics — never the
+credentials.
+
+
+--------------------------------------------------------------------------------
+5. HOW BUGSAFARI LAUNCHES THE BROWSER AND PERFORMS THE LOGIN
+--------------------------------------------------------------------------------
+
+Orchestrator: PlaywrightBrowserEngine.run()
+  (PlaywrightBrowserEngine.ts, auth block at lines 341-413).
+
+Order of operations (this order matters and is defensible):
+  1. The reflection oracle and the CREDENTIAL MASK are installed FIRST, before
+     any navigation. The mask renders the credential fields as bullet characters
+     in the live screencast frames, so no streamed frame can carry a readable
+     value (comment at lines 341-345).
+  2. setScrubValues([username, password]) (line 359) registers the literal
+     credential strings with the telemetry scrubber so they are redacted if they
+     ever appear in a log/telemetry string.
+  3. A new TargetAuthenticator().authenticate(page, targetAuth, targetUrl,
+     narrator) is called (line 365).
+
+The actual login driver: TargetAuthenticator
+  (testing-core/src/infrastructure/playwright/TargetAuthenticator.ts)
+
+It is deliberately STATELESS — credentials are passed per call and never stored
+on the instance (class comment lines 42-50). Sequence inside
+loginWithCredentials() (lines 79-137):
+
+  a) Navigate to the entry URL. entryUrl = config.loginUrl ?? targetUrl
+     (line 88). loginUrl is only a HINT for where to start looking, not a
+     requirement.
+
+  b) DISCOVER the login form via LoginFormLocator.locate()
+     (LoginFormLocator.ts lines 55-117). Discovery ladder:
+       0. If the operator supplied explicit username+password selectors, use
+          them (authoritative, no searching).
+       1. Probe the current page for a login form.
+       2. Click a "Login / Sign In" affordance (button/link/menu), up to
+          MAX_AFFORDANCE_CLICKS (3), re-collected each round so a two-step
+          "Account -> Sign In" menu resolves.
+       3. Probe conventional auth routes on the SAME origin (/login, /signin,
+          /sign-in, /log-in, /auth/login, /account/login) — see
+          loginDiscovery.ts AUTH_ROUTE_PATHS.
+     The whole discovery is bounded by DISCOVERY_BUDGET_MS (45s) so it can never
+     outlive the run's own timebox.
+
+     Form detection (probe(), LoginFormLocator.ts lines 145-207) anchors on the
+     first VISIBLE password input, then scopes the username and submit search to
+     that input's enclosing <form>. That scoping is what stops a page's search
+     box from being mistaken for the username field.
+
+     Affordance ranking is pure and unit-tested (loginDiscovery.ts
+     scoreAffordance/rankAffordances). It also has an EXCLUDE list
+     (loginDiscovery.ts lines 29-31): it will NEVER click sign-up, register,
+     create-account, forgot/reset-password, or logout controls during discovery —
+     those burn budget, can email a real user, or are the opposite of logging in.
+
+  c) MASK the username field (maskField, line 110) before typing — the password
+     input hides itself, but the username would otherwise render in plaintext in
+     the screencast.
+
+  d) ENTER credentials (enterCredentials, lines 144-158). It uses page.fill()
+     (which fires the native setter so React/Vue controlled inputs register the
+     value), then dispatches input/change/blur events (notifyField, lines
+     161-165) so SPA validation and "enable button when valid" logic actually
+     runs before submit.
+
+  e) SUBMIT (submit(), lines 194-205). Preference order: click the real submit
+     control -> press Enter on the password field -> as a last resort call
+     form.requestSubmit() on the owning form.
+
+  f) SETTLE: after submit, wait for whichever lands first of a full navigation,
+     an SPA URL change, or network-idle, then a short 600ms settle
+     (settleAfterSubmit, lines 172-180), so the app finishes its transition
+     before the success check reads the page.
+
+  g) Immediately clear the password field (line 130) so any post-failure
+     screenshot cannot capture the filled control.
+
+
+--------------------------------------------------------------------------------
+6. HOW IT KNOWS AUTHENTICATION SUCCEEDED (the "oracle")
+--------------------------------------------------------------------------------
+
+The success decision is split into two parts on purpose:
+
+  - TargetAuthenticator.verify() (lines 225-265) gathers raw SIGNALS from the
+    post-submit page using Playwright probes.
+  - classifyCredentialVerdict() (testing-core/src/domain/services/auth/authVerdict.ts)
+    is a PURE function that turns those signals into a verdict. Being pure and
+    browser-free, the entire decision table is unit-tested without a browser
+    (authVerdict.test.ts).
+
+Signals gathered (CredentialVerifySignals, authVerdict.ts lines 12-20):
+  hasCaptcha, hasMfa, hasLockout, hasAuthError, passwordGone, urlMoved.
+
+Decision precedence (classifyCredentialVerdict, lines 45-55) — order matters:
+  1. CAPTCHA present        -> failed('captcha')
+  2. MFA / one-time-code    -> failed('mfa-required')
+  3. Lockout language       -> failed('account-locked')
+  4. Visible auth error     -> failed('invalid-credentials')
+  5. Password field GONE    -> AUTHENTICATED  ("login form cleared")
+  6. URL moved off the form -> AUTHENTICATED  ("navigated off the login page")
+  7. otherwise: first attempt -> 'transient' (retry); final attempt ->
+     'invalid-credentials' (the form is still sitting there, so the creds were
+     almost certainly rejected).
+
+Why the negative signals are checked BEFORE the "password gone" success signal:
+an app often CLEARS the login form on rejection, or steps to a challenge screen,
+which would otherwise look like a cleared (successful) form. Checking the
+decisive-negative signals first prevents a false "authenticated". This rationale
+is documented at the top of authVerdict.ts (lines 4-8).
+
+The primary success signal is "the password input disappeared", NOT "the URL
+changed". This is deliberate: many SPAs log you in without changing the URL, so
+a URL-only check would miss them. The password-gone check survives those.
+
+Optional override: if the operator set a Success indicator selector, that WINS —
+verify() waits for that specific selector to become visible and declares success
+or 'success-indicator-missing' based only on that (TargetAuthenticator.ts lines
+232-240).
+
+
+--------------------------------------------------------------------------------
+7. MAINTAINING THE AUTHENTICATED STATE DURING EXPLORATION
+--------------------------------------------------------------------------------
+
+There is no cookie copying or token injection. The engine explores in the SAME
+Playwright browser context that just logged in, so the target's own session
+cookies / storage stay live naturally. Three things keep it that way:
+
+  a) EXPLORE FROM THE LANDING PAGE, NOT THE LOGIN URL.
+     After a successful login, PlaywrightBrowserEngine sets explorationUrl to
+     wherever login actually landed (the authenticated page), not back to the
+     login URL (lines 401-412). Re-navigating to the login URL would bounce the
+     engine back to the public form and throw away the authenticated location.
+
+  b) AN AUTHENTICATED-RUN MARKER.
+     PlaywrightBrowserEngine calls engine.recordAuthenticationMarker()
+     (line 376), which sets ExplorationEngine.authenticatedRun = true
+     (ExplorationEngine.ts lines 455-456). Every session-preservation behavior
+     below is gated on this flag, so guest runs are completely unaffected.
+
+  c) SESSION-AWARE RE-ENTRY URL.
+     Whenever any recovery needs a "safe place to go", authenticated runs use the
+     authenticated landing URL, never the bare origin (which is often the login
+     page). See getReentryUrl in ExplorationEngine.ts lines 1059 and 1341, and
+     how PageHealthGuard / StateRestorer consume it (PageHealthGuard.ts lines
+     18-20 and 130-134; StateRestorer.ts lines 300-304, 361-364). Reloading to
+     the bare origin login page would silently drop the session; using the
+     authenticated landing URL preserves it.
+
+  Bonus — client state survival: when a fallback restore must do a full document
+  reload, StateRestorer snapshots localStorage/sessionStorage first and re-seeds
+  it after the reload (StateRestorer.ts captureClientStorage/reseedClientStorage,
+  lines 383-429), so token-in-storage sessions survive a hard restore too.
+
+
+--------------------------------------------------------------------------------
+8. PREVENTING NAVIGATION BACK TO LOGIN / REGISTRATION / LOGOUT
+--------------------------------------------------------------------------------
+
+This is one of the strongest parts to defend. The policy lives in ONE module:
+  testing-core/src/domain/services/exploration/SessionPreservationGuard.ts
+
+It classifies a "session-destroying control" by what its TEXT/id/class SAYS, not
+what element it is (DESTRUCTIVE_PATTERNS, lines 29-46): logout, sign-out, log-off,
+end-session, (re-)login, sign-in, sign-up, register, create-account, switch/
+change/add/remove-account, delete/deactivate/close account-or-profile, revoke
+token/session/api-key, reset/change/forgot password.
+
+Careful scoping (defensible design choice): generic destructive CRUD like
+"delete item" or "remove row" is NOT flagged — delete/remove/close only match
+when anchored to "account" or "profile" (lines 41-42). A testing engine MUST
+still exercise ordinary delete buttons; it just must not sign itself out.
+
+This single classifier is consumed at THREE stages, in only authenticated runs:
+
+  1. SCORING DEMOTION (soft). ExplorationLoop.ts lines 946-947: a session-
+     destroying control has SESSION_EXIT_DEMOTION (2000) subtracted from its risk
+     score, so it sinks to the very bottom of the ranking and is chosen last.
+
+  2. EXECUTION VETO (hard). ExplorationLoop.ts line 407: even if such a control
+     is somehow selected, shouldVetoExecution() blocks the click outright when
+     sessionGuardActive is true (set from authenticatedRun,
+     ExplorationEngine.ts line 1539). Demotion makes it unlikely; the veto makes
+     it impossible.
+
+  3. NAVIGATION MONITOR (recovery). If the app navigates to an auth page anyway
+     (e.g. a server-side redirect bounced it to /login after a token expired),
+     shouldTriggerSessionLoss() fires (ExplorationEngine.ts line 1204). It is
+     true only when: authenticated run AND not already restoring AND the
+     destination is an auth page AND the source was not. That is a real session
+     LOSS, handled by re-authenticating in place (section 9), not a control we
+     clicked.
+
+Additionally, the discovery-phase affordance ranker already refuses to click
+sign-up/register/logout while FINDING the form (loginDiscovery.ts EXCLUDE_RE),
+so those are avoided both during login and during exploration.
+
+Also always-on: an off-site navigation (leaving the target site to a third-party
+host) is restored to the target by PageHealthGuard regardless of auth
+(PageHealthGuard.ts lines 100-104), with SSO/OAuth origins allow-listed so an
+IdP round-trip is not mistaken for drift.
+
+
+--------------------------------------------------------------------------------
+9. WHAT HAPPENS WHEN AUTHENTICATION FAILS
+--------------------------------------------------------------------------------
+
+Two distinct failure moments:
+
+  A) FAILS DURING INITIAL LOGIN (before exploration).
+     - TargetAuthenticator retries at most twice (MAX_ATTEMPTS = 2), and ONLY for
+       genuinely non-decisive failures. RETRYABLE_AUTH_CATEGORIES = ['page-load-
+       error', 'transient'] (shared/types/auth.ts lines 56-62). A decisive
+       rejection (invalid-credentials, mfa-required, captcha, account-locked)
+       breaks immediately and NEVER re-submits — a second attempt could trip a
+       lockout (TargetAuthenticator.ts lines 66-72, and the comment at 21-24).
+     - On final failure, PlaywrightBrowserEngine.run() returns
+       { completed: false, outcome: 'graceful-shutdown', reason: "Target
+       authentication failed: <reason>. No exploration performed." }
+       (lines 367-375). Exploration NEVER runs. The operator gets a precise,
+       credential-free reason (the reason strings live in authVerdict.ts REASON
+       and are fixed literals — they never contain the username or password).
+
+  B) SESSION LOST MID-RUN (during exploration).
+     - The navigation monitor detects the auth-page bounce (section 8, item 3).
+     - It re-authenticates IN PLACE using an injected restore callback.
+       PlaywrightBrowserEngine builds a restoreSession function (lines 393-400)
+       that re-runs TargetAuthenticator with a "pinned" config: the exact login
+       URL and selectors that worked the first time (restoreConfig, lines
+       383-392), so re-auth goes straight back to the real form instead of
+       re-guessing routes.
+     - SessionRestoreCoordinator (SessionPreservationGuard.ts lines 113-137)
+       serializes restores and debounces the restore navigation's own events so a
+       restore cannot re-trigger itself.
+     - Least privilege: the engine receives ONLY this opaque callback, never the
+       credentials (PlaywrightBrowserEngine comment lines 350-353;
+       SessionPreservationGuard lines 104-107).
+
+
+--------------------------------------------------------------------------------
+10. IMPORTANT FILES / SERVICES / FUNCTIONS (quick map)
+--------------------------------------------------------------------------------
+
+Contract:
+  shared/types/auth.ts
+    TargetCredentialsAuth, TargetAuthConfig, TargetAuthResult,
+    TargetAuthFailureCategory, RETRYABLE_AUTH_CATEGORIES, isRetryableAuthFailure.
+
+Frontend:
+  developer-dashboard/src/components/common/TargetAuthPanel.tsx
+    TargetAuthDraft, toTargetAuthConfig(), isTargetAuthIncomplete().
+  developer-dashboard/src/stores/launchConfigDraft.ts   (persists structural
+    fields; NOT the password).
+
+API / transport:
+  testing-core/src/presentation/api/registerRoutes.ts
+    parseTargetAuth(), the /api/start-test launch handler, queue branch.
+  testing-core/src/infrastructure/queue/TaskQueue.ts    (hasAuth marker only).
+  testing-core/src/infrastructure/queue/AuthVault.ts    (encrypted transit).
+  testing-core/src/infrastructure/workers/SafariWorker.ts  (vault take + execute).
+
+Application:
+  testing-core/src/application/useCases/StartExplorationUseCase.ts  (execute()).
+  testing-core/src/application/ports/BrowserEngine.ts   (ephemeral contract).
+
+Login engine:
+  testing-core/src/infrastructure/playwright/PlaywrightBrowserEngine.ts
+    (run(): mask, authenticate, restoreSession, authOrigins, explorationUrl).
+  testing-core/src/infrastructure/playwright/TargetAuthenticator.ts
+    (authenticate, loginWithCredentials, enterCredentials, submit, verify).
+  testing-core/src/infrastructure/playwright/LoginFormLocator.ts
+    (form discovery ladder, probe()).
+  testing-core/src/domain/services/auth/loginDiscovery.ts
+    (pure ranking + route rules, EXCLUDE list).
+  testing-core/src/domain/services/auth/authVerdict.ts
+    (pure success/failure decision table).
+  testing-core/src/domain/services/auth/AuthNarrator.ts + authNarration.ts
+    (streams every phase to the Live Feed + records replayable playbook steps).
+  testing-core/src/infrastructure/playwright/credentialMask.ts (maskField).
+
+Session preservation:
+  testing-core/src/domain/services/exploration/SessionPreservationGuard.ts
+    (isSessionDestroyingControl, shouldVetoExecution, isAuthPage,
+     shouldTriggerSessionLoss, SessionRestoreCoordinator).
+  testing-core/src/domain/services/exploration/ExplorationLoop.ts
+    (demotion + execution veto).
+  testing-core/src/domain/services/exploration/ExplorationEngine.ts
+    (authenticatedRun marker, nav monitor, getReentryUrl).
+  testing-core/src/domain/services/exploration/PageHealthGuard.ts,
+  testing-core/src/domain/services/exploration/StateRestorer.ts
+    (auth-aware recovery + client-storage survival).
+
+
+--------------------------------------------------------------------------------
+11. THE FLOW YOU CAN NARRATE TO THE PANEL (Frontend -> Backend -> Browser -> Exploration)
+--------------------------------------------------------------------------------
+
+FRONTEND
+  Operator toggles "Authenticate into target", types a TEST account's
+  username + password (optionally sets a login URL / selectors / success
+  indicator under Advanced). Launch is blocked until both username and password
+  are present. The panel converts the draft to a `targetAuth` object; the
+  password is memory-only.
+
+BACKEND (API)
+  POST /api/start-test carries `targetAuth`. parseTargetAuth() validates it
+  (mode must be 'credentials', both fields required) and refuses to log it.
+    - Synchronous run: targetAuth handed straight to the use case.
+    - Queued run: credentials sealed in the AuthVault (AES-256-GCM, 10-min TTL,
+      single-read), and the job carries only a `hasAuth` flag. No vault key ->
+      the authenticated run is refused, not downgraded.
+
+BROWSER (login)
+  PlaywrightBrowserEngine installs the credential mask + scrubber, then
+  TargetAuthenticator: navigate -> discover the login form (on the page, behind a
+  Sign In control, or at a conventional route) -> fill the fields like a user ->
+  submit -> settle. The pure oracle then reads the page: CAPTCHA/MFA/lockout/
+  visible-error mean FAIL; password-field-gone or URL-moved mean SUCCESS.
+  Failure -> the whole run stops with a precise reason and explores nothing.
+
+EXPLORATION (authenticated)
+  On success the engine marks the run authenticated and begins exploring FROM the
+  post-login landing page. Throughout the run it protects the session: logout /
+  re-login / account-deletion controls are demoted to last and hard-vetoed from
+  being clicked; any accidental bounce to a login page is detected as a session
+  loss and re-authenticated in place using the exact form that worked before.
+  All recovery navigations target the authenticated landing URL, never the bare
+  login page. Every login step is narrated to the Live Feed and recorded (value-
+  free) in the reproduction playbook.
+
+
+--------------------------------------------------------------------------------
+12. SECURITY MODEL (defend this confidently)
+--------------------------------------------------------------------------------
+
+  - EPHEMERAL BY CONTRACT. shared/types/auth.ts states the invariant: credentials
+    live in memory for one run and are never written to MongoDB, logs, reports,
+    telemetry, or a BullMQ payload.
+
+  - NEVER PERSISTED. No session document, finding, or history record stores the
+    credentials. The password is not even persisted client-side.
+
+  - ENCRYPTED IN TRANSIT ACROSS PROCESSES. AuthVault (AuthVault.ts): AES-256-GCM
+    under BUGSAFARI_AUTH_KEY (must be exactly 32 bytes hex or base64 — a bad key
+    is rejected, not stretched), keyed by runToken, 600s TTL, consumed with Redis
+    GETDEL so it is readable exactly once. A GCM tag mismatch (tampering or key
+    rotation) fails closed and logs no payload (lines 102-107).
+
+  - NOT IN THE JOB PAYLOAD. The queue carries only `hasAuth: boolean`
+    (TaskQueue.ts). This exists specifically because BullMQ retains failed
+    payloads in Redis in plaintext for 24h.
+
+  - NEVER RENDERED. The credential mask hides the fields in the live screencast
+    (maskField), and a telemetry scrubber (setScrubValues) redacts the literal
+    values from any string. The password field is cleared right after submit.
+
+  - CREDENTIAL-FREE OPERATOR OUTPUT. Every auth reason string is a fixed literal
+    (authVerdict.ts REASON, TargetAuthenticator reasons); the "resolution" field
+    reports WHICH selector matched, never the value.
+
+  - LEAST PRIVILEGE INTO THE ENGINE. The exploration engine never sees the auth
+    config — only allow-listed origins and an opaque restore callback.
+
+  - FAIL LOUD, NOT SILENT. A failed login, a missing vault entry, or a missing
+    vault key all stop the run with a clear reason rather than producing a
+    misleading "clean" result for an untested surface.
+
+
+--------------------------------------------------------------------------------
+13. LIMITATIONS (state these before the panel finds them)
+--------------------------------------------------------------------------------
+
+  - SINGLE MODE: form-based username/password login only. TargetAuthConfig is a
+    one-member union (mode: 'credentials'). There is no OAuth-token paste, no
+    API-key, no cookie/session import, no saved storage-state file.
+
+  - MFA / CAPTCHA ARE NOT SOLVED — they are DETECTED and reported as clean
+    failures. A form fill cannot complete a one-time code or a CAPTCHA, so the
+    engine stops and says so instead of guessing. This is correct behavior, but
+    it means MFA-protected apps cannot be explored via this feature.
+
+  - AUTO-DETECTION IS HEURISTIC. Discovery anchors on a visible password input,
+    a ranked Sign In affordance, and six conventional routes, all within a 45s
+    budget and 3 affordance clicks. A deeply custom, multi-step, or shadow-DOM
+    login can defeat auto-detection — which is exactly why the Advanced selector
+    overrides exist as the escape hatch.
+
+  - SUCCESS ORACLE IS SIGNAL-BASED. "Password field disappeared / URL moved" is a
+    strong heuristic, not a server-side truth. An app that keeps the password
+    field mounted after a successful login, or clears it on failure without any
+    error affordance, is the ambiguous case. The engine mitigates this with the
+    negative-signal precedence, the retry-then-treat-as-rejected policy, and the
+    optional operator-supplied Success indicator, which overrides the heuristic.
+
+  - QUEUED AUTH REQUIRES CONFIG. Authenticated distributed runs need
+    BUGSAFARI_AUTH_KEY and Redis; without the key, queued auth is refused by
+    design.
+
+  - SHARED-SECRET ENCRYPTION. AuthVault is symmetric (AES-256-GCM under one env
+    key). Anyone holding the key and the Redis ciphertext within the 10-minute
+    window could decrypt. Mitigations: short TTL, single-read GETDEL, and the
+    key living only in the server environment.
+
+  - USE A DEDICATED TEST ACCOUNT. The engine actively fuzzes and stress-tests
+    authenticated surface; the UI itself tells the operator to use a throwaway
+    test account, not real/production credentials.
+
+
+--------------------------------------------------------------------------------
+14. LIKELY PANEL QUESTIONS + SHORT ANSWERS
+--------------------------------------------------------------------------------
+
+Q: Where are the target credentials stored?
+A: Nowhere persistent. In memory for one run, or AES-256-GCM in Redis for <=10
+   minutes single-read on the queued path. Never in Mongo, logs, reports, or the
+   job payload. Contract: shared/types/auth.ts.
+
+Q: How does it find the login form if I don't give selectors?
+A: LoginFormLocator ladder: explicit selectors -> form already on the page ->
+   click a ranked "Sign In" control -> try /login-style routes on the same
+   origin. It anchors on the first visible password input and scopes the rest to
+   that input's <form>, all within a 45s budget.
+
+Q: How does it KNOW it logged in? Couldn't it be fooled?
+A: A pure decision table (authVerdict.ts). It checks CAPTCHA/MFA/lockout/visible-
+   error FIRST (those force a fail), then treats a vanished password field or a
+   navigation off the form as success. It can be fooled by a pathological app, so
+   we provide the optional Success indicator selector as an authoritative
+   override, and we retry-then-treat-as-rejected on ambiguity.
+
+Q: Why not just continue unauthenticated if login fails?
+A: That produces a "clean" report for a surface that was never tested — the worst
+   outcome for a testing tool. We stop with a precise reason instead
+   (PlaywrightBrowserEngine lines 367-375).
+
+Q: What stops the engine from logging itself out mid-run?
+A: One classifier (SessionPreservationGuard) used at three stages: it demotes
+   logout/re-login/account-deletion controls to last, hard-vetoes clicking them,
+   and if a redirect bounces to a login page it re-authenticates in place. Guest
+   runs are unaffected.
+
+Q: MFA / 2FA?
+A: Detected and reported as a clean failure, not solved. Out of scope for a form
+   fill by design.
+
+Q: Why split TargetAuthenticator and authVerdict?
+A: Separation of concerns + testability. The Playwright I/O (gathering signals)
+   is isolated from the DECISION (pure function), so the whole success/failure
+   policy is unit-tested with no browser (authVerdict.test.ts).
+
+Q: Does the password appear in the video/screencast?
+A: No. A credential mask is installed before any navigation (password input
+   self-hides; username field is masked to bullets), a scrubber redacts the
+   literal values from strings, and the password field is cleared immediately
+   after submit.
+
+Q: Queue path — why a `hasAuth` flag and a separate vault?
+A: BullMQ keeps failed job payloads in Redis in plaintext for 24h. Putting
+   credentials in the payload would leak them for a day on any failure. The vault
+   keeps them encrypted, short-lived, and single-read; the payload only says
+   whether to fetch from the vault.
+
+================================================================================
+END
+================================================================================

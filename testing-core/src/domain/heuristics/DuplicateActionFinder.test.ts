@@ -173,12 +173,15 @@ check('an overlapping duplicate replays as one rapid burst step (repeatCount 2)'
   const a = h.send(1000);
   const b = h.send(1150);
   h.settle(b, 1400, 201);
-  const defect = h.settle(a, 1500, 201)!;
-  assert.equal(defect.overlapped, true);
+  const base = h.settle(a, 1500, 201)!;
+  assert.equal(base.overlapped, true);
+  // A correlated control (real selector) is what carries a click replay; inject one here.
+  const defect = { ...base, selector: '#pay', elementLabel: 'Pay' };
   const steps = buildDuplicateReplaySteps(defect, 'http://app.test/checkout', 't0');
   assert.equal(steps.length, 2, 'nav + one burst click');
   assert.equal(steps[0].type, 'NAVIGATE');
   assert.equal(steps[1].type, 'CLICK');
+  assert.equal(steps[1].selector, '#pay', 'replays the real correlated control');
   assert.equal(steps[1].repeatCount, 2, 'a true overlap replays as a rapid burst');
 });
 
@@ -187,8 +190,9 @@ check('a sequential (non-overlap) duplicate replays as two distinct committed cl
   const a = h.send(1000);
   h.settle(a, 1100, 200);
   const b = h.send(1600);
-  const defect = h.settle(b, 1700, 201)!;
-  assert.equal(defect.overlapped, false);
+  const base = h.settle(b, 1700, 201)!;
+  assert.equal(base.overlapped, false);
+  const defect = { ...base, selector: '#pay', elementLabel: 'Pay' };
   const steps = buildDuplicateReplaySteps(defect, 'http://app.test/checkout', 't0');
   assert.equal(steps.length, 3, 'nav + two distinct clicks');
   assert.equal(steps[1].type, 'CLICK');
@@ -727,20 +731,17 @@ const dupDefect = (over: Partial<DuplicateActionDefect>): DuplicateActionDefect 
     ...over,
   } as DuplicateActionDefect);
 
-check('an empty culprit anchors the replay to the endpoint, not a control or nav links', () => {
+check('an empty culprit reproduces only the verified navigation, never a fabricated control', () => {
   const steps = buildDuplicateReplaySteps(dupDefect({ selector: '' }), 'http://app.test/state-races', 'ts');
+  assert.equal(steps.length, 1, 'only the verified page-open step — no invented control');
   assert.equal(steps[0].type, 'NAVIGATE');
   assert.match(steps[0].url, /\/state-races$/);
-  const actions = steps.slice(1);
-  assert.equal(actions.length, 1, 'overlapping ⇒ one repeat-2 step');
-  assert.equal(actions[0].repeatCount, 2);
-  assert.equal(actions[0].selector, '', 'no control selector is invented');
-  assert.ok(actions[0].elementLabel?.includes('POST /api/counter'), 'the step names the repeated endpoint');
-  // No unrelated co-clicked control (the burst-snapshot pollution the card showed).
-  assert.ok(!steps.some((s) => /BugSafari Target|all scenarios/i.test(s.elementLabel ?? '')));
+  // No fabricated element and no endpoint leaked into a step (it lives in the message/field).
+  assert.ok(!steps.some((s) => /control that sends/i.test(s.elementLabel ?? '')), 'no "the control that sends …" pseudo-control');
+  assert.ok(!steps.some((s) => /POST \/api\/counter/.test(s.elementLabel ?? '')), 'no endpoint in a step label');
   const narrated = narrateActionRecords(steps);
-  assert.ok(narrated.some((line) => line.includes('POST /api/counter')));
-  assert.ok(!narrated.some((line) => /BugSafari Target|all scenarios/i.test(line)));
+  assert.ok(!narrated.some((line) => /POST \/api\/counter/.test(line)), 'no endpoint in the narrated steps');
+  assert.ok(!narrated.some((line) => /control that sends/i.test(line)));
 });
 
 check('a known culprit still double-fires that ONE control (unchanged behavior)', () => {

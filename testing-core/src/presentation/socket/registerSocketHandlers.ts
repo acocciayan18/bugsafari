@@ -134,6 +134,9 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
         const entry = await queueSupport.runRegistry.findByRunToken(runToken).catch(() => null);
         if (!entry) return;
         obsLog.info(`[Socket] Run ${runToken} abandoned past grace — stopping the worker.`);
+        // Mark stop-requested (as the HTTP/socket stop paths do) so the worker's
+        // dropped-stop backstop can self-stop even if this bridged publish is lost.
+        await queueSupport.runRegistry.markStopRequested(runToken).catch(() => undefined);
         queueSupport.controlPublisher.publish('stop', runToken);
       })().catch((error) => obsLog.error('[Socket] Abandonment stop failed:', error));
     }, sessionManager.graceMs);

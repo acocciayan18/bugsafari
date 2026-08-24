@@ -35,15 +35,15 @@ function withSpecifics(advice: string, specifics?: FindingSpecifics): string {
     const p = specifics.payload.length > MAX_SPECIFIC_PAYLOAD ? `${specifics.payload.slice(0, MAX_SPECIFIC_PAYLOAD)}…` : specifics.payload;
     lines.push(`• Value that triggered it: ${p}`);
   }
-  if (specifics.location) lines.push(`• Starts in the code at: ${specifics.location}`);
   if (lines.length === 0) return advice;
   return `For this finding\n${lines.join('\n')}\n\n${advice}`;
 }
 
 /**
  * Finding-specific facts used to make the generic catalog remediation concrete —
- * naming the exact endpoint, field, payload, and source location instead of a bare
- * checklist (audit M1). Every field is optional; absent ones are simply omitted.
+ * naming the exact endpoint, field, and payload instead of a bare checklist (audit M1).
+ * Every field is optional; absent ones are simply omitted. Source locations are kept out:
+ * student-facing advice describes the target site, not the target app's internal code.
  */
 export interface FindingSpecifics {
   endpoint?: string;
@@ -51,8 +51,6 @@ export interface FindingSpecifics {
   statusCode?: number;
   field?: string;
   payload?: string;
-  /** Source-mapped `file:line` (or top stack frame) the fault originated at. */
-  location?: string;
 }
 
 export interface FindingEvidenceInput {
@@ -98,8 +96,10 @@ export function ensureFindingEvidence(input: FindingEvidenceInput): FindingEvide
 
   let reproductionPlaybook = input.reproductionPlaybook;
   if (reproductionPlaybook.length === 0) {
+    // No interaction was captured — do not present a specific step as if it were verified.
+    const where = input.context ? ` on ${input.context}` : ' on the affected page';
     reproductionPlaybook = [
-      `Step 1. ${input.context ? `Reproduce by repeating the interaction on ${input.context}` : 'Repeat the last interaction on the affected page'}. No earlier steps were recorded before this fault.`,
+      `Step 1. Unverified: no interaction was recorded before this fault. Reproduce by repeating your last action${where}.`,
     ];
     filled.push('reproductionPlaybook');
   }

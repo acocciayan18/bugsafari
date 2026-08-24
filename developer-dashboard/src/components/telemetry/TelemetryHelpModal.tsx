@@ -186,9 +186,6 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
             </motion.div>
           </div>
 
-          <div className="hidden shrink-0 border-t border-(--border-hairline) px-3 py-1.5 sm:block sm:px-4">
-            <p className="text-caption text-(--text-disabled)">Press ESC to close</p>
-          </div>
         </motion.div>
       )}
       </AnimatePresence>

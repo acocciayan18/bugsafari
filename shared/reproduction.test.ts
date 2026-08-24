@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import {
   resolveControlName,
+  isDescriptiveControlName,
   scrubSelectors,
   semanticFallbackFromSelector,
   describeConstraintBypass,
@@ -367,6 +368,40 @@ check('endpointLabel strips the tunnel/proxy/localhost host to METHOD /path', ()
   // Already-relative endpoints and bare verbs pass through cleanly.
   assert.equal(endpointLabel('DELETE', '/api/items/42'), 'DELETE /api/items/42');
   assert.equal(endpointLabel('POST', undefined), 'POST');
+});
+
+check('an API endpoint is never rendered as a UI control name (fabricated-control guard)', () => {
+  // resolveControlName rejects an endpoint label the same way it rejects a raw selector.
+  assert.equal(resolveControlName({ label: 'POST /api/counter' }), '<element>');
+  assert.equal(resolveControlName({ label: 'the control that sends POST /api/login-nosql' }), '<element>');
+  assert.equal(resolveControlName({ label: 'Login' }), 'Login');
+
+  // isDescriptiveControlName drops an endpoint culprit, keeps a real control name.
+  assert.equal(isDescriptiveControlName('POST /api/counter'), false);
+  assert.equal(isDescriptiveControlName('the control that sends POST /api/x'), false);
+  assert.equal(isDescriptiveControlName('Login'), true);
+
+  // describeTarget degrades an endpoint label to the noun, never quotes it as a control.
+  assert.equal(describeTarget('POST /api/counter', 'button'), 'the button');
+  assert.equal(describeTarget('the control that sends POST /api/login-nosql', 'control'), 'the control');
+  assert.equal(describeTarget('Login', 'button'), 'the "Login" button');
+  // A label that merely starts with a verb word is not an endpoint — unaffected.
+  assert.equal(describeTarget('Get Started', 'button'), 'the "Get Started" button');
+});
+
+check('narrateActionRecords never names a clicked control by an API endpoint', () => {
+  const rec: ActionRecord = {
+    timestamp: 't',
+    type: 'CLICK',
+    selector: '',
+    url: 'http://app.test/state-races',
+    elementLabel: 'the control that sends POST /api/counter',
+    elementKind: 'button',
+  };
+  const lines = narrateActionRecords([rec]);
+  assert.ok(lines.every((l) => !/POST \/api\/counter/.test(l)), 'no endpoint leaks into a step');
+  assert.ok(lines.every((l) => !/control that sends/i.test(l)));
+  assert.ok(lines.some((l) => /Click the button/.test(l)), 'degrades to the generic control noun');
 });
 
 console.log(`\n${passed} checks passed`);

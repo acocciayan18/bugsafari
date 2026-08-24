@@ -108,7 +108,7 @@ export function RowActionMenu({
         }}
         onKeyDown={handleKeyDown}
         disabled={disabled || isLoading}
-        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 ease-in-out ${
+        className={`flex h-11 w-11 shrink-0 items-center cursor-pointer justify-center rounded-full transition-colors duration-200 ease-in-out ${
           disabled || isLoading
             ? 'cursor-not-allowed opacity-40'
             : 'hover:bg-(--surface-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2'
