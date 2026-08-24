@@ -2,7 +2,7 @@
 // SavedEvaluationSafaris - Forensic History Page
 // ═══════════════════════════════════════════════════════════════════════
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
@@ -25,7 +25,52 @@ import { useTour } from '../../tour/useTour';
 import { buildHistoryTourSteps } from '../../tour/tourSteps';
 import { SORT_FIELD_LABELS, type SortField, type SeverityFilter, type EvaluationSafari } from '../../stores/history/types';
 import { INFILTRATION_PROFILE_CATALOG, isImportantSession, type InfiltrationProfileId, type SessionHistoryState } from '../../types';
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Calendar, ChevronLeft, ChevronRight, CircleQuestionMark, ClipboardCheck, Hash, Lock, RefreshCcw, Search, TriangleAlert, Undo2 } from 'lucide-react';
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Calendar, ChevronLeft, ChevronRight, CircleQuestionMark, ClipboardCheck, Fingerprint, Globe, Hash, Lock, RefreshCcw, Search, ShieldAlert, ShieldCheck, TriangleAlert, Undo2 } from 'lucide-react';
+
+// Severity theme — Critical (crimson), High (amber), Clear (green). Drives the card
+// accent stripe, the leading icon tile and the findings pill so level reads at a glance.
+const SEVERITY_META: Record<EvaluationSafari['severity'], {
+  label: string;
+  Icon: typeof ShieldAlert;
+  accent: string;
+  tile: string;
+  pill: string;
+}> = {
+  CRITICAL: {
+    label: 'Critical',
+    Icon: ShieldAlert,
+    accent: 'bg-[var(--status-critical-fg)]',
+    tile: 'border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] text-[var(--status-critical-fg)]',
+    pill: 'border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] text-[var(--status-critical-fg)]',
+  },
+  HIGH: {
+    label: 'High',
+    Icon: TriangleAlert,
+    accent: 'bg-[var(--status-warning-fg)]',
+    tile: 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]',
+    pill: 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]',
+  },
+  CLEAR: {
+    label: 'Clear',
+    Icon: ShieldCheck,
+    accent: 'bg-[var(--status-stable-fg)]',
+    tile: 'border-[var(--status-stable-border)] bg-[var(--status-stable-bg)] text-[var(--status-stable-fg)]',
+    pill: 'border-[var(--status-stable-border)] bg-[var(--status-stable-bg)] text-[var(--status-stable-fg)]',
+  },
+};
+
+// Plain-language finding count for the card pill.
+const findingsLabel = (n: number): string => (n === 0 ? 'No findings' : n === 1 ? '1 finding' : `${n} findings`);
+
+// Bordered metadata chip — run id, date, profile read as structured report fields.
+function MetaChip({ icon: Icon, mono = false, children }: { icon: typeof Hash; mono?: boolean; children: ReactNode }) {
+  return (
+    <span className={`inline-flex min-w-0 max-w-full items-center gap-1 rounded border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-2 py-0.5 text-xs text-[var(--text-secondary)] ${mono ? 'font-mono' : ''}`}>
+      <Icon className="h-3 w-3 shrink-0 text-[var(--text-tertiary)]" aria-hidden="true" />
+      <span className="truncate">{children}</span>
+    </span>
+  );
+}
 
 // Operator-facing profile label, or '' when the row predates profile recording.
 const profileLabel = (id?: InfiltrationProfileId): string =>
@@ -284,69 +329,69 @@ export default function SavedEvaluationSafaris() {
       </header>
 
       <main className="custom-scrollbar m-3 mb-5 flex-1 overflow-auto rounded-md border border-[var(--border-strong)] bg-[var(--surface-panel)] sm:m-4 sm:mb-5 lg:m-5 lg:mb-5">
-        <div className="border-b border-[var(--border-hairline)] px-4 py-4  sm:px-6">
-          {/* Title + controls stack into rows until there's width for a single line. */}
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
-              <div data-tour="history-search" className="relative min-w-0 sm:w-56 xl:w-72">
-                <div
-                  className="
-                    flex h-10 w-full items-center rounded-md
-                    border border-[var(--border-hairline)]
-                    bg-[var(--surface-app)]
-                    px-3 py-2
-                    shadow-sm
-                    transition-all duration-200
-                    focus-within:border-[var(--border-focus)]
-                    focus-within:ring-1
-                    focus-within:ring-[var(--border-focus)]
-                  "
-                >
+        <div className="sticky top-0 z-10 border-b border-[var(--border-hairline)] bg-[var(--surface-panel)] px-4 py-4 sm:px-6">
+          <div className="flex flex-col gap-4">
+            {/* Report heading with a live result count. */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <h1 className="text-[15px] font-bold tracking-tight text-[var(--text-primary)]">Forensic History</h1>
+                <p className="mt-0.5 text-[13px] text-[var(--text-secondary)]">Saved exploratory safaris and the findings they surfaced.</p>
+              </div>
+              {!isLoading && token && !error && (
+                <span className="shrink-0 rounded-md border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-2.5 py-1 font-mono text-xs font-medium text-[var(--text-secondary)]">
+                  {view.matchedCount} {view.matchedCount === 1 ? 'safari' : 'safaris'}
+                </span>
+              )}
+            </div>
+
+            {/* Search, sort and filters — stack on mobile, single line from lg up. */}
+            <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:gap-4">
+              <div data-tour="history-search" className="relative min-w-0 lg:w-64 xl:w-72">
+                <label htmlFor="history-search-input" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Search</label>
+                <div className="flex h-10 w-full items-center rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] px-3 shadow-sm transition-all duration-200 focus-within:border-[var(--border-focus)] focus-within:ring-1 focus-within:ring-[var(--border-focus)]">
                   <Search className="h-5 w-5 shrink-0 text-[var(--text-tertiary)]" />
                   <input
+                    id="history-search-input"
                     type="search"
                     aria-label="Search saved safaris by URL"
                     placeholder="Search URLs..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="
-                      ml-2 min-w-0 flex-1 bg-transparent
-                      text-base sm:text-[13px] text-[var(--text-primary)]
-                      placeholder:text-[var(--text-tertiary)]
-                      focus:outline-none
-                    "
+                    className="ml-2 min-w-0 flex-1 bg-transparent text-base text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none sm:text-[13px]"
                   />
                 </div>
               </div>
+
               {/* Sort controls — field picker + direction toggle */}
-              <div className="flex items-center gap-2">
-                <label htmlFor="history-sort-field" className="shrink-0 text-[13px] font-medium text-[var(--text-secondary)]">
-                  Sort by
-                </label>
-                <select
-                  id="history-sort-field"
-                  value={sortConfig.field}
-                  onChange={(e) => setSortConfig((prev) => ({ ...prev, field: e.target.value as SortField }))}
-                  className="h-8 min-w-0 flex-1 cursor-pointer rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] px-2 text-[13px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--border-focus)] sm:flex-none"
-                >
-                  {(Object.keys(SORT_FIELD_LABELS) as SortField[]).map((field) => (
-                    <option key={field} value={field}>{SORT_FIELD_LABELS[field]}</option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => setSortConfig((prev) => ({ ...prev, direction: prev.direction === 'asc' ? 'desc' : 'asc' }))}
-                  className="flex h-8 items-center gap-1 cursor-pointer rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] px-2 text-[13px] font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors"
-                  title={sortConfig.direction === 'asc' ? 'Ascending' : 'Descending'}
-                  aria-label={`Sort direction: ${sortConfig.direction === 'asc' ? 'ascending' : 'descending'}`}
-                >
-                  {sortConfig.direction === 'asc'
-                    ? <ArrowUpNarrowWide className="h-4 w-4" />
-                    : <ArrowDownWideNarrow className="h-4 w-4" />}
-                </button>
+              <div className="min-w-0">
+                <label htmlFor="history-sort-field" className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Sort by</label>
+                <div className="flex items-center gap-2">
+                  <select
+                    id="history-sort-field"
+                    value={sortConfig.field}
+                    onChange={(e) => setSortConfig((prev) => ({ ...prev, field: e.target.value as SortField }))}
+                    className="h-10 min-w-0 flex-1 cursor-pointer rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] px-2.5 text-[13px] text-[var(--text-primary)] focus:border-[var(--border-focus)] focus:outline-none sm:flex-none"
+                  >
+                    {(Object.keys(SORT_FIELD_LABELS) as SortField[]).map((field) => (
+                      <option key={field} value={field}>{SORT_FIELD_LABELS[field]}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => setSortConfig((prev) => ({ ...prev, direction: prev.direction === 'asc' ? 'desc' : 'asc' }))}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center cursor-pointer rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)]"
+                    title={sortConfig.direction === 'asc' ? 'Ascending' : 'Descending'}
+                    aria-label={`Sort direction: ${sortConfig.direction === 'asc' ? 'ascending' : 'descending'}`}
+                  >
+                    {sortConfig.direction === 'asc'
+                      ? <ArrowUpNarrowWide className="h-4 w-4" />
+                      : <ArrowDownWideNarrow className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
-              {/* Lifecycle + severity filters — compact segmented controls, grouped so they stay paired on wrap. */}
-              <div className="flex items-center gap-2">
+
+              {/* Lifecycle + severity filters — labeled segmented controls. */}
+              <div className="min-w-0">
+                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Bucket</span>
                 <SegmentedControl
                   dataTour="history-buckets"
                   ariaLabel="Filter by lifecycle state"
@@ -354,6 +399,9 @@ export default function SavedEvaluationSafaris() {
                   value={stateFilter}
                   onChange={setStateFilter}
                 />
+              </div>
+              <div className="min-w-0">
+                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Severity</span>
                 <SegmentedControl
                   dataTour="history-filters"
                   ariaLabel="Filter by severity"
@@ -366,20 +414,20 @@ export default function SavedEvaluationSafaris() {
           </div>
         </div>
 
-        <div data-tour="history-list" className="divide-y divide-[var(--border-hairline)]">
+        <div data-tour="history-list" className="flex flex-col gap-3 p-3 sm:p-4">
           {isLoading ? (
-            // Skeleton rows mirror the real row geometry, so nothing shifts on arrival.
-            <div role="status" aria-label="Loading history" className="divide-y divide-[var(--border-hairline)]">
+            // Skeleton cards mirror the real card geometry, so nothing shifts on arrival.
+            <div role="status" aria-label="Loading history" className="flex flex-col gap-3">
               {Array.from({ length: 6 }, (_, index) => (
-                <div key={index} className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
+                <div key={index} className="flex items-center gap-4 rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-panel)] py-4 pl-5 pr-4">
+                  <Skeleton className="hidden h-10 w-10 rounded-md sm:block" />
                   <div className="min-w-0 flex-1 space-y-2">
                     <Skeleton className="h-5 w-2/3 max-w-sm" />
-                    <Skeleton className="h-3.5 w-full max-w-md" />
+                    <Skeleton className="h-4 w-full max-w-md" />
                   </div>
-                  <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+                  <div className="flex shrink-0 items-center gap-3">
                     <Skeleton className="h-6 w-24" />
                     <Skeleton className="h-6 w-6 rounded-full" />
-                    <Skeleton className="hidden h-6 w-6 sm:block" />
                   </div>
                 </div>
               ))}
@@ -435,66 +483,61 @@ export default function SavedEvaluationSafaris() {
               )}
             </div>
           ) : (
-            view.page.map((evalItem, index) => (
-              <motion.div
-                key={evalItem.id}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                // Capped so a full page never front-loads a long wait on the last row.
-                transition={{ duration: 0.2, ease: 'easeOut', delay: Math.min(index, 8) * 0.025 }}
-              >
-                <div
-                  ref={(el) => { if (el) cardRefs.current.set(evalItem.id, el); else cardRefs.current.delete(evalItem.id); }}
-                  className="cursor-pointer transition-colors hover:bg-[var(--surface-hover)] active:bg-[var(--surface-inset)] bg-[var(--surface-panel)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--border-focus)]"
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`View forensic report for ${evalItem.targetUrl}`}
-                  onClick={() => handleViewReport(evalItem.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      handleViewReport(evalItem.id);
-                    }
-                  }}
+            view.page.map((evalItem, index) => {
+              const sev = SEVERITY_META[evalItem.severity];
+              return (
+                <motion.div
+                  key={evalItem.id}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  // Capped so a full page never front-loads a long wait on the last row.
+                  transition={{ duration: 0.2, ease: 'easeOut', delay: Math.min(index, 8) * 0.025 }}
                 >
-                  {/* Metadata wraps instead of overflowing; separators are drawn by the
-                      wrapper so a wrapped line never starts with a stray bullet. */}
-                  <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-base font-medium text-[var(--text-primary)]">
-                        {evalItem.targetUrl}
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-[var(--text-secondary)] sm:gap-x-3">
-                       <span className="inline-flex items-center truncate font-mono">
-                          <Hash className="mr-1 h-3 w-3 shrink-0 text-[var(--text-tertiary)]" aria-hidden="true" />
-                          <span>{evalItem.runId ?? evalItem.id}</span>
-                        </span>
-                        <span className="inline-flex items-center truncate font-mono">
-                          <Calendar className="mr-1 h-3 w-3 shrink-0 text-[var(--text-tertiary)]" aria-hidden="true" />
-                          <span>{evalItem.date}</span>
-                        </span>
+                  <div
+                    ref={(el) => { if (el) cardRefs.current.set(evalItem.id, el); else cardRefs.current.delete(evalItem.id); }}
+                    className="group relative flex items-center gap-3 overflow-hidden rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-panel)] py-3.5 pl-4 pr-3 transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--border-focus)] sm:gap-4 sm:py-4 sm:pl-5 sm:pr-4"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`View forensic report for ${evalItem.targetUrl}`}
+                    onClick={() => handleViewReport(evalItem.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleViewReport(evalItem.id);
+                      }
+                    }}
+                  >
+                    {/* Severity accent stripe + icon tile carry the level without relying on color alone. */}
+                    <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-1.5 ${sev.accent}`} />
+                    <div className={`hidden h-10 w-10 shrink-0 items-center justify-center rounded-md border sm:flex ${sev.tile}`}>
+                      <sev.Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+                    </div>
 
-                        {/* Which profile produced these findings — absent on rows saved before it was recorded. */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Globe className="h-3.5 w-3.5 shrink-0 text-[var(--text-tertiary)] sm:hidden" aria-hidden="true" />
+                        <span className="truncate text-[15px] font-semibold text-[var(--text-primary)]">{evalItem.targetUrl}</span>
+                      </div>
+                      {/* Structured report fields — wrap instead of overflowing. */}
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <MetaChip icon={Hash} mono>{evalItem.runId ?? evalItem.id}</MetaChip>
+                        <MetaChip icon={Calendar} mono>{evalItem.date}</MetaChip>
                         {profileLabel(evalItem.infiltrationProfile) && (
-                          <>
-                            <span aria-hidden="true">•</span>
-                            <span className="truncate">{profileLabel(evalItem.infiltrationProfile)}</span>
-                          </>
+                          <MetaChip icon={Fingerprint}>{profileLabel(evalItem.infiltrationProfile)}</MetaChip>
                         )}
-                        <span aria-hidden="true">•</span>
                         <TerminationBadge outcome={evalItem.outcome} status={evalItem.status} reason={evalItem.endedReason} />
                       </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-3 sm:gap-4">
-                      <div
-                        className={`flex h-6 items-center rounded border px-2 text-[13px] font-medium ${evalItem.severity === 'CRITICAL' || evalItem.severity === 'HIGH'
-                          ? 'border-[var(--status-critical-border)] text-[var(--status-critical-fg)]'
-                          : 'border-[var(--status-stable-border)] text-[var(--status-stable-fg)]'
-                          }`}
-                      >
-                        {evalItem.severityCount} {evalItem.severity}
+
+                    <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+                      <div className="flex flex-col items-end gap-1">
+                        <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-semibold ${sev.pill}`}>
+                          <sev.Icon className="h-3.5 w-3.5 sm:hidden" strokeWidth={1.75} aria-hidden="true" />
+                          {sev.label}
+                        </span>
+                        <span className="text-xs text-[var(--text-tertiary)]">{findingsLabel(evalItem.severityCount)}</span>
                       </div>
-                      {/* Row Action Menu — isolate clicks so they don't bubble to the row's navigation handler */}
+                      {/* Row Action Menu — isolate clicks so they don't bubble to the card's navigation handler */}
                       <div onClick={(e) => e.stopPropagation()}>
                         <RowActionMenu
                           recordId={evalItem.id}
@@ -508,18 +551,17 @@ export default function SavedEvaluationSafaris() {
                           onDeleteForever={() => setPurgeState({ isOpen: true, record: evalItem, isDeleting: false })}
                         />
                       </div>
-                      <div className="hidden h-6 w-6 items-center justify-center sm:flex">
-                        <ChevronRight className="h-4 w-4 text-[var(--text-secondary)]" />
-                      </div>
+                      <ChevronRight className="hidden h-4 w-4 shrink-0 text-[var(--text-tertiary)] transition-transform group-hover:translate-x-0.5 sm:block" aria-hidden="true" />
                     </div>
                   </div>
-                </div>
-              </motion.div>
-            ))
+                </motion.div>
+              );
+            })
           )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-[var(--border-hairline)] px-4 py-3 sm:px-6">
+        {!isLoading && token && !error && view.matchedCount > 0 && (
+        <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-[var(--border-hairline)] bg-[var(--surface-panel)] px-4 py-3 sm:px-6">
           <span className="font-mono text-[13px] text-[var(--text-secondary)]">
             SHOWING {view.showingStart}-{view.showingEnd} OF {view.matchedCount} SAFARIS
             {view.isFiltered && ` (FILTERED FROM ${view.totalCount})`}
@@ -567,6 +609,7 @@ export default function SavedEvaluationSafaris() {
             </button>
           </nav>
         </div>
+        )}
       </main>
 
       {/* Permanent-delete confirmation — itemizes exactly what is destroyed and, for

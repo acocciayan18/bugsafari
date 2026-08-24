@@ -596,7 +596,7 @@ function ResultStat({ label, value, title }: { label: string; value: string; tit
 function ReproducedSignal({ signal }: { signal: RegressionSignal }) {
   return (
     <li className="rounded-md border border-(--status-critical-border) bg-(--status-critical-bg) p-3">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="rounded bg-(--status-critical-fg) px-1.5 py-0.5 text-[13px] font-bold uppercase text-(--text-oninvert)">
           {signal.faultType}
         </span>
@@ -625,7 +625,7 @@ function VerificationResultModal({
   const titleId = `verify-result-${result.bugId}`;
 
   return (
-    <Modal isOpen onClose={onClose} titleId={titleId} maxWidthClassName="max-w-lg">
+    <Modal isOpen onClose={onClose} titleId={titleId} maxWidthClassName="max-w-2xl">
       {/* Accent header keyed to the verdict tone */}
       <div className={`flex items-center gap-3 rounded-t-lg px-4 py-4 text-(--text-oninvert) sm:px-5 ${meta.modalBar}`}>
         {meta.icon('h-6 w-6 shrink-0')}
