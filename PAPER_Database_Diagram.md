@@ -2,7 +2,7 @@
 
 ## What this shows
 
-BugSafari stores its data in MongoDB across eleven collections. The diagram below
+BugSafari stores its data in MongoDB across twelve collections. The diagram below
 presents each collection, the fields that matter for understanding the system, and the
 identifiers through which the collections refer to one another.
 
@@ -32,7 +32,12 @@ single run by selecting the records whose stored identifier matches that run.
 
 A user connects to many sessions, and a session connects to many supporting records. A
 user owns any number of sessions, holds any number of sign-in tokens, accumulates a
-history of learned scoring configurations, and may submit support tickets. A session, in
+history of learned scoring configurations, may submit support tickets, and may issue
+view-only share links over their runs. A share link is unusual among the run-related
+records: it stores the session's identifier only to group it in the owner's management
+list, and carries a frozen copy of the assembled report inside itself, so the link keeps
+serving that snapshot even after the origin session is edited, archived, trashed, or
+deleted. A session, in
 turn, produces the errors, console messages, network requests and telemetry events
 captured while it ran, is described by one performance-and-environment telemetry summary,
 is interpreted by a risk analysis, and records snapshots of the scoring configuration the
@@ -54,6 +59,7 @@ erDiagram
     USERS ||--o{ SESSIONS : "owns"
     USERS ||--o{ REFRESH_TOKENS : "holds"
     USERS ||--o{ BRAIN_CONFIGS : "learns"
+    USERS ||--o{ SHARE_LINKS : "shares"
     USERS |o--o{ SUPPORT_TICKETS : "submits"
 
     SESSIONS ||--o{ FORENSIC_ERRORS : "produces"
@@ -62,6 +68,7 @@ erDiagram
     SESSIONS ||--o{ TELEMETRY_EVENTS : "streams"
     SESSIONS ||--o{ BRAIN_CONFIGS : "snapshots"
     SESSIONS ||--o{ FORENSIC_ANALYSIS : "is summarised by"
+    SESSIONS ||--o{ SHARE_LINKS : "is snapshotted by"
     SESSIONS ||--|| FORENSIC_TELEMETRY : "measured by"
 
     USERS {
@@ -84,6 +91,8 @@ erDiagram
         String infiltrationProfile
         Array activeTestingTypes
         Boolean savedManually
+        Date archivedAt
+        Date deletedAt
         Number findingCount
         Object stats
         Object forensicTrace
@@ -104,6 +113,9 @@ erDiagram
         String selector
         String endpoint
         Number statusCode
+        String bugClass
+        String scenario
+        String cwe
         Date createdAt
     }
 
@@ -180,6 +192,7 @@ erDiagram
         String familyId
         Date expiresAt
         Date revokedAt
+        String revokedReason
     }
 
     SUPPORT_TICKETS {
@@ -190,6 +203,19 @@ erDiagram
         String subject
         String description
         String status
+        Date createdAt
+    }
+
+    SHARE_LINKS {
+        ObjectId _id PK
+        String token UK
+        ObjectId sessionId FK
+        ObjectId userId FK
+        String runId
+        String expiresIn
+        Date expiresAt
+        Date revokedAt
+        Object snapshot
         Date createdAt
     }
 ```
@@ -207,8 +233,9 @@ erDiagram
 | forensic_telemetry | Browser, screen size, duration and interaction counts. One document per run | `forensicRunId` |
 | forensic_analysis | The risk score and root cause worked out from the recorded errors | `forensicRunId` |
 | brain_configs | Snapshots of the scoring weights the engine learned | Looked up by `userId` together with `targetUrl` |
-| refreshtokens | Long-lived sign-in tokens, stored as hashes | `familyId` groups a chain of renewals |
+| refreshtokens | Long-lived sign-in tokens, stored as hashes | `familyId` groups a chain of renewals; `revokedReason` records why a token was retired |
 | support_tickets | Contact messages and feature requests | `userId` may be empty for a guest |
+| sharelinks | View-only public share links, each carrying a frozen report snapshot so the link stays stable after the origin run is edited or deleted | `token` is the unguessable URL credential; `sessionId`/`userId` scope the owner's management list; expiry TTL-reaps the row |
 
 ## Findings are stored inside the session
 
@@ -232,9 +259,18 @@ with an expiry index on `startedAt` that applies only to documents where `savedM
 is false. When an operator saves a run, that flag becomes true and the document drops out
 of the expiry rule, so saved history is kept indefinitely.
 
+A saved run is never removed abruptly. Deletion is a two-stage soft process recorded on
+the session itself. Parking a run stamps `archivedAt`, which lifts it out of the working
+list while keeping it fully recoverable. Removing a run stamps `deletedAt`, a tombstone
+that moves it to Trash, and the retention reaper permanently purges trashed runs only
+after a configured grace period. A permanent-delete action removes the run and its
+supporting records at once.
+
 MongoDB does not delete child documents when a parent expires, so a background job runs
 every hour, looks for supporting records whose session no longer exists, and removes them.
-Deleting a run from the history screen removes its supporting records immediately.
+Deleting a run from the history screen removes its supporting records immediately. Share
+links need no such sweep: each one carries its own report snapshot and expires on its own
+TTL, so a link outlives the run it came from and disappears on schedule regardless.
 
 ## Separation between operators
 
