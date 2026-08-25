@@ -19,6 +19,7 @@
     "db:sync-indexes": "tsx scripts/sync-indexes.ts",
     "db:migrate:log-timestamps": "tsx scripts/migrate-log-timestamps.ts",
     "db:purge:network-successes": "tsx scripts/purge-network-successes.ts",
+    "db:dedup:share-links": "tsx scripts/dedup-share-links.ts",
     "db:reap": "tsx scripts/reap-orphans.ts"
   },
   "dependencies": {

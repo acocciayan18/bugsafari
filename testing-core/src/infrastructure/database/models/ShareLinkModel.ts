@@ -45,5 +45,12 @@ const shareLinkSchema = new Schema<IShareLink>(
 shareLinkSchema.index({ userId: 1, sessionId: 1, createdAt: -1 });
 // Mongo reaps expired links automatically — expiry, not a cron, is the cleanup.
 shareLinkSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+// At most one non-revoked link per (user, record, ttl): the DB-level guarantee behind
+// create-or-reuse. Partial so revoked rows never collide; caps active rows per record
+// at the preset count and makes concurrent creates race-safe (loser hits E11000).
+shareLinkSchema.index(
+  { userId: 1, sessionId: 1, expiresIn: 1 },
+  { unique: true, partialFilterExpression: { revokedAt: null }, name: 'uniq_active_share_per_ttl' },
+);
 
 export const ShareLinkModel = model<IShareLink>('ShareLink', shareLinkSchema);

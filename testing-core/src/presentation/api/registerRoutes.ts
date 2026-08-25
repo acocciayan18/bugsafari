@@ -9,10 +9,19 @@ import type { AuthVault } from '../../infrastructure/queue/AuthVault.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { requireAuth, optionalAuth, type AuthRequest } from '../authentication/authMiddleware.js';
 import { verifyShareToken } from '../authentication/shareToken.js';
-import { startTestLimiter, analyzeLimiter, writeLimiter, readLimiter } from '../middleware/rateLimiter.js';
+import { startTestLimiter, analyzeLimiter, writeLimiter, readLimiter, shareCreateLimiter } from '../middleware/rateLimiter.js';
+import {
+  createOrReuseShareLink,
+  MAX_ACTIVE_SHARE_LINKS,
+  ShareLinkLimitError,
+  SnapshotUnavailableError,
+  DuplicateShareKeyError,
+  type ShareLinkStore,
+  type StoredShareLink,
+} from '../../application/services/shareLinkService.js';
 import { sessionManager } from '../../application/services/SessionManager.js';
 import { isReady as isDbReady } from '../../infrastructure/database/mongooseClient.js';
-import { randomUUID, randomBytes } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { ShareLinkModel } from '../../infrastructure/database/models/ShareLinkModel.js';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { forensicAnalysisRepository } from '../../infrastructure/database/repositories/ForensicAnalysisRepository.js';
@@ -58,7 +67,6 @@ import {
   clampTimebox,
   defaultOptimizationSettings,
   isAllowedShareTtl,
-  SHARE_TTL_MS,
   type ShareTtl,
   type ShareLinkView,
 } from '../../../../shared/types.js';
@@ -142,15 +150,6 @@ async function ensureRunId(doc: { _id: Types.ObjectId; runId?: string | null }):
   }
 }
 
-// Opaque, URL-safe share credential — 256 bits of entropy, unguessable.
-function generateShareToken(): string {
-  return randomBytes(32).toString('base64url');
-}
-
-// Owner cap: at most this many share links may be live (unexpired, unrevoked) per
-// record — bounds snapshot storage and keeps the management list finite.
-const MAX_ACTIVE_SHARE_LINKS = 10;
-
 // Sanitized owner-facing projection of a share link — never leaks the snapshot body.
 function toShareLinkView(link: {
   _id: Types.ObjectId; token: string; expiresIn: string; expiresAt: Date; createdAt: Date; revokedAt?: Date | null;
@@ -164,6 +163,47 @@ function toShareLinkView(link: {
     revokedAt: link.revokedAt ? link.revokedAt.toISOString() : null,
   };
 }
+
+const SHARE_LINK_VIEW_FIELDS = '_id token expiresIn expiresAt createdAt revokedAt';
+
+function isMongoDuplicateKey(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: number }).code === 11000;
+}
+
+// Mongo-backed ShareLinkStore. Active-link uniqueness per (user, session, ttl) is
+// enforced by the partial-unique index; upsertActive inserts or revives that one row.
+const mongoShareLinkStore: ShareLinkStore = {
+  async findActiveByTtl(key, ttl, now) {
+    const doc = await ShareLinkModel.findOne({
+      userId: new Types.ObjectId(key.userId), sessionId: new Types.ObjectId(key.sessionId),
+      expiresIn: ttl, revokedAt: null, expiresAt: { $gt: now },
+    }).sort({ createdAt: -1 }).select(SHARE_LINK_VIEW_FIELDS).lean();
+    return (doc as StoredShareLink | null) ?? null;
+  },
+  async countActive(key, now) {
+    return ShareLinkModel.countDocuments({
+      userId: new Types.ObjectId(key.userId), sessionId: new Types.ObjectId(key.sessionId),
+      revokedAt: null, expiresAt: { $gt: now },
+    });
+  },
+  async upsertActive(input) {
+    try {
+      const res = await ShareLinkModel.findOneAndUpdate(
+        {
+          userId: new Types.ObjectId(input.userId), sessionId: new Types.ObjectId(input.sessionId),
+          expiresIn: input.ttl, revokedAt: null,
+        },
+        { $set: { token: input.token, runId: input.runId, snapshot: input.snapshot, expiresAt: input.expiresAt } },
+        { new: true, upsert: true, includeResultMetadata: true, setDefaultsOnInsert: true },
+      );
+      const created = res.lastErrorObject?.updatedExisting === false;
+      return { link: res.value as unknown as StoredShareLink, created };
+    } catch (err) {
+      if (isMongoDuplicateKey(err)) throw new DuplicateShareKeyError();
+      throw err;
+    }
+  },
+};
 
 /**
  * Interpret the client-supplied Unified Infiltration Profile. Returns the profile
@@ -1410,10 +1450,11 @@ obsLog.info('[API] Saved to sessions:', result.message, '| runId:', result.runId
     }
   });
 
-  // Mint a view-only share link for an owned session. Persists a ShareLink carrying
-  // a FROZEN report snapshot (so the shared view never drifts from what was shared)
-  // and an owner-selected expiry — revocable, and Mongo-reaped at expiresAt.
-  app.post('/api/history/:id/share', writeLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+  // Mint (or reuse) a view-only share link for an owned session. Idempotent per
+  // (record, ttl): an already-active link is returned as-is (no duplicate row, no
+  // snapshot rebuild). Otherwise a ShareLink is created carrying a FROZEN report
+  // snapshot and an owner-selected expiry — revocable, and Mongo-reaped at expiresAt.
+  app.post('/api/history/:id/share', shareCreateLimiter, requireAuth, async (request: AuthRequest, response: Response): Promise<void> => {
     obsLog.info('[API] POST /api/history/:id/share called for:', request.params.id);
     try {
       const userId = request.userId;
@@ -1433,33 +1474,36 @@ obsLog.info('[API] Saved to sessions:', result.message, '| runId:', result.runId
       const owned = await SessionModel.findOne(ownerFilter).select('_id runId').lean();
       if (!owned) { response.status(404).json({ error: 'Record not found or access denied.' }); return; }
 
-      // Bound live links per record so snapshot storage can't grow without limit.
-      const activeCount = await ShareLinkModel.countDocuments({
-        userId: new Types.ObjectId(userId), sessionId: owned._id, revokedAt: null, expiresAt: { $gt: new Date() },
+      const runCode = (await ensureRunId(owned)) ?? owned.runId ?? '';
+      const result = await createOrReuseShareLink(
+        mongoShareLinkStore,
+        { userId, sessionId: String(owned._id) },
+        ttl,
+        runCode,
+        {
+          now: () => new Date(),
+          // Freeze the report exactly as it is now — only when actually creating.
+          buildSnapshot: async () => (await buildForensicReport(ownerFilter)) as Record<string, unknown> | null,
+        },
+      );
+
+      // `shareToken` retained for backward-compatible clients; `link` is the managed
+      // view; `reused` lets the UI message an existing link instead of a new one.
+      response.status(result.reused ? 200 : 201).json({
+        shareToken: result.link.token,
+        expiresIn: ttl,
+        reused: result.reused,
+        link: toShareLinkView(result.link as Parameters<typeof toShareLinkView>[0]),
       });
-      if (activeCount >= MAX_ACTIVE_SHARE_LINKS) {
+    } catch (error) {
+      if (error instanceof ShareLinkLimitError) {
         response.status(409).json({ error: `You already have ${MAX_ACTIVE_SHARE_LINKS} active links for this report. Revoke one before adding another.` });
         return;
       }
-
-      // Freeze the report exactly as it is now — the public read serves only this.
-      const snapshot = await buildForensicReport(ownerFilter);
-      if (!snapshot) { response.status(404).json({ error: 'Record not found or access denied.' }); return; }
-
-      const runCode = await ensureRunId(owned);
-      const created = await ShareLinkModel.create({
-        token: generateShareToken(),
-        sessionId: owned._id,
-        runId: runCode ?? owned.runId ?? '',
-        userId: new Types.ObjectId(userId),
-        expiresIn: ttl,
-        expiresAt: new Date(Date.now() + SHARE_TTL_MS[ttl]),
-        snapshot,
-      });
-
-      // `shareToken` retained for backward-compatible clients; `link` is the managed view.
-      response.status(201).json({ shareToken: created.token, expiresIn: ttl, link: toShareLinkView(created) });
-    } catch (error) {
+      if (error instanceof SnapshotUnavailableError) {
+        response.status(404).json({ error: 'Record not found or access denied.' });
+        return;
+      }
       obsLog.error('[API] Error in POST /api/history/:id/share:', error);
       response.status(500).json({ error: 'Failed to create a share link.' });
     }

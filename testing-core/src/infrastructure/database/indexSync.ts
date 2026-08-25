@@ -13,6 +13,7 @@ import { BrainConfigModel } from './models/BrainConfigModel.js';
 import { UserModel } from './models/UserModel.js';
 import { SupportTicketModel } from './models/SupportTicketModel.js';
 import { RefreshTokenModel } from './models/RefreshTokenModel.js';
+import { ShareLinkModel } from './models/ShareLinkModel.js';
 
 import { createLogger } from '../observability/logger.js';
 
@@ -31,6 +32,9 @@ export const INDEXED_MODELS: Model<unknown>[] = [
   UserModel,
   SupportTicketModel,
   RefreshTokenModel,
+  // Was unsynced: its TTL-reap + unique-token + active-uniqueness indexes only reach
+  // MongoDB through here (autoIndex:false in prod).
+  ShareLinkModel,
 ] as Model<unknown>[];
 
 export interface IndexSyncResult {

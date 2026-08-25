@@ -230,3 +230,12 @@ export const readLimiter = createRateLimiter({
   windowMs: 5 * 60_000,
   max: 300,
 });
+
+// Minting a share link freezes a full report snapshot — the costliest write here.
+// Tighter than the generic write budget so a click-storm can't fan out snapshots.
+export const shareCreateLimiter = createRateLimiter({
+  name: 'share:create',
+  windowMs: 10 * 60_000,
+  max: 30,
+  message: 'Too many share links created. Wait a moment before creating another.',
+});

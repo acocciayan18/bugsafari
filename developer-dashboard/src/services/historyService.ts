@@ -389,11 +389,12 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
  * Mint a view-only share link for a saved record. The server freezes a report
  * snapshot, persists a revocable link, and returns the opaque token plus the managed
  * link view. The caller builds the public `/shared/:token` URL from `shareToken`.
+ * `reused` is true when an already-active link for this ttl was returned as-is.
  */
 export async function createShareLink(
   recordId: string,
   expiresIn: ShareTtl,
-): Promise<{ shareToken: string; expiresIn: ShareTtl; link: ShareLinkView }> {
+): Promise<{ shareToken: string; expiresIn: ShareTtl; link: ShareLinkView; reused: boolean }> {
   assertValidRecordId(recordId);
   const response = await fetchWithAuthRetry(
     `/api/history/${encodeURIComponent(recordId)}/share`,
@@ -402,7 +403,8 @@ export async function createShareLink(
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, `Could not create a share link (${response.status})`));
   }
-  return (await response.json()) as { shareToken: string; expiresIn: ShareTtl; link: ShareLinkView };
+  const data = (await response.json()) as { shareToken: string; expiresIn: ShareTtl; link: ShareLinkView; reused?: boolean };
+  return { ...data, reused: data.reused === true };
 }
 
 /** List a record's share links (owner-only). Sanitized — no snapshot body. */

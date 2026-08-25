@@ -104,16 +104,22 @@ export function ShareLinkModal({ recordId, isOpen, onClose }: ShareLinkModalProp
     if (!recordId) return;
     setCreating(true);
     try {
-      const { shareToken, link } = await createShareLink(recordId, duration);
-      setLinks((prev) => [link, ...prev]);
+      const { shareToken, link, reused } = await createShareLink(recordId, duration);
+      // Dedupe by id so a reused/revived link updates in place instead of stacking.
+      setLinks((prev) => [link, ...prev.filter((l) => l.id !== link.id)]);
       setFreshUrl(buildShareUrl(shareToken));
-      toast.success('Share link created');
+      toast.success(reused ? 'Reused your existing active link' : 'Share link created');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "We couldn't create a share link. Try again.");
     } finally {
       setCreating(false);
     }
   };
+
+  // An active link already covers this duration — creating will reuse it, not duplicate.
+  const activeForDuration = links.find(
+    (l) => l.expiresIn === duration && deriveLinkState(l) === 'active',
+  );
 
   const copy = async (url: string, key: string) => {
     try {
@@ -191,10 +197,15 @@ export function ShareLinkModal({ recordId, isOpen, onClose }: ShareLinkModalProp
             disabled={creating || !recordId}
           >
             {creating
-              ? <><LoaderCircle className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" /> Creating</>
-              : <><Link2 className="h-4 w-4 shrink-0" aria-hidden="true" /> Create link</>}
+              ? <><LoaderCircle className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" /> {activeForDuration ? 'Reusing' : 'Creating'}</>
+              : <><Link2 className="h-4 w-4 shrink-0" aria-hidden="true" /> {activeForDuration ? 'Reuse link' : 'Create link'}</>}
           </Button>
         </div>
+        {activeForDuration && !creating && (
+          <p className="-mt-2 text-xs text-(--text-tertiary)">
+            An active link for this duration already exists. Creating will reuse it.
+          </p>
+        )}
 
         {/* Freshly minted link, featured for immediate copy */}
         {freshUrl && (
