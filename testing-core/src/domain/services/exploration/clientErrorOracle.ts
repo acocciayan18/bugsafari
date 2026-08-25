@@ -32,6 +32,15 @@ const MAX_ERROR_VIEW_CONTROLS = 4;
 // Sampled from the rendered body; bounded so a huge page costs nothing to check.
 const TEXT_SAMPLE_LIMIT = 4000;
 
+// Node-side ceiling on the sample evaluate. A wedged renderer main thread (heavy media
+// decode, render loop) leaves an un-timeouted page.evaluate parked forever, freezing the
+// step loop past the timebox. On expiry we abandon the sample and treat the view as
+// non-error rather than parking the iteration. Env-tunable.
+function sampleEvalDeadlineMs(): number {
+  const n = Number.parseInt(process.env.BUGSAFARI_CLIENT_ERROR_EVAL_DEADLINE_MS ?? '', 10);
+  return Number.isFinite(n) && n > 0 ? n : 2000;
+}
+
 interface ViewSample {
   text: string;
   textLength: number;
@@ -59,7 +68,7 @@ export async function detectClientErrorView(page: Page): Promise<ClientErrorVerd
 }
 
 async function sampleView(page: Page): Promise<ViewSample | null> {
-  return page
+  const work = page
     .evaluate((limit: number) => {
       const body = document.body;
       if (!body) return null;
@@ -71,4 +80,15 @@ async function sampleView(page: Page): Promise<ViewSample | null> {
       };
     }, TEXT_SAMPLE_LIMIT)
     .catch(() => null);
+  // Bound Node-side: a wedged renderer never resolves the evaluate. On timeout the
+  // abandoned work resolves to null (its late settle is swallowed by the .catch above).
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), sampleEvalDeadlineMs());
+  });
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }

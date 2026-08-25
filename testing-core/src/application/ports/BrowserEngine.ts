@@ -15,6 +15,12 @@ export interface BrowserEngine {
   resume?(): void;
   /** `reason` names the trigger so the terminal outcome is attributed to its real cause. */
   stop?(reason?: StopReason): Promise<void> | void;
+  /**
+   * Hard abort: close the browser WITHOUT flushing, for a graceful stop() that cannot
+   * settle (a step wedged in an un-timeouted evaluate leaves run() non-unwinding). Closing
+   * the context rejects every in-flight page call so the wedged loop unwinds. Idempotent.
+   */
+  forceDispose?(): Promise<void>;
   /** Flush in-flight fire-and-forget telemetry/DB writes; the Pause/Stop settlement barrier. */
   settlePendingTasks?(): Promise<void>;
   /** Get the accumulated active execution time in milliseconds. Only counts time when NOT paused. */

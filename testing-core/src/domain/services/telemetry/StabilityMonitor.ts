@@ -53,10 +53,13 @@ import {
 } from '../verification/index.js';
 import { MAX_SOFT_FAIL_BODY_BYTES } from '../verification/softFailBody.js';
 import { SourceMapResolver } from '../../../infrastructure/monitoring/sourceMapResolver.js';
-import { sampleMemoryPressure } from '../../../infrastructure/monitoring/resourceProbe.js';
+import { sampleMemoryPressure, sampleLiveMemory, type LiveMemory } from '../../../infrastructure/monitoring/resourceProbe.js';
 
 // ACTION marker for a harness-side (BugSafari OOM) abort — the dashboard shows it as a system alert, not a bug.
 const HARNESS_RESOURCE_ABORT = 'harness-resource-abort';
+// Proactive memory watchdog cadence: poll live cgroup usage during a run so it can stop
+// gracefully BEFORE the container OOM-kills the renderer (which only surfaces post-mortem).
+const MEMORY_WATCHDOG_TICK_MS = 2000;
 // ACTION marker for a demoted browser/GPU/driver crash — an environment fault, never a target finding.
 const HARNESS_CRASH_DEMOTED = 'harness-crash-demoted';
 
@@ -412,6 +415,9 @@ export class StabilityMonitor {
   private readonly pending = new Map<Request, { url: string; method: string; startMs: number; pageUrl: string; sweeps: number; nextSweepAtMs: number }>();
   private readonly confirming = new Set<string>();
   private watchdogTimer?: ReturnType<typeof setInterval>;
+  // Proactive memory watchdog: polls live container memory; latch-fires one harness abort.
+  private memoryWatchdogTimer?: ReturnType<typeof setInterval>;
+  private memoryAbortFired = false;
   // Wall-clock start per request, for duration when Playwright timing is unavailable.
   private readonly requestStartTimes = new WeakMap<Request, number>();
   // One source-map resolver per page so its decoded-map cache survives across faults.
@@ -1070,6 +1076,35 @@ export class StabilityMonitor {
       message: `Renderer crashed with no memory pressure (${pressure.detail}) — treated as a browser/GPU/driver environment fault, not a target defect. Demoted, not reported as a finding.`,
     });
     this.deps.abortForHarnessFault('environment', pressure.detail);
+  }
+
+  // Proactive memory watchdog. Unlike handleRendererCrash (which samples memory only AFTER
+  // the renderer is already OOM-killed), this polls live cgroup usage during the run and
+  // aborts gracefully once usage crosses the watchdog threshold — before the container kills
+  // the browser. Latch-once: the first crossing fires a single harness-resource abort, the
+  // same terminating path the crash handler uses. `sample` is injectable for tests.
+  public armMemoryWatchdog(intervalMs: number = MEMORY_WATCHDOG_TICK_MS, sample: () => LiveMemory = sampleLiveMemory): void {
+    if (this.memoryWatchdogTimer) clearInterval(this.memoryWatchdogTimer);
+    this.memoryAbortFired = false; // fresh watch — a reused monitor instance must re-arm the latch
+
+    this.memoryWatchdogTimer = setInterval(() => {
+      if (this.memoryAbortFired || this.deps.isEngineStopping()) return;
+      const mem = sample();
+      if (!mem.overThreshold) return;
+      this.memoryAbortFired = true;
+      this.disposeMemoryWatchdog();
+      this.deps.telemetry.emit('ACTION', {
+        actionExecuted: HARNESS_RESOURCE_ABORT,
+        message: `BugSafari is approaching its memory limit and is stopping this run to stay safe (${mem.detail}). This is a harness limit, not a target defect. Actions: raise the container memory limit, lower run concurrency, or free host memory, then re-run.`,
+      });
+      this.deps.abortForHarnessFault('memory', mem.detail);
+    }, intervalMs);
+    this.memoryWatchdogTimer.unref?.();
+  }
+
+  public disposeMemoryWatchdog(): void {
+    if (this.memoryWatchdogTimer) clearInterval(this.memoryWatchdogTimer);
+    this.memoryWatchdogTimer = undefined;
   }
 
   // Stable per-request id, allocated lazily so only requests we actually observe cost one.
@@ -2186,10 +2221,17 @@ export class StabilityMonitor {
       this.deps.isEngineStopping(),
     );
 
+    // Proactive memory watchdog: run-global, disposed with the heartbeat cleanup so a hung
+    // renderer can't outlive it. Stops the run before the container OOM-kills the browser.
+    this.armMemoryWatchdog();
+
     // ️ Setup isolated browser console listener for dedicated Console Tab in dashboard
     // Captures actual browser console.log/warn/info/error without mixing with backend telemetry
     await setupBrowserConsoleListener(page, this.deps.telemetry.gateway);
 
-    return cleanup;
+    return () => {
+      cleanup();
+      this.disposeMemoryWatchdog();
+    };
   }
 }

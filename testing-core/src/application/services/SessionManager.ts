@@ -39,6 +39,8 @@ export interface EngineControl {
   // `reason` names the stop trigger so the run's terminal outcome is attributed
   // to its real cause instead of defaulting to operator intent.
   stop?: (reason?: StopReason) => Promise<void> | void;
+  // Hard abort: close the browser without flushing when a graceful stop can't settle.
+  forceDispose?: () => Promise<void>;
   // Settlement barrier: flush in-flight telemetry/DB writes before the state settles.
   settlePendingTasks?: () => Promise<void>;
   getElapsedActiveTimeMs?: () => number;
@@ -991,6 +993,11 @@ export class SessionManager implements TelemetryRecorder {
   public forceRelease(message: string, runToken?: string): void {
     if (!this.run || this.isStaleSettle(runToken, 'forceRelease')) return;
     obsLog.error(`[SessionManager] Force-releasing run ${this.run.runToken}: ${message}`);
+    // Hard-abort the browser: a stop that never settled means run() is wedged in an
+    // un-timeouted evaluate, so the browser (and its memory-buffering media) is still
+    // open. Closing it here rejects the in-flight call so the loop finally unwinds;
+    // freeing only the admission slot would leak the browser to the OOM cap.
+    void this.run.engine.forceDispose?.();
     this.emitFailure(message);
     this.endRun('CRASHED', runToken);
     this.onRelease?.();

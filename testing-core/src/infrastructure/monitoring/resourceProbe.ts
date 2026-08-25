@@ -35,7 +35,45 @@ function cgroupRatio(): { ratio: number; used: number; limit: number } | null {
   return { ratio: used / limit, used, limit };
 }
 
+// Proactive watchdog threshold — kept BELOW the crash-time PRESSURE_RATIO so a run stops
+// gracefully before the container OOM-kills the renderer. Read per-call so it is env-tunable.
+function watchdogRatio(): number {
+  const n = Number(process.env.BUGSAFARI_HARNESS_MEM_WATCHDOG_RATIO);
+  return Number.isFinite(n) && n > 0 && n <= 1 ? n : 0.85;
+}
+
 const mb = (bytes: number): number => Math.round(bytes / 1024 / 1024);
+
+export interface LiveMemory {
+  overThreshold: boolean;
+  usedRatio: number;
+  detail: string;
+}
+
+// Live container memory (cgroup memory.current, NOT peak) for proactive polling DURING a
+// run — unlike sampleMemoryPressure(), which reads peak at crash time. `read` is injectable
+// for tests. Degrades to host memory when no cgroup limit is present.
+export function sampleLiveMemory(read: (path: string) => number | null = readNum): LiveMemory {
+  const ratio = watchdogRatio();
+  const rssMb = mb(process.memoryUsage().rss);
+  const limit = read(`${CGROUP}/memory.max`);
+  const used = read(`${CGROUP}/memory.current`);
+  if (limit && limit > 0 && used !== null) {
+    const usedRatio = used / limit;
+    return {
+      overThreshold: usedRatio >= ratio,
+      usedRatio,
+      detail: `container memory ${mb(used)}MB/${mb(limit)}MB (${Math.round(usedRatio * 100)}%), worker RSS ${rssMb}MB`,
+    };
+  }
+  const total = totalmem();
+  const usedRatio = total > 0 ? (total - freemem()) / total : 0;
+  return {
+    overThreshold: usedRatio >= ratio,
+    usedRatio,
+    detail: `host memory ${Math.round(usedRatio * 100)}% used, worker RSS ${rssMb}MB`,
+  };
+}
 
 // Sample memory pressure at crash time to separate a harness OOM from a target-app crash.
 export function sampleMemoryPressure(): MemoryPressure {

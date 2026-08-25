@@ -53,6 +53,8 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
   private activeContext: import('playwright').BrowserContext | null = null;
   private activeBrowser: import('playwright').Browser | null = null;
   private isStopping = false;
+  // One-shot latch so a hard forceDispose() closes the browser exactly once per run.
+  private forceDisposed = false;
   // Set by stop() while a run() is in flight; tags the in-flight run so its
   // catch block can tell "expected teardown from stop()" apart from a real bug.
   private cancelledDuringRun = false;
@@ -142,7 +144,26 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     }
   }
 
+  // Hard abort for a graceful stop that cannot settle: a step wedged in an
+  // un-timeouted page.evaluate leaves run() non-unwinding, so engine.stop()'s
+  // settlePendingTasks() hangs and the browser (with its memory-buffering video)
+  // is never closed. This bypasses the flush and closes context+browser directly;
+  // every in-flight page call then rejects with "Target closed", so the wedged loop
+  // unwinds via its lifecycle-error path. Idempotent against run()'s own teardown.
+  public async forceDispose(): Promise<void> {
+    if (this.forceDisposed) return;
+    this.forceDisposed = true;
+    this.cancelledDuringRun = true;
+    this.stopReason ??= 'harness-resource';
+    this.activeEngine?.stop(this.stopReason);
+    this.activeEngine = null;
+    obsLog.error('[PlaywrightBrowserEngine] Force-disposing browser — closing context+browser without flush.');
+    await this.cleanupResources();
+  }
+
   public async run(targetUrl: string, telemetry: TelemetryGateway, optimizationSettings?: OptimizationSettings, selectedScenarios?: TestingTypeId[], userId?: string, targetAuth?: TargetAuthConfig): Promise<RunResult> {
+    // Fresh run: a prior run's force-dispose latch must not block this run's teardown.
+    this.forceDisposed = false;
     // Fresh run: any cancellation tag belongs to a previous run and must not
     // leak forward and swallow a genuine failure in this one.
     this.cancelledDuringRun = false;
@@ -209,6 +230,11 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
           '--disable-features=Translate,BackForwardCache,AcceptCHFrame,MediaRouter',
           '--metrics-recording-only',
           '--mute-audio',
+          // Block autoplay so an embedded/target <video> never streams+buffers on its
+          // own — unmanaged playback drives renderer RSS to the container OOM cap. Media
+          // requests still flow (finders observe them); a video only plays if the engine
+          // deliberately clicks it.
+          '--autoplay-policy=user-gesture-required',
           '--no-first-run',
           '--no-default-browser-check',
         ],
@@ -219,7 +245,10 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
       obsLog.info('[PlaywrightBrowserEngine] Attempting fallback launch with minimal args...');
 
       try {
-        this.activeBrowser = await launchBounded(['--no-sandbox', '--disable-setuid-sandbox'], 'fallback');
+        this.activeBrowser = await launchBounded(
+          ['--no-sandbox', '--disable-setuid-sandbox', '--mute-audio', '--autoplay-policy=user-gesture-required'],
+          'fallback',
+        );
       } catch (fallbackError) {
         obsLog.error('[PlaywrightBrowserEngine] Fallback browser launch failed:', fallbackError);
         throw fallbackError;

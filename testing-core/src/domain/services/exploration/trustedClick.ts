@@ -24,6 +24,9 @@ export interface ClickOutcome {
 // per-step budget (verifyTraversal already owns a 3s settle window afterwards).
 const TRUSTED_TIMEOUT_MS = 1500;
 const FORCED_TIMEOUT_MS = 700;
+// Node-side ceiling on the last-rung dispatch evaluate. A wedged renderer never
+// resolves it; on timeout we treat the control as unresolved instead of parking the step.
+const DISPATCH_TIMEOUT_MS = 1500;
 
 function firstLine(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -34,7 +37,7 @@ function firstLine(error: unknown): string {
 // refuses (zero-size, hit-test-invisible, transformed overlays) — still far
 // closer to a user gesture than a bare `node.click()`.
 async function dispatchPointerSequence(page: Page, selector: string): Promise<boolean> {
-  return page
+  const work = page
     .evaluate((sel) => {
       const node = document.querySelector(sel) as HTMLElement | null;
       if (!node) return false;
@@ -53,6 +56,15 @@ async function dispatchPointerSequence(page: Page, selector: string): Promise<bo
       return true;
     }, selector)
     .catch(() => false);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), DISPATCH_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 // Click `selector` through the actuation ladder: trusted -> forced -> dispatched.

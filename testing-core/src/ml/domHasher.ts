@@ -31,6 +31,15 @@ const DEFAULT_CONFIG: DomHasherConfig = {
   urlAware: false,
 };
 
+// Node-side ceiling on the fingerprint evaluate. A memory-choked / wedged renderer
+// main thread leaves an un-timeouted page.evaluate parked forever, which freezes the
+// step loop past the timebox (it never reaches a termination gate). On expiry the
+// evaluate is abandoned and the caller degrades to its deterministic sentinel. Env-tunable.
+function hashEvalDeadlineMs(): number {
+  const n = Number.parseInt(process.env.BUGSAFARI_HASH_EVAL_DEADLINE_MS ?? '', 10);
+  return Number.isFinite(n) && n > 0 ? n : 3000;
+}
+
 /**
  * Normalize a URL into its route-identity path: `pathname + hash`, with the query
  * string deliberately dropped. The hash fragment is retained because SPA
@@ -173,8 +182,10 @@ export class DomHasher {
     let signatures: { structure: string; interactive: string };
     try {
       // The evaluate body is passed as a STRING so no bundler/transpiler helpers
-      // leak into the browser context. `cap` is injected as a literal.
-      signatures = await page.evaluate<{ structure: string; interactive: string }>(`
+      // leak into the browser context. `cap` is injected as a literal. Bounded
+      // Node-side (boundedEvaluate) so a wedged renderer main thread can't park this
+      // hot-path evaluate past the timebox — on timeout the catch degrades to the sentinel.
+      signatures = await this.boundedEvaluate<{ structure: string; interactive: string }>(page, `
         (function () {
           // Feed-sibling normalizer — injected verbatim so browser + Node tests share it.
           ${collapseChildSignatures.toString()}
@@ -307,6 +318,25 @@ export class DomHasher {
       ? sha256(structure + ':' + interactive + ':' + routePath)
       : sha256(structure + ':' + interactive);
     return { structure, interactive, routePath, combined };
+  }
+
+  /**
+   * Run a page.evaluate bounded by a Node-side deadline. A wedged renderer never
+   * resolves the evaluate; on timeout we reject so hashCompound's catch degrades to
+   * the sentinel, and the abandoned work's late rejection is swallowed.
+   */
+  private async boundedEvaluate<T>(page: Page, script: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const work = page.evaluate<T>(script);
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('DomHasher.hashCompound() evaluate timed out')), hashEvalDeadlineMs());
+    });
+    try {
+      return await Promise.race([work, deadline]);
+    } finally {
+      if (timer) clearTimeout(timer);
+      void work.catch(() => undefined);
+    }
   }
 
   /**
