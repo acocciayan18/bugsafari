@@ -42,6 +42,17 @@ export interface RuntimeFinding {
 
 const MAX_TRACKED = 200;
 
+// A leading run of console format specifiers React logs before an error ("%o %s %s TypeError…").
+// Stripped from the DISPLAYED message so it never surfaces in the finding; only the leading run
+// is removed, so a genuine interior "%s" in an app's own message is left intact.
+const CONSOLE_FORMAT_PREFIX_RE = /^(?:\s*%[oOsdifcj])+\s*/;
+
+// Remove a leading console-format-specifier run from a runtime message. Idempotent and safe on
+// messages that have none (page errors, plain console text).
+export function stripConsoleFormat(message: string): string {
+  return message.replace(CONSOLE_FORMAT_PREFIX_RE, '');
+}
+
 // Canonical JS-error clause — the part of a runtime message that survives framework
 // wrappers (React's "%o %s %s" console format, an ErrorBoundary's "[label] render
 // failed:") and instance noise. When present it ALONE keys the dedup signature, so one
@@ -131,7 +142,7 @@ export class RuntimeStabilityFinder {
   // Classify one observation. isNew is true only on the first sighting of a signature;
   // repeats return the same bugId with an incremented occurrence so the caller can suppress them.
   public classify(o: RuntimeObservation): { finding: RuntimeFinding; isNew: boolean } {
-    const message = (o.message ?? '').toString().trim() || 'Unknown runtime error';
+    const message = stripConsoleFormat((o.message ?? '').toString().trim()) || 'Unknown runtime error';
     const subtype = this.detectSubtype(o.source, message, o.stack, o.contractCorrelated);
     const signature = this.normalizeSignature(subtype, message);
 

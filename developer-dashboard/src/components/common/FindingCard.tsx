@@ -152,7 +152,7 @@ export default function FindingCard({
       {/* Surface-specific enrichment (live AI diagnosis) sits between the facts and the evidence */}
       {children && <div className="px-4">{children}</div>}
 
-      <div className="pb-3">
+      <div>
         <FindingEvidence view={view} showBypass={showBypass} aiFix={aiFix} sessionId={sessionId} />
       </div>
     </div>

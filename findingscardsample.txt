@@ -1,125 +1,164 @@
-NoSQL Injection
-High
-
--943
-Status
-CONFIRMED 90%
-Message
-the input field accepted an unexpected value the server did not treat as plain text. Injected value: 
-Element
-input field
-Reproduction Playbook
-
-1
-open
-Navigate to /nosql-injection
-2
-type
-Type "" into the input field
-Route
-/nosql-injection
-·
-Element
-input field
-Suggested Fix
-
-For this finding
-• Field: input field
-• Value that triggered it: 
-
-Suggested fix: stop query operators from reaching the database
-1. Check and cast input types before building a query, and reject fields that arrive as objects
-2. Use parameterized query builders and turn off operator interpolation
-3. Add a test that injects {"$ne":""} and expects the request to be rejected
-NoSQL Injection
-High
--943
-Status
-CONFIRMED 90%
-Message
-the input field accepted a NoSQL operator value the server executed instead of treating as text, which can bypass the login or authorization check. Injected value: {"$ne":null}
-Element
-input field
-Reproduction Playbook
-
-1
-open
-Navigate to /nosql-injection
-2
-type
-Type "{"$ne":null}" into the input field
-Route
-/nosql-injection
-·
-Element
-input field
-Suggested Fix
-
-For this finding
-• Address: POST /api/login-nosql (HTTP 200)
-• Field: input field
-• Value that triggered it: {"$ne":null}
-
-Suggested fix: stop query operators from reaching the database
-1. Check and cast input types before building a query, and reject fields that arrive as objects
-2. Use parameterized query builders and turn off operator interpolation
-3. Add a test that injects {"$ne":""} and expects the request to be rejected
-SPA State Race Condition
-High
--362
-Status
-CONFIRMED 100%
-Message
-POST /api/login-nosql was sent again 0ms later while the first was still running, and both requests succeeded, so the action ran twice.
-Element
-Login
-button.danger
-Reproduction Playbook
-
-1
-open
-Navigate to /nosql-injection
-2
-click
-Click the "Login" control, repeated 2 times in quick succession
-Route
-/nosql-injection
-·
-Element
-"Login" control
-Suggested Fix
-
-The control fired the same state-changing request twice with no debounce or disable-on-submit guard.
-Suggested fix: guard against overlapping actions
-1. Disable or debounce the control after the first interaction until it finishes
-2. Make each state change safe to run more than once under overlapping events
-3. Add a test that fires a fast burst and confirms only one result is committed
-SPA State Race Condition
+Runtime Stability Exception
 Medium
--362
+CWE-248
 Status
-NEEDS VERIFICATION 70%
+NEEDS VERIFICATION 74%
 Message
-POST /api/login-nosql was sent again 2ms later while the first was still running.
-API Endpoint
-POST /api/login-nosql
+product search failed: Cannot read properties of undefined (reading 'length')
+Element
+clearance
 Reproduction Playbook
 
 1
 open
-Navigate to /nosql-injection
+Navigate to /products
 2
 click
-Click the "the control that sends POST /api/login-nosql" control, repeated 2 times in quick succession
+Click the "Add" button, repeated 2 times in quick succession
 Route
-/nosql-injection
+/products
+·
+Section
+"All products"
 ·
 Element
-"the control that sends POST /api/login-nosql" control
+"Add" button
+3
+type
+Type "<script>eval(atob("YWxlcnQoIlhTUyIp"))</script>" into the "Search" field
+Route
+/products
+·
+Element
+"Search" field
+4
+submit
+Press Enter to submit the form
+Route
+/products?search=%3Cscript%3Eeval%28atob%28%22YWxlcnQoIlhTUyIp%22%29%29%3C%2Fscript%3E
+5
+click
+Click the "clearance" button. Result: the app moved to /products?search=%3Csvg+onload%3Dalert%28document.domain%29%3E&category=clearance
+Route
+/products?search=%3Csvg+onload%3Dalert%28document.domain%29%3E
+·
+Sidebar
+"Category"
+·
+Element
+"clearance" button
+6
+click
+Click the "clearance" button
+Route
+/products?search=%3Csvg+onload%3Dalert%28document.domain%29%3E&category=clearance
+·
+Sidebar
+"Category"
+·
+Element
+"clearance" button
+7
+bypass
+Remove the browser validation from the "Mutated" network request, enter "https://supervision-castle-nation-sen.trycloudflare.com/api/products?search=%3Csvg+onload%3Dalert%28document.domain%29%3E&category=clearance", then submit the form
+Route
+/products?search=%3Csvg+onload%3Dalert%28document.domain%29%3E&category=clearance
+·
+Element
+"Mutated" network request
 Suggested Fix
 
-The control fired the same state-changing request twice with no debounce or disable-on-submit guard.
-Suggested fix: guard against overlapping actions
-1. Disable or debounce the control after the first interaction until it finishes
-2. Make each state change safe to run more than once under overlapping events
-3. Add a test that fires a fast burst and confirms only one result is committed
+The code read a field on a value that was `undefined`, so the object was never set before it was used. Guard it with `obj?.field` or check `if (obj)` first. Often the data has not loaded yet.
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
+
+
+Runtime Stability Exception
+Medium
+CWE-248
+Status
+NEEDS VERIFICATION 74%
+Message
+%o %s %s TypeError: Cannot read properties of null (reading 'name')
+Reproduction Playbook
+
+1
+open
+Navigate to /products?category=home
+2
+rapid
+Click 5 controls at the same time: the "Go" button, the "home" button, the "clearance" button, the "All" button and the "☕" link
+Route
+/products?category=home
+Suggested Fix
+
+The code read a field on `null`, usually a missing page element (`querySelector` returned null) or an empty API result. Confirm the lookup found something before using it.
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
+
+
+
+Infinite Loading
+Medium
+CWE-400
+Status
+NEEDS VERIFICATION
+Message
+GET https://supervision-castle-nation-sen.trycloudflare.com/api/products/p9 (PENDING_TIMEOUT) never finished, so the screen stayed stuck loading.
+API Endpoint
+GET https://supervision-castle-nation-sen.trycloudflare.com/api/products/p9
+Reproduction Playbook
+
+1
+open
+Navigate to /cart
+2
+rapid
+Click 5 controls at the same time: the "Quantity" field, the "Add to cart" button, the "Buy now" button, the "Shop" link and the "home" link
+Route
+/cart
+Suggested Fix
+
+The request failed or never came back, and the screen never left its loading state.
+Suggested fix: give loading a way out
+1. Add a request timeout (AbortController or an axios timeout) so a stuck call cannot wait forever
+2. Show an error or retry screen on failure instead of leaving the spinner up
+3. Clear the loading flag in a finally block so both success and error paths stop loading
+
+
+
+Boundary Stress Failure
+Medium
+CWE-400
+Status
+NEEDS VERIFICATION 44%
+Message
+Network request failed: GET /api/products/p10 (net::ERR_FAILED) — Injected network fault. The application failed to handle the simulated failure properly.
+API Endpoint
+GET /api/products/p10
+Reproduction Playbook
+
+1
+open
+Navigate to /products?category=home
+2
+rapid
+Click 5 controls at the same time: the "home" button, the "All" button, the "clearance" button, the "☕" link and the "🧶" link
+Route
+/products?category=home
+Suggested Fix
+
+For this finding
+• Address: GET /api/products/p10
+
+Suggested fix: handle slow, cancelled, and overwhelming requests
+1. Add a request timeout and cancel in-flight calls that are superseded
+2. Add retry with backoff plus a visible error and timeout state for the user
+3. Guard the call site against empty, slow, or cancelled replies, and debounce bursts
+

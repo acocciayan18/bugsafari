@@ -10,7 +10,7 @@ const MAX_PAYLOAD_LENGTH = 2048;
 const MAX_NAMED_TARGETS = 5;
 const REDACTED = '«redacted»';
 
-export type StepKind = 'navigation' | 'click' | 'input' | 'submit' | 'bypass' | 'macro' | 'step';
+export type StepKind = 'navigation' | 'click' | 'input' | 'submit' | 'bypass' | 'macro' | 'network' | 'step';
 
 export interface ElementLabelSource {
   accessibleName?: string;
@@ -549,6 +549,16 @@ export function describeNetworkSabotage(mode: string): string {
   return `Make the next API request fail (${collapse(mode).toLowerCase() || 'aborted'}) to test the app's error handling`;
 }
 
+// Honest reproduction step for an injected network fault (NetworkSaboteur) — a deliberate
+// abort/delay/mutation, never a form bypass. Names the affected endpoint as a clean path
+// (tunnel host + query stripped), never as a typed value the operator must enter.
+export function describeNetworkFault(mode?: string, endpoint?: string): string {
+  const label = collapse(mode).toLowerCase() || 'aborted';
+  const path = endpoint ? routePath(endpoint).split('?')[0] : '';
+  const target = path.startsWith('/') ? `the ${path} request` : 'the next API request';
+  return `Make ${target} fail (${label}) to test the app's error handling`;
+}
+
 /** Navigation traversal step — clicking a navigation control to discover new state. */
 export function describeNavigation(label: string, kind?: string): string {
   return `Click ${describeTarget(label, kind ?? 'control')} to reach a new part of the app`;
@@ -720,6 +730,8 @@ export function kindForRecord(type: ActionType): StepKind {
       return 'bypass';
     case 'MACRO':
       return 'macro';
+    case 'NETWORK':
+      return 'network';
     case 'HOVER':
     case 'CLICK':
     default:
@@ -733,6 +745,7 @@ export function classifyNarrativeLine(text: string): StepKind {
   if (/^(Open|Go to|Navigate to|Switch to) /i.test(s)) return 'navigation';
   if (/^(Type |Enter a value|Select )/i.test(s)) return 'input';
   if (/^(Press Enter to submit|Submit the form)/i.test(s) || /\bto submit the form$/i.test(s)) return 'submit';
+  if (/^Make .*request fail/i.test(s)) return 'network';
   if (/^Remove /i.test(s)) return 'bypass';
   if (/^(Click|Hover|Press|Starting from)/i.test(s)) return 'click';
   return 'step';
@@ -780,9 +793,7 @@ function describeSingleAction(record: ActionRecord): string {
         : 'Repeat the recorded rapid-interaction burst';
 
     case 'NETWORK':
-      return record.payload
-        ? `${describeNetworkSabotage(rawLabel)} (affected request: ${record.payload})`
-        : describeNetworkSabotage(rawLabel);
+      return describeNetworkFault(rawLabel, record.payload);
 
     case 'HOVER':
       return `Hover over ${describeTarget(rawLabel, kind || 'element')}`;
@@ -851,7 +862,7 @@ export function narrateActionRecords(records: ActionRecord[]): string[] {
 // reproduction is byte-identical before and after it is persisted.
 // ─────────────────────────────────────────────────────────────
 
-export type ReproductionStepActionType = 'click' | 'input' | 'navigation' | 'submit' | 'bypass' | 'macro';
+export type ReproductionStepActionType = 'click' | 'input' | 'navigation' | 'submit' | 'bypass' | 'macro' | 'network';
 
 // Structural step shape — the common subset of the DB `ActionStepTrace` and the
 // dashboard `ForensicActionStep`; each side casts the result to its own mirror.
@@ -885,7 +896,7 @@ export function mapReproductionActionType(type: ActionType): ReproductionStepAct
     case 'NAVIGATE':   return 'navigation';
     case 'FORM_SUBMIT': return 'submit';
     case 'SUBMIT':     return 'bypass';
-    case 'NETWORK':    return 'bypass';
+    case 'NETWORK':    return 'network';
     case 'HOVER':      return 'click';
     case 'MACRO':      return 'macro';
     default: {

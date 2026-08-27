@@ -29,6 +29,8 @@ import {
   describeStepLocation,
   stepContainerField,
   endpointLabel,
+  describeNetworkFault,
+  mapReproductionActionType,
 } from './reproduction.js';
 import type { ActionRecord } from './types/bug.js';
 
@@ -402,6 +404,45 @@ check('narrateActionRecords never names a clicked control by an API endpoint', (
   assert.ok(lines.every((l) => !/POST \/api\/counter/.test(l)), 'no endpoint leaks into a step');
   assert.ok(lines.every((l) => !/control that sends/i.test(l)));
   assert.ok(lines.some((l) => /Click the button/.test(l)), 'degrades to the generic control noun');
+});
+
+check('a NETWORK record maps to its own honest kind, never a form bypass', () => {
+  assert.equal(mapReproductionActionType('NETWORK'), 'network');
+});
+
+check('describeNetworkFault names a clean endpoint path, never a typed value or tunnel host', () => {
+  assert.equal(
+    describeNetworkFault('Mutated', 'https://abc.trycloudflare.com/api/products?x=1'),
+    "Make the /api/products request fail (mutated) to test the app's error handling",
+  );
+  // No endpoint known → generic phrasing, still not a bypass.
+  assert.equal(
+    describeNetworkFault('Aborted'),
+    "Make the next API request fail (aborted) to test the app's error handling",
+  );
+  // Default mode when none given.
+  assert.equal(
+    describeNetworkFault(undefined, '/api/pay'),
+    "Make the /api/pay request fail (aborted) to test the app's error handling",
+  );
+});
+
+check('a NETWORK step never renders as a form bypass or leaks the endpoint URL as a value', () => {
+  const rec: ActionRecord = {
+    timestamp: 't',
+    type: 'NETWORK',
+    selector: '',
+    url: 'http://app.test/products',
+    elementLabel: 'Mutated',
+    elementKind: 'network request',
+    payload: 'https://abc.trycloudflare.com/api/products?search=x&category=clearance',
+  };
+  const lines = narrateActionRecords([rec]);
+  const joined = lines.join('\n');
+  assert.ok(!/Remove the browser validation/i.test(joined), joined);
+  assert.ok(!/trycloudflare/.test(joined), 'tunnel host must not leak into the step');
+  assert.ok(!/enter "/i.test(joined), 'endpoint URL must never be rendered as a typed value');
+  assert.ok(lines.some((l) => /Make the \/api\/products request fail \(mutated\)/.test(l)), joined);
 });
 
 console.log(`\n${passed} checks passed`);

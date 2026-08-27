@@ -9,6 +9,7 @@ import {
   describeConstraintBypass,
   describeInputInjection,
   describeFormSubmission,
+  describeNetworkFault,
   describeOutcome,
   describeReplayMacro,
   describeRouteStep,
@@ -34,6 +35,7 @@ const CHIP_CLASS: Record<StepKind, string> = {
   submit: 'bg-(--status-neutral-bg) text-(--status-neutral-fg) border border-(--border-strong)',
   bypass: 'bg-(--status-neutral-bg) text-(--status-neutral-fg) border border-(--border-strong)',
   macro: 'bg-(--status-neutral-bg) text-(--status-neutral-fg)',
+  network: 'bg-(--status-neutral-bg) text-(--status-neutral-fg) border border-(--border-strong)',
   step: 'bg-(--surface-inset) text-(--text-tertiary)',
 };
 
@@ -46,6 +48,7 @@ const CHIP_LABEL: Record<StepKind, string> = {
   submit: 'submit',
   bypass: 'bypass',
   macro: 'rapid',
+  network: 'network',
   step: 'step',
 };
 
@@ -59,6 +62,7 @@ const DEFAULT_NOUN: Record<StepKind, string> = {
   submit: 'button',
   bypass: 'field',
   macro: 'control',
+  network: 'request',
   step: 'element',
 };
 
@@ -76,6 +80,7 @@ function kindFor(actionType: string): StepKind {
     case 'input': case 'TYPE': case 'INPUT': return 'input';
     case 'submit': case 'FORM_SUBMIT': return 'submit';
     case 'bypass': case 'SUBMIT': return 'bypass';
+    case 'network': case 'NETWORK': return 'network';
     case 'click': case 'CLICK': case 'HOVER': return 'click';
     case 'macro': case 'MACRO': return 'macro';
     default: return 'step';
@@ -111,11 +116,16 @@ export function humanizeActionStep(
   const where: StepWhere = {
     route: kind === 'navigation' || isApiEndpoint(step.url) ? '' : routePath(step.url),
     container: stepContainerField(step.containerLabel, step.containerKind),
-    element: kind === 'navigation' || kind === 'macro' || kind === 'submit' ? '' : stripLeadingThe(describeTarget(label, noun)),
+    element: kind === 'navigation' || kind === 'macro' || kind === 'submit' || kind === 'network' ? '' : stripLeadingThe(describeTarget(label, noun)),
   };
   if (kind === 'macro') {
     const action = step.macro ? describeReplayMacro(step.macro) : 'Repeat the recorded rapid-interaction burst';
     return { kind, instruction: `${action}${observed}`, payloadDisplay: '', where };
+  }
+  if (kind === 'network') {
+    // An injected network fault names its affected endpoint from the payload, never as a
+    // typed value — so no separate payload chip and the label is the sabotage mode.
+    return { kind, instruction: `${describeNetworkFault(label, step.payloadText)}${observed}`, payloadDisplay: '', where };
   }
   const action =
     kind === 'navigation' ? (step.url ? describeRouteStep(step.url) : `Open ${describeTarget(label, noun)}`)

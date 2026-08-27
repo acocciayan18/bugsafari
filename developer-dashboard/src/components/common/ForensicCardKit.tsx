@@ -88,7 +88,7 @@ export const ExpandableCodeBlock = ({
     <div>
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-2 px-4 py-3 text-(--text-secondary) hover:bg-(--surface-hover) transition-colors text-[13px] font-semibold border-b border-(--border-hairline)"
+        className="w-full flex items-center gap-2 px-4 py-3 cursor-pointer text-(--text-secondary) hover:bg-(--surface-hover) transition-colors text-[13px] font-semibold"
       >
         <span className="shrink-0 text-[13px]">{isExpanded ? '▼' : ''}</span>
         <span className="min-w-0 text-left">{title}</span>

@@ -1,11 +1,17 @@
 import { BUG_CATALOG } from '../../bugs/knowledgeBase/bugCatalog.js';
 import { STRONG_LOADING_SELECTORS } from '../../bugs/knowledgeBase/signalPatterns.js';
+import { endpointLabel, routePath } from '../../../../shared/reproduction.js';
 import type { FaultConfidence, VerificationStatus } from '../../../../shared/types/verification.js';
 
 const STRONG_SET = new Set<string>(STRONG_LOADING_SELECTORS);
 
 // A duplicate finding never re-registers; cap the ledger so a pathological run stays bounded.
 const MAX_REPORTED = 100;
+
+// A PENDING_TIMEOUT must stay continuously unresolved this long before it is a hang and not merely a
+// slow/lazy/cold-start load. The second watchdog sweep (~18s pending) is the first to clear it, so a
+// request that resolves in the 8-15s gray zone leaves the pending registry and never re-arms.
+const SUSTAINED_PENDING_MS = 15_000;
 
 // Background telemetry / analytics / beacon endpoints. A hang or failure on one of these
 // never blocks the user-facing UI — the app fired it fire-and-forget — so a PENDING_TIMEOUT
@@ -86,6 +92,9 @@ export interface ApiHangDefect {
   severity: 'HIGH' | 'MEDIUM';
   confidence: FaultConfidence;
   verificationStatus: VerificationStatus;
+  // Numeric score (0..1) mirroring the confidence tier, so the finding card shows a
+  // verification percentage for hangs like every other reported finding.
+  confidenceScore: number;
   cwe: string;
   message: string;
   endpoint: string;
@@ -124,8 +133,11 @@ export class ApiHangFinder {
     // PENDING_TIMEOUT is the weakest trigger (the request has not even failed): demand a SECOND
     // corroborating signal beyond the spinner — the request still hanging at confirm time, inputs
     // blocked, or an active stress probe. Failed/5xx triggers carry that second signal already.
-    if (o.trigger === 'PENDING_TIMEOUT' && !(o.stillPending === true || o.confirm.inputsBlocked || o.scenarioActive)) {
-      return null;
+    if (o.trigger === 'PENDING_TIMEOUT') {
+      if (!(o.stillPending === true || o.confirm.inputsBlocked || o.scenarioActive)) return null;
+      // Sustained-duration evidence: a slow/lazy/cold-start load resolves before this — only a
+      // request unresolved this long is stuck, not slow (req: no slow-page false positives).
+      if ((o.pendingMs ?? 0) < SUSTAINED_PENDING_MS) return null;
     }
 
     const method = (o.method ?? '').toString().toUpperCase() || 'GET';
@@ -158,11 +170,16 @@ export class ApiHangFinder {
 
   // Grade a confirmed hang. Failed/5xx are firm HIGH/SIGNAL; a PENDING_TIMEOUT is only HIGH when a
   // strong second signal (blocked inputs or stress probe) corroborates it, else MEDIUM/NEEDS_VERIFICATION.
-  private grade(o: HangObservation, corroborated: boolean): Pick<ApiHangDefect, 'severity' | 'confidence' | 'verificationStatus'> {
+  private grade(o: HangObservation, corroborated: boolean): Pick<ApiHangDefect, 'severity' | 'confidence' | 'verificationStatus' | 'confidenceScore'> {
     if (o.trigger === 'PENDING_TIMEOUT' && !corroborated) {
-      return { severity: 'MEDIUM', confidence: 'INFERRED', verificationStatus: 'NEEDS_VERIFICATION' };
+      return { severity: 'MEDIUM', confidence: 'INFERRED', verificationStatus: 'NEEDS_VERIFICATION', confidenceScore: 0.5 };
     }
-    return { severity: 'HIGH', confidence: 'SIGNAL', verificationStatus: corroborated ? 'CONFIRMED' : 'NEEDS_VERIFICATION' };
+    return {
+      severity: 'HIGH',
+      confidence: 'SIGNAL',
+      verificationStatus: corroborated ? 'CONFIRMED' : 'NEEDS_VERIFICATION',
+      confidenceScore: corroborated ? 0.8 : 0.65,
+    };
   }
 
   private bugIdFor(method: string, url: string, trigger: HangTrigger): string {
@@ -180,12 +197,15 @@ export class ApiHangFinder {
   }
 
   private build(bugId: string, method: string, o: HangObservation, occurrence: number): ApiHangDefect {
-    const endpoint = o.url ?? '';
+    // Clean, domain-stripped endpoint: an ephemeral tunnel/proxy host (e.g. *.trycloudflare.com)
+    // must never leak into the finding's message or its API Endpoint field.
+    const cleanRef = endpointLabel(method, o.url);       // "GET /api/products/p9"
+    const endpoint = routePath(o.url).split('?')[0];     // "/api/products/p9"
     const gapMs = Math.max(0, o.confirmGapMs || 0);
     const detail = this.triggerDetail(o);
     const indicators = o.confirm.indicators.join(', ');
     const evidence = [
-      `Failed or hanging request: ${method} ${endpoint} (${o.trigger}${detail})`,
+      `Failed or hanging request: ${cleanRef} (${o.trigger}${detail})`,
       `The screen still showed loading after ${gapMs}ms: ${indicators || '(none named)'}`,
       'No error or timeout screen appeared when it failed',
     ];
@@ -201,8 +221,9 @@ export class ApiHangFinder {
       severity: grade.severity,
       confidence: grade.confidence,
       verificationStatus: grade.verificationStatus,
+      confidenceScore: grade.confidenceScore,
       cwe: BUG_CATALOG.INFINITE_LOADING.cwe,
-      message: `[Stuck loading] ${method} ${endpoint} (${o.trigger}) never finished, so the screen stayed stuck loading.`,
+      message: `[Stuck loading] ${cleanRef} (${o.trigger}) never finished, so the screen stayed stuck loading.`,
       endpoint,
       method,
       trigger: o.trigger,

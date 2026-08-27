@@ -1504,7 +1504,7 @@ export class StabilityMonitor {
           for (const el of leaves) {
             if (el.children.length > 0) continue;
             const text = (el.textContent || '').trim();
-            if (text.length > 0 && text.length <= 40 && /loading|please wait/i.test(text) && visible(el)) {
+            if (text.length > 0 && text.length <= 40 && /\bloading\b|\bplease wait\b/i.test(text) && visible(el)) {
               textLoading = true;
               break;
             }
@@ -1564,6 +1564,7 @@ export class StabilityMonitor {
         stepIndex: reproduction.actions.length,
         origin: 'TARGET_APP',
         confidence: defect.confidence,
+        confidenceScore: defect.confidenceScore,
         verificationStatus: defect.verificationStatus,
         corroborated: defect.corroborated,
       },
@@ -1770,7 +1771,7 @@ export class StabilityMonitor {
     this.deps.onApiFailure();
 
     const reportUrl = this.deps.getLastKnownUrl() || evidence.page.url();
-    const headline = `${faultMessage} — ${routing.reason}`;
+    const headline = `${faultMessage} · ${routing.reason}`;
     // Stable id keyed on the fault signature (class/status + method + endpoint), so
     // every repeat of the same failing endpoint collapses into ONE finding instead of
     // flooding the ledger with per-request instances (raw instances stay on the Network tab).

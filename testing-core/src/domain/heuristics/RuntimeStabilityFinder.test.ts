@@ -150,4 +150,19 @@ check('MAX_TRACKED cap bounds the ledger', () => {
   assert.equal(f.totalFindings(), 200);
 });
 
+check('React console format specifiers are stripped from the DISPLAYED message', () => {
+  const f = new RuntimeStabilityFinder();
+  const { finding } = f.classify(obs({ source: 'CONSOLE', message: "%o %s %s TypeError: Cannot read properties of null (reading 'name')" }));
+  assert.ok(finding.message.startsWith('[Read a field on a value that was null]'), finding.message);
+  assert.ok(!/%[osdifc]/.test(finding.message), `format specifiers must not leak: ${finding.message}`);
+  // The core error text is preserved after the label prefix.
+  assert.ok(finding.message.includes("Cannot read properties of null (reading 'name')"), finding.message);
+});
+
+check('an interior %s inside real message text is left intact', () => {
+  const f = new RuntimeStabilityFinder();
+  const { finding } = f.classify(obs({ source: 'CONSOLE', message: 'Failed to format %s value in report' }));
+  assert.ok(finding.message.includes('%s value in report'), finding.message);
+});
+
 console.log(`\n${passed} passed`);
