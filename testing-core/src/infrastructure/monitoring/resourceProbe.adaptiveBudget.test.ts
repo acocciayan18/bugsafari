@@ -97,4 +97,17 @@ check('sampleAdaptiveMemory maps abort tier to overThreshold', () => {
   assert.equal(ok.overThreshold, false);
 });
 
-console.log(`\n${passed}/8 assertions passed.`);
+check('abort/degrade/ok tiers follow the configured cgroup limit (1600/2600/3600)', () => {
+  // Lone run + huge host free ⇒ the cgroup ceiling binds, so the tier is purely ratio-of-limit.
+  for (const L of [1600, 2600, 3600]) {
+    const abort = resolveRunMemoryBudget({ read: cg(Math.round(0.86 * L), L), hostFree: free(8000), activeRuns: 1 });
+    assert.equal(abort.tier, 'abort', `L=${L} @0.86`);
+    assert.equal(abort.cgroupLimitBytes, L * MB, `L=${L} ceiling`);
+    const degrade = resolveRunMemoryBudget({ read: cg(Math.round(0.8 * L), L), hostFree: free(8000), activeRuns: 1 });
+    assert.equal(degrade.tier, 'degrade', `L=${L} @0.80`);
+    const ok = resolveRunMemoryBudget({ read: cg(Math.round(0.5 * L), L), hostFree: free(8000), activeRuns: 1 });
+    assert.equal(ok.tier, 'ok', `L=${L} @0.50`);
+  }
+});
+
+console.log(`\n${passed}/9 assertions passed.`);

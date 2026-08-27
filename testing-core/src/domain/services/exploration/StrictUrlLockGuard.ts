@@ -2,6 +2,7 @@ import type { Page, Route, Request } from 'playwright';
 import type { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
 import { canonicalHost, isWithinTargetSite, isPrivateTargetUrl, isProtectedTargetUrl } from '../../../../../shared/url.js';
 import type { OptimizationSettings } from '../../../../../shared/types.js';
+import { installMediaRoute } from './mediaRoute.js';
 
 // Only real application navigations are subject to confinement. Every other
 // scheme is a browser-internal / non-navigational transition (blank frames,
@@ -205,6 +206,8 @@ export class StrictUrlLockGuard {
     // immediately-armed guard installs it now.
     if (this.armed) await this.installClientSandbox(page);
     await this.installRouteInterceptor(page);
+    // Registered AFTER the guard so it runs FIRST and fallback()s non-media back to the guard — boundary/SSRF stays intact.
+    await installMediaRoute(page);
   }
 
   // ── Layer 1: network-level main-frame navigation blocking ──────────────────

@@ -69,6 +69,11 @@ x-shared-env: &shared-env
   BUGSAFARI_MEM_SAFETY_RATIO: ${BUGSAFARI_MEM_SAFETY_RATIO:-0.9}
   BUGSAFARI_MEM_DEGRADE_RATIO: ${BUGSAFARI_MEM_DEGRADE_RATIO:-0.75}
   BUGSAFARI_MEM_HOST_FREE_FLOOR_MB: ${BUGSAFARI_MEM_HOST_FREE_FLOOR_MB:-350}
+  # Media routing (mediaRoute.ts): abort heavy sub-resources to cut Chromium memory.
+  # Images preserved. Set BUGSAFARI_MEDIA_ROUTE=0 to disable; edit the CSV to add types
+  # (e.g. media,font,image) to trade image fidelity for headroom on huge image sites.
+  BUGSAFARI_MEDIA_ROUTE: ${BUGSAFARI_MEDIA_ROUTE:-1}
+  BUGSAFARI_MEDIA_ROUTE_BLOCK_TYPES: ${BUGSAFARI_MEDIA_ROUTE_BLOCK_TYPES:-media,font}
 
 x-logging: &default-logging
   driver: json-file
@@ -178,15 +183,17 @@ services:
       replicas: ${WORKER_REPLICAS:-2}
       resources:
         limits:
-          # HARD physical backstop only. The adaptive memory watchdog (resourceProbe.ts)
-          # sizes each run's real budget from live host-free memory minus reserved pools,
-          # so a lone run on an idle box may climb toward this ceiling while two busy
-          # workers each abort well below it — the box is over-committed on paper
-          # (1600x2 + api 768 + redis 192 + caddy 256 = 4416 > 4096) but limits are
-          # ceilings, not reservations, and the watchdog + HOST_FREE_FLOOR prevent both
-          # workers realizing their ceilings at once. Raise this ONLY with the adaptive
-          # layer deployed. Node heap 384MB + Chromium 400-600MB + overhead ~150MB.
-          memory: 1600m
+          # HARD physical backstop only, configurable via WORKER_MEM_LIMIT (1600m/2600m/3600m).
+          # The adaptive memory watchdog (resourceProbe.ts) reads this cgroup limit and sizes
+          # each run's real budget from live host-free memory minus reserved pools, so a lone
+          # run on an idle box may climb toward this ceiling while two busy workers each abort
+          # well below it. At the 2600m default with WORKER_REPLICAS=2 a 4GB box is heavily
+          # over-committed on paper (2600x2 + api 768 + redis 192 + caddy 256 = 6416 > 4096),
+          # but limits are ceilings not reservations, and the watchdog + HOST_FREE_FLOOR + peer
+          # reservation prevent both workers realizing their ceilings at once. For heavy targets,
+          # give a lone run the full ceiling by raising host RAM or setting WORKER_REPLICAS=1.
+          # Node heap stays 384MB (line above) — the extra GB is for Chromium, not Node.
+          memory: ${WORKER_MEM_LIMIT:-2600m}
           # Under-provisioned vs 1.0 on purpose so a Chromium burst never starves
           # the api event loop (control latency is operator-visible; exploration is
           # a background batch workload where a small slowdown is invisible).
