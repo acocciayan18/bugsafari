@@ -51,6 +51,8 @@ export type {
   ReproductionVerdict,
   // In-run verdict upgrade (patches a streamed finding's severity/message in place)
   FindingUpgrade,
+  // In-run authoritative repeat-count update (patches a streamed finding's ×N by bugId)
+  FindingOccurrencePatch,
   // Session recovery & reconnection
   ActiveSessionSnapshot,
   TimeSyncPayload,
@@ -92,6 +94,7 @@ export {
   ACCESSIBILITY_BANNER_THRESHOLD,
   REPRODUCTION_VERDICT_EVENT,
   FINDING_UPGRADE_EVENT,
+  FINDING_OCCURRENCE_EVENT,
   QUEUE_SUBSCRIBE_EVENT,
   QUEUE_UPDATE_EVENT,
   TERMINATION_COPY,

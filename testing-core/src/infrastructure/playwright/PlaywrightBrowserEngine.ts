@@ -521,6 +521,7 @@ export class PlaywrightBrowserEngine implements BrowserEngine {
     payloadUsed: string;
     advice: string;
     timestamp: Date;
+    occurrences?: number;
   }> {
     // While a run is live, read straight from the active engine (this run's own
     // memory); only fall back to the captured snapshot after teardown.

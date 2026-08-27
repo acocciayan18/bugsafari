@@ -151,6 +151,7 @@ export function bindGatewayToRunStore(gateway: EngineGateway): void {
     });
     gateway.onReproductionVerdict((verdict) => s().applyReproductionVerdict(verdict));
     gateway.onFindingUpgrade((upgrade) => s().applyFindingUpgrade(upgrade));
+    gateway.onFindingOccurrence((patch) => s().applyFindingOccurrence(patch));
     gateway.onUrlChanged((url) => s().setCurrentUrl(url));
 
     // Hot paths are throttled; everything else stays immediate for control latency.

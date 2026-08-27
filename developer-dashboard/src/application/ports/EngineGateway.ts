@@ -1,4 +1,4 @@
-import type { AccessibilityFinding, ActiveSessionSnapshot, BrowserConsoleMessage, FindingUpgrade, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, ReproductionVerdict, SessionHistoryEntry, StopReason, TargetAuthConfig, TelemetryEvent, TimeSyncPayload, ExplorationRunConfig } from '../../types';
+import type { AccessibilityFinding, ActiveSessionSnapshot, BrowserConsoleMessage, FindingOccurrencePatch, FindingUpgrade, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, ReproductionVerdict, SessionHistoryEntry, StopReason, TargetAuthConfig, TelemetryEvent, TimeSyncPayload, ExplorationRunConfig } from '../../types';
 
 // Re-export the single shared console contract so existing port consumers
 // (runStore, gatewayBinding, SocketConnectionManager) keep their import path.
@@ -41,6 +41,8 @@ export interface EngineGateway {
   onReproductionVerdict(handler: (verdict: ReproductionVerdict) => void): void;
   /** Late patch raising an already-received finding's severity/message to a stronger verdict. */
   onFindingUpgrade(handler: (upgrade: FindingUpgrade) => void): void;
+  /** Authoritative repeat-count update for an already-received finding — patches its ×N by bugId. */
+  onFindingOccurrence(handler: (patch: FindingOccurrencePatch) => void): void;
   /** Dedicated WCAG stream — feeds the isolated Accessibility tab only. */
   onAccessibility(handler: (finding: AccessibilityFinding) => void): void;
   onLiveFrame(handler: (base64Jpeg: string) => void): void;

@@ -4,6 +4,7 @@ import type {
   AccessibilityFinding,
   ActiveSessionSnapshot,
   BrowserConsoleMessage,
+  FindingOccurrencePatch,
   FindingUpgrade,
   ForensicCrashReport,
   IncidentReport,
@@ -614,7 +615,22 @@ export class SessionManager implements TelemetryRecorder {
         // reconnect replays the upgraded severity/message, not the first weak sighting.
         this.applyFindingUpgrade(payload as FindingUpgrade);
         break;
+      case 'finding-occurrence':
+        // Fold the authoritative running total into the buffered card so a reconnect
+        // replays the current ×N, not the first-sighting count of 1.
+        this.applyFindingOccurrence(payload as FindingOccurrencePatch);
+        break;
     }
+  }
+
+  /** Fold an authoritative occurrence count into the buffered incident/report it belongs to. */
+  private applyFindingOccurrence(patch: FindingOccurrencePatch): void {
+    const run = this.run;
+    if (!run || !patch?.bugId) return;
+    const incident = run.incidents.find((entry) => entry.bugId === patch.bugId);
+    if (incident) incident.occurrences = patch.occurrences;
+    const report = run.reports.find((entry) => entry.bugId === patch.bugId);
+    if (report) report.occurrences = patch.occurrences;
   }
 
   /** Fold a late severity/verdict upgrade into the buffered incident it belongs to. */

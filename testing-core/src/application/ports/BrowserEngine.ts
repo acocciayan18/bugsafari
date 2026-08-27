@@ -37,6 +37,7 @@ export interface BrowserEngine {
     payloadUsed: string;
     advice: string;
     timestamp: Date;
+    occurrences?: number;
   }>;
   getConfig?(): BrowserEngineConfig;
   /** Distinct routes/URLs visited during the most recent run — session-global page set for history metadata. */

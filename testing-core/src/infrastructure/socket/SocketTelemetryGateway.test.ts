@@ -168,4 +168,36 @@ function emitEveryChannel(gateway: SocketTelemetryGateway): void {
   assert.ok(incident.stateFingerprint, 'synthesized incident forwards the fault-time state fingerprint');
 }
 
+// ── ROOT CAUSE: the synthesized twin must carry bugId + occurrences ──────────────
+// Omitting them made the twin an identity-less orphan the dashboard counted as a SECOND
+// occurrence (the false ×2). It must inherit the origin finding's identity and count.
+{
+  const captured: Array<Record<string, unknown>> = [];
+  const io: RoomEmitter = {
+    emit() { return true; },
+    to() {
+      return {
+        emit(event: string, ...args: unknown[]): boolean {
+          if (event === 'incident-report') captured.push(args[0] as Record<string, unknown>);
+          return true;
+        },
+      };
+    },
+  };
+  const gateway = new SocketTelemetryGateway(io);
+  gateway.setRoom('run:token-A');
+  gateway.emitForensicReport({
+    bugId: 'runtime-generic_exception-abc',
+    occurrences: 1,
+    timestamp: new Date().toISOString(),
+    reason: 'crash',
+    url: 'https://target.test/login',
+    breadcrumbs: [],
+  } as never);
+
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0].bugId, 'runtime-generic_exception-abc', 'twin shares its origin finding bugId (collapses to one card)');
+  assert.equal(captured[0].occurrences, 1, 'twin carries the authoritative count, so one fault stays ×1');
+}
+
 console.log('✓ SocketTelemetryGateway — room scoping, unrouted drops, no fleet-wide broadcast, forensic timeline forwarded');

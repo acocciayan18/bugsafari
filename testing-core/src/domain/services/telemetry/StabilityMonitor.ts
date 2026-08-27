@@ -855,6 +855,9 @@ export class StabilityMonitor {
       // during a burst, where naming one sibling would backfill a wrong culprit.
       const culprit = burstAmbiguous ? undefined : this.culpritSelectorAt(faultAtMs);
       if (culprit) this.deps.upgradeFindingCulprit(finding.bugId, culprit);
+      // A verified recurrence of an already-reported signature — push the authoritative
+      // running total so the live ×N advances by a real manifestation, not by telemetry.
+      this.deps.recordFindingOccurrence(finding.bugId, finding.occurrence);
       if (finding.occurrence === 2 || finding.occurrence % 25 === 0) {
         t.emit('ACTION', {
           actionExecuted: 'runtime-fault-recurred',
@@ -928,6 +931,7 @@ export class StabilityMonitor {
     });
     t.gateway.emitIncidentReport({
       bugId: finding.bugId,
+      occurrences: finding.occurrence,
       timestamp,
       reason,
       url: routeUrl,
@@ -945,6 +949,8 @@ export class StabilityMonitor {
     });
 
     t.gateway.emitForensicReport({
+      bugId: finding.bugId,
+      occurrences: finding.occurrence,
       timestamp,
       reason,
       url: routeUrl,
@@ -990,6 +996,7 @@ export class StabilityMonitor {
       stateFingerprint,
       attribution: complete.attribution,
       severity: faultSeverity,
+      occurrences: finding.occurrence,
       timestamp: new Date(timestamp),
       streamed: true, // already emitted to the Errors tab above
     });
@@ -1267,6 +1274,9 @@ export class StabilityMonitor {
       // did not, so a double-submit first seen during an uncorrelated burst
       // (path replay, a finder driving the page) stayed permanently unattributed.
       if (defect.selector) this.deps.upgradeFindingCulprit(defect.bugId, defect.selector);
+      // Push the authoritative real-manifestation count (engine-injected stress excluded)
+      // so a genuine repeat double-submit advances the ×N, but a race-scenario burst does not.
+      this.deps.recordFindingOccurrence(defect.bugId, defect.manifestations);
       // A stronger verdict (SUSPECTED → CONFIRMED once the control correlates) must patch
       // the already-emitted card by bugId — re-emitting the incident would spawn a second
       // card (the live buffer keys on message content, which changed with the verdict). The
@@ -1294,6 +1304,7 @@ export class StabilityMonitor {
 
       t.gateway.emitIncidentReport({
         bugId: defect.bugId,
+        occurrences: defect.manifestations,
         timestamp,
         reason: defect.message,
         url,
@@ -1310,6 +1321,8 @@ export class StabilityMonitor {
       });
 
       t.gateway.emitForensicReport({
+        bugId: defect.bugId,
+        occurrences: defect.manifestations,
         timestamp,
         reason: defect.message,
         url,
@@ -1355,6 +1368,7 @@ export class StabilityMonitor {
       stateFingerprint,
       attribution,
       severity,
+      occurrences: defect.manifestations,
       timestamp: new Date(timestamp),
       streamed: true, // already emitted to the Errors tab above
     });
@@ -1790,6 +1804,8 @@ export class StabilityMonitor {
       // A later, better-attributed sighting can fill a culprit the first (off-target
       // collateral) sighting left empty — first-wins dedup otherwise locks in the blank.
       if (evidence.culpritSelector) this.deps.upgradeFindingCulprit(bugId, evidence.culpritSelector);
+      // A verified repeat of this failing endpoint+status — advance the authoritative ×N.
+      this.deps.recordFindingOccurrence(bugId, occurrence);
       if (occurrence === 2 || occurrence % 25 === 0) {
         t.emit('ACTION', {
           actionExecuted: 'network-fault-recurred',
@@ -1811,6 +1827,7 @@ export class StabilityMonitor {
 
     t.gateway.emitIncidentReport({
       bugId,
+      occurrences: occurrence,
       timestamp: evidence.timestamp,
       reason: headline,
       url: reportUrl,
@@ -1828,6 +1845,8 @@ export class StabilityMonitor {
     });
 
     t.gateway.emitForensicReport({
+      bugId,
+      occurrences: occurrence,
       timestamp: evidence.timestamp,
       reason: headline,
       url: reportUrl,
@@ -1874,6 +1893,7 @@ export class StabilityMonitor {
       stateFingerprint: evidence.stateFingerprint,
       attribution: complete.attribution,
       severity: displaySeverity,
+      occurrences: occurrence,
       timestamp: new Date(evidence.timestamp),
       streamed: true, // the incident report above already put it on the Errors tab
     });

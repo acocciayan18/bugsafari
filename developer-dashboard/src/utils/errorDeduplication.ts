@@ -67,30 +67,75 @@ export interface FindingGroup<T> {
   count: number;
 }
 
-// Merge a freshly-streamed fault into a bounded, newest-first buffer that holds
-// ONE entry per distinct fault (keyed by liveFaultSignature) with a running
-// `occurrences` count. Repeats bump the count and move the fault to the front
-// (refreshing the representative) instead of consuming a new slot — so a high-
-// frequency fault can never flood `cap` and evict a rarer distinct fault.
+// Hidden per-representative breakdown: authoritative occurrence count keyed by the finding's
+// bugId (legacy no-id emissions share the '' bucket). The displayed ×N is the SUM of its
+// values, so re-delivering one bugId (the forensic→incident twin, a reconnect replay) is
+// idempotent and can never inflate the count — only a genuinely distinct bugId adds.
+const OCC_BY_BUG = '__occurrenceByBug' as const;
+type Counted = { [OCC_BY_BUG]?: Record<string, number> };
+
+function occKey(fault: { bugId?: string }): string {
+  return fault.bugId ?? '';
+}
+
+function sumOcc(map: Record<string, number>): number {
+  let total = 0;
+  for (const v of Object.values(map)) total += v;
+  return total;
+}
+
+// Merge a freshly-streamed fault into a bounded, newest-first buffer holding ONE entry per
+// distinct fault (keyed by liveFaultSignature). The count is the sum of authoritative
+// per-bugId occurrences — NEVER incremented on arrival. A repeat delivery of a known bugId
+// overwrites (monotonically) that bug's authoritative value; a distinct bugId that shares the
+// display signature contributes its own value. Repeats keep first-seen order; a new distinct
+// fault appends to the bottom, and overflow drops from the head so the newest faults survive.
 export function collapseFaultIntoBuffer<T extends IncidentReport | ForensicCrashReport>(
   prev: T[],
   incoming: T,
   cap = 100,
 ): T[] {
   const sig = liveFaultSignature(incoming);
-  const existing = prev.find((f) => liveFaultSignature(f) === sig);
-  // A live emission carries no count (one occurrence → existing+1). A hydrated row
-  // carries its true accumulated total, which must not be discounted to the replay
-  // count — seed from whichever is larger so live ×N and restored ×N never disagree.
-  const occurrences = Math.max(incoming.occurrences ?? 1, (existing?.occurrences ?? 0) + 1);
-  const merged = { ...incoming, occurrences } as T;
-  // A repeat bumps the count in place, keeping first-seen order; a new distinct fault
-  // appends to the bottom so the latest finding is always last. Overflow drops from the
-  // head, so the newest faults survive — matching the Network/Console tabs.
+  const existing = prev.find((f) => liveFaultSignature(f) === sig) as (T & Counted) | undefined;
+  const key = occKey(incoming);
+  const incomingCount = incoming.occurrences ?? 1;
+
+  const byBug: Record<string, number> = { ...((existing as Counted | undefined)?.[OCC_BY_BUG] ?? {}) };
+  // Monotonic per-bug seed: a hydrated row carries its true accumulated total; a live twin
+  // carries 1. max() keeps the higher and makes redelivery idempotent.
+  byBug[key] = Math.max(byBug[key] ?? 0, incomingCount);
+
+  const merged = { ...incoming, occurrences: sumOcc(byBug), [OCC_BY_BUG]: byBug } as T & Counted;
   const next = existing
-    ? prev.map((f) => (liveFaultSignature(f) === sig ? merged : f))
-    : [...prev, merged];
+    ? prev.map((f) => (liveFaultSignature(f) === sig ? (merged as T) : f))
+    : [...prev, merged as T];
   return next.length > cap ? next.slice(next.length - cap) : next;
+}
+
+// Apply an authoritative occurrence-count patch (finding-occurrence event) to the buffer: find
+// the representative that owns this bugId and set its per-bug count to the running total, then
+// recompute the displayed ×N. Monotonic — a stale, lower total never lowers the count. No-op if
+// no card owns the bugId yet (the patch's incident always precedes it in practice).
+export function applyOccurrencePatchToBuffer<T extends IncidentReport | ForensicCrashReport>(
+  prev: T[],
+  bugId: string,
+  occurrences: number,
+): T[] {
+  if (!bugId || !Number.isFinite(occurrences)) return prev;
+  let changed = false;
+  const next = prev.map((f) => {
+    const counted = f as T & Counted;
+    const byBug = counted[OCC_BY_BUG];
+    // A card owns the bugId if its breakdown tracks it, or (pre-breakdown legacy) its own id matches.
+    const owns = byBug ? Object.prototype.hasOwnProperty.call(byBug, bugId) : f.bugId === bugId;
+    if (!owns) return f;
+    const map = { ...(byBug ?? { [bugId]: f.occurrences ?? 1 }) };
+    if (occurrences <= (map[bugId] ?? 0)) return f;
+    map[bugId] = occurrences;
+    changed = true;
+    return { ...f, occurrences: sumOcc(map), [OCC_BY_BUG]: map } as T;
+  });
+  return changed ? next : prev;
 }
 
 // Group items by a content signature, preserving first-seen order. `occurrenceOf`

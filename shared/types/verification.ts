@@ -70,6 +70,21 @@ export interface FindingUpgrade {
   verificationStatus?: VerificationStatus;
 }
 
+/** Socket channel carrying an authoritative occurrence-count update for an already-reported finding. */
+export const FINDING_OCCURRENCE_EVENT = 'finding-occurrence' as const;
+
+/**
+ * Authoritative repeat count for a finding whose card already exists. Emitted ONLY when a
+ * finder verifies the SAME signature genuinely recurred — never on duplicate telemetry (the
+ * forensic→incident twin), a reconnect replay, or an engine retry. `occurrences` is the
+ * running total (not a delta); the dashboard patches the matching card's ×N by `bugId` and
+ * never accumulates from event arrival, so replaying the same patch is idempotent.
+ */
+export interface FindingOccurrencePatch {
+  bugId: string;
+  occurrences: number;
+}
+
 /** Verification verdict attached to a finding once the pipeline has evaluated it. */
 export interface VerificationVerdict {
   status: VerificationStatus;

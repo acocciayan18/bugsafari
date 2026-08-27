@@ -199,7 +199,9 @@ export interface IncidentReport {
   advice?: string;
   // Deterministic classification + scenario/step attribution for this incident.
   attribution?: FindingAttribution;
-  // Frontend-accumulated repeat count for this fault this session; backend leaves unset.
+  // Backend-authoritative verified manifestation count for this finding — the finder's
+  // per-signature counter, incremented only on a genuine recurrence. Repeats are pushed as
+  // FindingOccurrencePatch; the dashboard DISPLAYS this value keyed by bugId, never accumulates.
   occurrences?: number;
   // Backend-classified severity (knowledge-base → forensic scale). Drives the UI
   // severity badge instead of a hard-coded string.
@@ -222,6 +224,10 @@ export interface IncidentReport {
 }
 
 export interface ForensicCrashReport {
+  // Stable finding id, matching the confirmed-bug ledger. Rides along so the synthesized
+  // incident twin (SocketTelemetryGateway) shares one identity with its origin and the
+  // dashboard counts one occurrence, never two.
+  bugId?: string;
   timestamp: string;
   reason: string;
   statusCode?: number;
@@ -241,7 +247,7 @@ export interface ForensicCrashReport {
   advice?: string;
   // Deterministic classification + scenario/step attribution for this crash.
   attribution?: FindingAttribution;
-  // Frontend-accumulated repeat count for this fault this session; backend leaves unset.
+  // Backend-authoritative verified manifestation count — see IncidentReport.occurrences.
   occurrences?: number;
   // Backend-classified severity (knowledge-base → forensic scale). Drives the UI
   // severity badge instead of a hard-coded string.

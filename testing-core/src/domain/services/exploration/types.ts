@@ -89,6 +89,10 @@ export interface ConfirmedBug {
   stateFingerprint?: StateFingerprint;
   /** Deterministic classification + scenario/step attribution (knowledge base). */
   attribution?: FindingAttribution;
+  /** Authoritative verified manifestation count — the finder's per-signature counter.
+   *  Set at registration and refreshed via recordFindingOccurrence on each genuine
+   *  recurrence, so the saved ×N equals what the operator watched live. */
+  occurrences?: number;
   /** Structured evidence for a client-side constraint bypass — drives the metadata grid. */
   bypass?: ConstraintBypassDetail;
   /** Backend-classified severity — surfaced as the saved report's severity badge. */
@@ -170,6 +174,10 @@ export interface StabilityMonitorDeps {
    *  sighting arrives (the first sighting was off-target collateral with no selector). No-op
    *  unless the stored finding currently has an empty selector. */
   upgradeFindingCulprit(bugId: string, selector: string): void;
+  /** Refresh an already-registered finding's authoritative occurrence count when a finder
+   *  verifies the same signature genuinely recurred. Updates the ledger entry by bugId and
+   *  pushes a FindingOccurrencePatch to the live dashboard. `occurrences` is the running total. */
+  recordFindingOccurrence(bugId: string, occurrences: number): void;
   /** Freeze action-trace recording at the moment of a crash. */
   setFreeze(): void;
   /** Last navigated URL captured by the engine's framenavigated handler. */

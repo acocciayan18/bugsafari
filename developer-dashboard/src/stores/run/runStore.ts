@@ -3,6 +3,7 @@ import { toast } from '../../infrastructure/notifications/ToastProvider';
 import type { BrowserConsoleMessage } from '../../application/ports/EngineGateway';
 import type {
     ActiveSessionSnapshot,
+    FindingOccurrencePatch,
     FindingUpgrade,
     ForensicCrashReport,
     IncidentReport,
@@ -15,7 +16,7 @@ import { NETWORK_ACTION } from '../../types';
 import { defaultOptimizationSettings, isCleanTermination } from '../../../../shared/types.js';
 import type { RunTerminationOutcome } from '../../../../shared/types.js';
 import { normalizeTargetUrl } from '../../../../shared/url.js';
-import { collapseFaultIntoBuffer } from '../../utils/errorDeduplication';
+import { collapseFaultIntoBuffer, applyOccurrencePatchToBuffer } from '../../utils/errorDeduplication';
 import { logger } from '../../utils/logger';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
 import {
@@ -152,6 +153,7 @@ export interface RunState {
     addIncidents: (incidents: IncidentReport[]) => void;
     applyReproductionVerdict: (verdict: ReproductionVerdict) => void;
     applyFindingUpgrade: (upgrade: FindingUpgrade) => void;
+    applyFindingOccurrence: (patch: FindingOccurrencePatch) => void;
     appendConsole: (message: BrowserConsoleMessage) => void;
     appendConsoleBatch: (messages: BrowserConsoleMessage[]) => void;
     ingestTelemetry: (event: TelemetryEvent) => void;
@@ -277,6 +279,12 @@ export const useRunStore = create<RunState>((set, get) => ({
                 }
                 : incident,
         ),
+    })),
+    // Authoritative repeat-count update from the engine — patch the card's ×N by bugId in
+    // both buffers. Idempotent and monotonic, so a reconnect replay never inflates it.
+    applyFindingOccurrence: (patch) => set((s) => ({
+        incidents: applyOccurrencePatchToBuffer(s.incidents, patch.bugId, patch.occurrences),
+        reports: applyOccurrencePatchToBuffer(s.reports, patch.bugId, patch.occurrences),
     })),
     appendConsole: (message) => set((s) => ({ browserConsole: appendCapped(s.browserConsole, message, CONSOLE_BUFFER_CAP) })),
     // Throttled ingestion flushes a window of console messages in one commit.

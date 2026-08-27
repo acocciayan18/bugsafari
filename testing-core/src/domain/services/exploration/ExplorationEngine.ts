@@ -471,6 +471,9 @@ export class ExplorationEngine {
       message: scrubCredentials(incoming.message),
       payloadUsed: scrubCredentials(incoming.payloadUsed),
       advice: scrubCredentials(incoming.advice),
+      // Every registration is at least one verified manifestation; finders refresh the
+      // running total via recordFindingOccurrence as repeats accrue.
+      occurrences: incoming.occurrences ?? 1,
     };
     // IDENTITY-ONLY dedup. Content-based dedup (type+message+selector+payload)
     // catastrophically collapsed distinct error INSTANCES — e.g. 15 HTTP 500s to
@@ -487,7 +490,11 @@ export class ExplorationEngine {
     // evidence sharpens. Refresh the stored record in place so the persisted finding
     // carries the final verdict/occurrence instead of the first, weakest observation.
     if (isDuplicate) {
-      this.confirmedBugsMemory[existingIndex] = { ...this.confirmedBugsMemory[existingIndex], ...bug };
+      const prior = this.confirmedBugsMemory[existingIndex];
+      // Merge in the sharper record but never let a re-register's baseline count (1)
+      // clobber a higher running total the finder already accrued for this bugId.
+      const occurrences = Math.max(prior.occurrences ?? 1, bug.occurrences ?? 1);
+      this.confirmedBugsMemory[existingIndex] = { ...prior, ...bug, occurrences };
     }
 
     if (!isDuplicate) {
@@ -588,6 +595,20 @@ export class ExplorationEngine {
     }
   }
 
+  // Authoritative occurrence-count refresh: a finder verified the same signature recurred.
+  // Update the ledger entry so the saved ×N is correct, and push the running total to the
+  // live card. Monotonic — a stale/lower total never overwrites a higher one.
+  public recordFindingOccurrence(bugId: string, occurrences: number): void {
+    if (!bugId || !Number.isFinite(occurrences) || occurrences < 1) return;
+    const index = this.confirmedBugsMemory.findIndex((b) => b.bugId === bugId);
+    if (index >= 0) {
+      const current = this.confirmedBugsMemory[index].occurrences ?? 1;
+      if (occurrences <= current) return;
+      this.confirmedBugsMemory[index] = { ...this.confirmedBugsMemory[index], occurrences };
+    }
+    this.activeGateway?.emitFindingOccurrence?.({ bugId, occurrences });
+  }
+
   /** Queue a newly registered finding for one deterministic replay. */
   private enqueueReproduction(bug: ConfirmedBug): void {
     const bugClass = bug.attribution?.bugClass;
@@ -672,6 +693,7 @@ export class ExplorationEngine {
       reproductionPlaybook: bug.reproductionSteps,
       advice: bug.advice,
       attribution: bug.attribution,
+      occurrences: bug.occurrences,
       culpritSelector: bug.selector || undefined,
       culpritLabel: bug.elementLabel || undefined,
       bypass: bug.bypass,
@@ -1040,6 +1062,7 @@ export class ExplorationEngine {
       persistForensicError: (params) => this.bufferForensicError(params),
       registerConfirmedBug: (bug) => this.registerConfirmedBug(bug),
       upgradeFindingCulprit: (bugId, selector) => this.upgradeFindingCulprit(bugId, selector),
+      recordFindingOccurrence: (bugId, occurrences) => this.recordFindingOccurrence(bugId, occurrences),
       setFreeze: () => this.freezeRecording(),
       getLastKnownUrl: () => lastKnownUrl,
       onApiFailure: () => { this.runtimeMetrics.requestsCount++; },

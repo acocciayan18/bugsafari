@@ -1,5 +1,5 @@
-import type { AccessibilityFinding, DiscoveredElement, FindingUpgrade, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent, TelemetryDeduper, TimeSyncPayload } from '../../../../shared/types.js';
-import { ACCESSIBILITY_EVENT, FINDING_UPGRADE_EVENT, REPRODUCTION_VERDICT_EVENT, TIME_SYNC_EVENT, createTelemetryDeduper } from '../../../../shared/types.js';
+import type { AccessibilityFinding, DiscoveredElement, FindingOccurrencePatch, FindingUpgrade, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent, TelemetryDeduper, TimeSyncPayload } from '../../../../shared/types.js';
+import { ACCESSIBILITY_EVENT, FINDING_OCCURRENCE_EVENT, FINDING_UPGRADE_EVENT, REPRODUCTION_VERDICT_EVENT, TIME_SYNC_EVENT, createTelemetryDeduper } from '../../../../shared/types.js';
 import type { BrowserConsoleMessage, TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import { scrubCredentials } from '../../domain/services/telemetry/credentialScrub.js';
 import { scrubSelectors } from '../../../../shared/reproduction.js';
@@ -25,7 +25,7 @@ export interface RoomEmitter {
 }
 
 /** Outbound wire channels the recorder buffers for reconnect replay. */
-export type TelemetryRecordKind = 'telemetry' | 'url-changed' | 'live-frame' | 'forensic-report' | 'incident-report' | 'accessibility' | 'browser-console' | 'reproduction-verdict' | 'finding-upgrade';
+export type TelemetryRecordKind = 'telemetry' | 'url-changed' | 'live-frame' | 'forensic-report' | 'incident-report' | 'accessibility' | 'browser-console' | 'reproduction-verdict' | 'finding-upgrade' | 'finding-occurrence';
 
 /** Sink that captures every outbound payload so a returning client can be replayed. */
 export interface TelemetryRecorder {
@@ -129,6 +129,11 @@ export class SocketTelemetryGateway implements TelemetryGateway {
     this.recorder?.record('forensic-report', report);
     this.channel().emit('forensic-report', report);
     this.emitIncidentReport({
+      // Share the origin finding's identity + authoritative count so the dashboard collapses
+      // this twin onto its origin and counts ONE occurrence — omitting bugId made the twin an
+      // orphan the client tallied as a second occurrence (the false ×2).
+      bugId: report.bugId,
+      occurrences: report.occurrences,
       timestamp: report.timestamp,
       reason: report.reason,
       statusCode: report.statusCode,
@@ -188,6 +193,13 @@ export class SocketTelemetryGateway implements TelemetryGateway {
     const safe = { ...upgrade, message: safeText(upgrade.message) };
     this.recorder?.record('finding-upgrade', safe);
     this.channel().emit(FINDING_UPGRADE_EVENT, safe);
+  }
+
+  // Buffered like the upgrade: the running total lands after its card and must replay on
+  // reconnect. Carries no free text, so no scrub needed.
+  public emitFindingOccurrence(patch: FindingOccurrencePatch): void {
+    this.recorder?.record('finding-occurrence', patch);
+    this.channel().emit(FINDING_OCCURRENCE_EVENT, patch);
   }
 
   // WCAG findings ride their own channel so the dashboard's Accessibility tab

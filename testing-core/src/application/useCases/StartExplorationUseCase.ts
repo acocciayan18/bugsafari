@@ -94,6 +94,9 @@ export interface ClientFinding {
     attribution?: FindingAttribution;
     stateFingerprint?: StateFingerprint;
     severity?: string;
+    /** Authoritative manifestation count the client displayed — the fallback ×N when the
+     *  engine memory is empty (API-only save). */
+    occurrences?: number;
 }
 
 interface ExecutionMetrics {
@@ -251,16 +254,19 @@ export class StartExplorationUseCase {
         return `${type}||${buildFaultSignature({ reason: message, stackTrace })}||${selector ?? ''}`;
     }
 
-    // Collapse duplicate findings, keeping the first as representative and counting repeats.
-    private dedupeCaughtBugs<T extends { type: string; message: string; selector: string; stackTrace?: string }>(
+    // Collapse duplicate findings, keeping the first as representative and SUMMING each
+    // instance's authoritative manifestation count (the ledger's per-bug ×N), never a raw
+    // +1 per row — so a duplicate telemetry instance can't inflate the saved count.
+    private dedupeCaughtBugs<T extends { type: string; message: string; selector: string; stackTrace?: string; occurrences?: number }>(
         bugs: T[],
     ): Array<T & { occurrences: number }> {
         const groups = new Map<string, T & { occurrences: number }>();
         for (const bug of bugs) {
             const key = this.normalizeFaultSignature(bug.type, bug.message, bug.selector, bug.stackTrace);
+            const count = bug.occurrences ?? 1;
             const existing = groups.get(key);
-            if (existing) existing.occurrences += 1;
-            else groups.set(key, { ...bug, occurrences: 1 });
+            if (existing) existing.occurrences += count;
+            else groups.set(key, { ...bug, occurrences: count });
         }
         return [...groups.values()];
     }
@@ -334,6 +340,7 @@ export class StartExplorationUseCase {
                 bypass?: ConstraintBypassDetail;
                 severity?: string;
                 resolvedStackTrace?: string;
+                occurrences?: number;
             }) => ({
                 bugId: bug.bugId,
                 type: bug.type,
@@ -344,6 +351,9 @@ export class StartExplorationUseCase {
                 advice: bug.advice,
                 stackTrace: bug.stackTrace ?? '',
                 resolvedStackTrace: bug.resolvedStackTrace ?? '',
+                // Authoritative per-finding manifestation count from the ledger — summed by
+                // dedupeCaughtBugs so the saved ×N equals what the operator watched live.
+                occurrences: bug.occurrences ?? 1,
                 reproductionSteps: Array.isArray(bug.reproductionSteps) ? bug.reproductionSteps : [],
                 // Per-finding minimized, replayable timeline (empty ⇒ verifier falls
                 // back to the session-global actionSteps below).
@@ -368,6 +378,7 @@ export class StartExplorationUseCase {
                 payloadUsed: finding.payloadUsed ?? '',
                 advice: finding.advice ?? '',
                 stackTrace: finding.stackTrace ?? '',
+                occurrences: finding.occurrences ?? 1,
                 reproductionSteps: Array.isArray(finding.reproductionSteps) ? finding.reproductionSteps : [],
                 actionSteps: buildActionSteps(Array.isArray(finding.reproductionActions) ? finding.reproductionActions : []),
                 timestamp: finding.timestamp ? new Date(finding.timestamp) : new Date(),

@@ -84,7 +84,11 @@ export interface DuplicateActionDefect {
   evidence: string[];
   reproductionHint: string[];
   advice: string;
+  /** Raw duplicate-request count for this control — drives the recurrence heartbeat. */
   occurrence: number;
+  /** Distinct REAL manifestations of this double-submit (engine-injected stress excluded) —
+   *  the authoritative ×N shown on the finding card. */
+  manifestations: number;
   corroborated: boolean;
   overlapped: boolean;
   intervalMs: number;
@@ -132,6 +136,11 @@ export class DuplicateActionFinder {
   private readonly candidateByFirst = new Map<string, string>();
   private readonly judged = new Map<string, DuplicateVerdict>();
   private readonly reported = new Map<string, number>();
+  // Distinct REAL manifestations of a control's double-submit — one per organic duplicate
+  // event. Engine-injected race-scenario pairs never bump it, so a stress probe that hammers
+  // one control counts as ONE finding, not one per injected click. Distinct from `reported`,
+  // which counts raw duplicate requests for the recurrence heartbeat.
+  private readonly manifestations = new Map<string, number>();
   private readonly reportedVerdict = new Map<string, DuplicateVerdict>();
   // Verdict last EMITTED to the operator per finding, so a later, stronger judgement is
   // flagged as an upgrade (patch the existing card) instead of a silent ledger-only change.
@@ -274,6 +283,16 @@ export class DuplicateActionFinder {
     const occurrence = previous ? this.reported.get(bugId)! : (this.reported.get(bugId) ?? 1) + 1;
     this.reported.set(bugId, occurrence);
 
+    // Authoritative manifestation count for the ×N badge. A fresh organic duplicate event
+    // (new pair, not engine-injected race stress, not a late re-judge of a counted pair)
+    // is one real manifestation; a first sighting seeds 1, injected stress never bumps it.
+    const injectedStress = first.raceScenarioActive || second.raceScenarioActive;
+    const priorManifest = this.manifestations.get(bugId);
+    const manifestations = priorManifest === undefined
+      ? 1
+      : priorManifest + (!previous && !injectedStress ? 1 : 0);
+    this.manifestations.set(bugId, manifestations);
+
     // An upgrade is an ALREADY-reported finding whose effective verdict now outranks what
     // was last emitted for it — the card must be patched so its severity/message match the
     // final verdict. A first report is isNew, a same-or-weaker recurrence is neither.
@@ -281,7 +300,7 @@ export class DuplicateActionFinder {
     const lastEmitted = this.emittedVerdict.get(bugId);
     const upgraded = alreadyReported && (lastEmitted === undefined || VERDICT_RANK[effective] > VERDICT_RANK[lastEmitted]);
     if (isNew || upgraded) this.emittedVerdict.set(bugId, effective);
-    return { defect: this.build(bugId, first, second, effective, overlapped, occurrence, interaction), isNew, upgraded };
+    return { defect: this.build(bugId, first, second, effective, overlapped, occurrence, manifestations, interaction), isNew, upgraded };
   }
 
   private build(
@@ -291,6 +310,7 @@ export class DuplicateActionFinder {
     verdict: DuplicateVerdict,
     overlapped: boolean,
     occurrence: number,
+    manifestations: number,
     interaction: InteractionContext | undefined,
   ): DuplicateActionDefect {
     const intervalMs = Math.max(0, second.startedAtMs - first.startedAtMs);
@@ -332,6 +352,7 @@ export class DuplicateActionFinder {
       reproductionHint: this.reproductionFor(first, second, verdict, overlapped, label),
       advice: this.adviceFor(verdict),
       occurrence,
+      manifestations,
       corroborated,
       overlapped,
       intervalMs,

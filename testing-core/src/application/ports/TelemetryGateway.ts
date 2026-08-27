@@ -1,4 +1,4 @@
-import type { AccessibilityFinding, BrowserConsoleLevel, BrowserConsoleMessage, DiscoveredElement, FindingUpgrade, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent, TimeSyncPayload } from '../../../../shared/types.js';
+import type { AccessibilityFinding, BrowserConsoleLevel, BrowserConsoleMessage, DiscoveredElement, FindingOccurrencePatch, FindingUpgrade, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent, TimeSyncPayload } from '../../../../shared/types.js';
 
 export type { BrowserConsoleLevel, BrowserConsoleMessage };
 
@@ -18,6 +18,10 @@ export interface TelemetryGateway {
 
   /** Late patch raising an already-streamed finding's severity/message to a stronger verdict. */
   emitFindingUpgrade?(upgrade: FindingUpgrade): void;
+
+  /** Authoritative repeat-count update for an already-streamed finding — emitted only on a
+   *  finder-verified recurrence, never on duplicate telemetry or a retry. */
+  emitFindingOccurrence?(patch: FindingOccurrencePatch): void;
 
   /** Specialized socket event for dashboard URL bar updates. */
   emitUrlChanged(url: string): void;

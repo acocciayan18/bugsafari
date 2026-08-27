@@ -529,6 +529,34 @@ check('a third request in the burst collapses into the same finding with a highe
   assert.equal(h.finder.totalFound(), 1, 'a burst is one finding, not three');
 });
 
+// The ×N badge reads `manifestations`, NOT the raw request `occurrence`. A first
+// double-submit is ONE manifestation even though it is two requests (occurrence 2).
+check('a first double-submit is manifestations:1 (not the request count of 2)', () => {
+  const h = new Harness();
+  const a = h.send(1000);
+  const b = h.send(1100);
+  h.settle(b, 1250, 201);
+  const defect = h.settle(a, 1300, 201);
+  assert.ok(defect);
+  assert.equal(defect!.occurrence, 2, 'two duplicate REQUESTS');
+  assert.equal(defect!.manifestations, 1, 'but ONE real manifestation of the defect');
+});
+
+// STRESS-GUARD regression: an engine-injected race-scenario burst hammering one control must
+// stay ONE manifestation — the harness driving the page is not the bug reproducing.
+check('engine-injected race stress never inflates manifestations', () => {
+  const h = new Harness();
+  let last: DuplicateActionDefect | null = null;
+  for (let i = 0; i < 4; i += 1) {
+    const a = h.send(1000 + i * 400, { raceScenarioActive: true });
+    const b = h.send(1100 + i * 400, { raceScenarioActive: true });
+    h.settle(b, 1250 + i * 400, 201);
+    last = h.settle(a, 1300 + i * 400, 201) ?? last;
+  }
+  assert.ok(last);
+  assert.equal(last!.manifestations, 1, 'four injected duplicate pairs = one manifestation, not four');
+});
+
 check('the same control fuzzed with different payloads collapses into ONE finding, never downgraded', () => {
   const h = new Harness();
   // Pair 1: a payload double-submitted, both commit → CONFIRMED_DUPLICATE (High).
