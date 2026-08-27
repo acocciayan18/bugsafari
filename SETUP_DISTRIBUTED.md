@@ -188,13 +188,13 @@ git push origin dev --force
 
 
 git add .
-git commit -m "fix-queue-stuck-after-stop"
+git commit -m "fix-embedded-video-oom-freeze"
 git push origin HEAD:dev --force
 
 
 git init
 git add .
-git commit -m "ix-embedded-video-oom-freeze"
+git commit -m "fix-embedded-video-oom-freeze"
 git checkout -b 8-25-Ayan-1
 git push --set-upstream origin 8-25-Ayan-1
 
