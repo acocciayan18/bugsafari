@@ -194,9 +194,9 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "fix-embedded-video-oom-freeze"
-git checkout -b 8-25-Ayan-1
-git push --set-upstream origin 8-25-Ayan-1
+git commit -m "bwiset na memory yan, file bago mag dagdag ng additional memory"
+git checkout -b 8-27-Ayan
+git push --set-upstream origin 8-27-Ayan
 
 
 
