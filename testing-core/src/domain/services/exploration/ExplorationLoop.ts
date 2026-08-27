@@ -322,7 +322,8 @@ export class ExplorationLoop {
           if (revisiting || !ctx.firstVisitRevealed.has(routeKey)) {
             ctx.firstVisitRevealed.add(routeKey);
             boundSet(ctx.firstVisitRevealed, MAX_VISITED_ROUTES);
-            await this.revealLazyContent(page);
+            // Under memory pressure, don't scroll a heavy page to pull more lazy media into the renderer.
+            if (!this.deps.isMemoryDegraded?.()) await this.revealLazyContent(page);
           }
         }
         ctx.lastStepUrl = stepUrl;
@@ -650,6 +651,8 @@ export class ExplorationLoop {
     seen: InteractiveElement[],
     shell: string,
   ): Promise<InteractiveElement[] | null> {
+    // Under memory pressure, skip frontier reveal-scrolling — it reparses the full DOM per scroll and pulls more lazy media into an already-pressured renderer.
+    if (this.deps.isMemoryDegraded?.()) return null;
     const seenClasses = new Set(seen.map(controlClassKey));
     const triggered = (selector: string): boolean =>
       this.deps.clusterRegistry.isSelectorTriggered(shell, selector);

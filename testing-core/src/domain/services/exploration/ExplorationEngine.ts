@@ -292,6 +292,7 @@ export class ExplorationEngine {
   private lastTickTimestamp: number = 0;
   private timeboxMs: number; // Resolved in the constructor from optimizationSettings (default 10 minutes)
   private timeboxExceeded: boolean = false;
+  private memoryDegraded = false; // Latched by the watchdog degrade tier; gates the loop's reveal-scroll.
 
   // Timer snapshot tracking for pause/resume support
   private pauseSnapshotTimeMs: number = 0;  // Time accumulated when PAUSE was triggered
@@ -1050,9 +1051,10 @@ export class ExplorationEngine {
       isEngineStopping: () => this.isStopRequested || this.isPaused || this.timeboxExceeded,
       abortForHarnessFault: (kind) => this.stop(kind === 'memory' ? 'harness-resource' : 'harness-environment'),
       onMemoryDegrade: (detail) => {
+        this.memoryDegraded = true;
         emitter.applyMemoryThrottle('degraded');
         if (typeof global.gc === 'function') global.gc();
-        emitter.emitMilestone(`Memory pressure detected. Degraded the live feed to protect the run (${detail}).`);
+        emitter.emitMilestone(`Memory pressure detected. Degraded the live feed and paused lazy-content scrolling to protect the run (${detail}).`);
       },
     });
 
@@ -1512,6 +1514,7 @@ export class ExplorationEngine {
         checkTimebox: () => this.checkTimeboxAndTerminateIfExceeded(telemetry),
         isTimeboxExceeded: () => this.isTimeboxExceeded(),
         getTimeboxMs: () => this.timeboxMs,
+        isMemoryDegraded: () => this.memoryDegraded,
         getLastKnownUrl: () => lastKnownUrl,
         // Only surface the status when it matches the current route, so a stale
         // 404 from a previous page can never be attributed to a fresh render.

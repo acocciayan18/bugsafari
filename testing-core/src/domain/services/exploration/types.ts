@@ -272,6 +272,8 @@ export interface ExplorationLoopDeps {
    * latch the one-shot (or the real timebox stop gets mislabeled as a budget stop). */
   isTimeboxExceeded(): boolean;
   getTimeboxMs(): number;
+  /** True once the memory watchdog degrade tier fired — loop then halts reveal-scroll so it can't pull more lazy media into the renderer. Optional; absent ⇒ normal. */
+  isMemoryDegraded?(): boolean;
   getLastKnownUrl(): string;
   /** Latest observed main-frame document HTTP status for `routePath`, or null when
    *  the current route was rendered client-side (no top-level navigation response). */

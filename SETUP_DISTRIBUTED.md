@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Trace Stack section in BugSafari forensic cards"
+git commit -m "fix-memory-growth-oom-abort"
 git push origin HEAD:dev --force
 
 

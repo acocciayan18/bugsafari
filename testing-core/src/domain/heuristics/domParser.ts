@@ -2,6 +2,9 @@ import type { Page } from 'playwright';
 import type { BoundingBox } from '@bugsafari/shared';
 import type { InteractiveElement } from '../entities/InteractiveElement.js';
 import { isNonSemanticInteractive } from './nonSemanticInteractive.js';
+import { createLogger } from '../../infrastructure/observability/logger.js';
+
+const obsLog = createLogger('[domParser]');
 
 export interface ParsedElement {
   tagName: string;
@@ -63,10 +66,14 @@ const MAX_DROPDOWN_REVEALS_PER_PARSE = 3;
 // cannot complete at all — the case that used to hang the run outright (P3-04).
 const SCAN_DEADLINE_MS = 8000;
 
+const MAX_ELEMENT_TEXT = 512; // per-element text cap: bounds CDP payload + text-hash cost on huge labels
+const MAX_SCAN_ELEMENTS = 4000; // element-count cap: mirrors DomHasher's browser-traversal budget on pathological pages
+
 /** Raw shape returned by the in-page scan: the elements plus whether the DOM ever settled. */
 interface RawScanResult {
   elements: ParsedElement[];
   domSettled: boolean;
+  totalMatched: number;
 }
 
 /** Why a scan produced no usable snapshot, for the freeze oracle in the loop. */
@@ -196,6 +203,7 @@ async function scanBounded(page: Page): Promise<{ elements: ParsedElement[]; hea
   try {
     const raw = await Promise.race([scanInteractiveElements(page).catch(() => null), deadline]);
     if (!raw) return { elements: [], health: 'timeout' };
+    if (raw.totalMatched > MAX_SCAN_ELEMENTS) obsLog.debug('interactive-element scan capped', { totalMatched: raw.totalMatched, cap: MAX_SCAN_ELEMENTS });
     return { elements: raw.elements ?? [], health: raw.domSettled ? 'ok' : 'unsettled' };
   } finally {
     if (timer) clearTimeout(timer);
@@ -577,6 +585,11 @@ const isDisabled = (element) => {
 
       collectFrom(document, 0, 'document');
 
+      // Bound the working set before the per-element layout/text passes so a pathological
+      // page (thousands of anchors) can't balloon the CDP payload or the layout thrash.
+      const totalMatched = rawElements.length;
+      const boundedRaw = rawElements.length > ${MAX_SCAN_ELEMENTS} ? rawElements.slice(0, ${MAX_SCAN_ELEMENTS}) : rawElements;
+
 // IMPROVED VISIBILITY & 2. THE HIDDEN OVERLAY (Z-INDEX) BLOCK FIX
       const getSafeBoundingRect = (node) => {
         if (!node || node.nodeType !== Node.ELEMENT_NODE) return null;
@@ -594,7 +607,7 @@ const isDisabled = (element) => {
       // Filter out non-element nodes that don't expose layout APIs safely.
       // The measured rect is cached on the wrapper so the element-data pass below
       // reuses it instead of forcing a second layout read per surviving element.
-      const candidates = rawElements.filter(wrapped => {
+      const candidates = boundedRaw.filter(wrapped => {
         const el = wrapped.element;
 
         const rect = getSafeBoundingRect(el);
@@ -724,8 +737,8 @@ const isDisabled = (element) => {
         const className = element.getAttribute('class') || '';
         const type = element.getAttribute('type') || '';
         const name = element.getAttribute('name') || '';
-        // Use full text - no more slice(0, 160) truncation
-        const fullText = extractText(element);
+        // Cap per-element text so a huge-subtree control can't bloat the payload or the text-hash.
+        const fullText = extractText(element).slice(0, ${MAX_ELEMENT_TEXT});
         const role = element.getAttribute('role') || '';
         const href = element instanceof HTMLAnchorElement ? element.href : '';
         const placeholder = element.getAttribute('placeholder') || '';
@@ -869,7 +882,7 @@ const isDisabled = (element) => {
         };
       });
 
-      return { elements, domSettled };
+      return { elements, domSettled, totalMatched };
     })();
   `);
 }
