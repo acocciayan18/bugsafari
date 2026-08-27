@@ -100,6 +100,8 @@ export function boundaryModeFromFlags(settings?: Partial<OptimizationSettings>):
 // DoS knob. Shared so the API clamp, the worker lock, and tests use one definition.
 export const MIN_TIMEBOX_MS = 10_000;
 export const MAX_TIMEBOX_MS = 1_800_000; // 30 minutes
+// Guest hard ceiling — anonymous runs are capped far below the authed max.
+export const GUEST_MAX_TIMEBOX_MS = 300_000; // 5 minutes
 
 export type TestDurationId = '5m' | '10m' | '20m' | '30m';
 
@@ -146,12 +148,13 @@ export function durationIdFromFlags(settings?: Partial<OptimizationSettings>): T
 
 // Clamp/strip the client-supplied execution timebox in place so the queue path, the
 // synchronous path, and the worker all inherit the enforced ceiling. Backend authority.
-export function clampTimebox(settings: OptimizationSettings | undefined): void {
+export function clampTimebox(settings: OptimizationSettings | undefined, maxMs: number = MAX_TIMEBOX_MS): void {
   if (!settings) return;
+  const ceiling = Math.min(MAX_TIMEBOX_MS, Math.max(MIN_TIMEBOX_MS, maxMs));
   const raw: unknown = settings['execution-timebox-ms'];
   const n = typeof raw === 'number' ? raw : Number(raw);
   if (Number.isFinite(n)) {
-    settings['execution-timebox-ms'] = Math.min(MAX_TIMEBOX_MS, Math.max(MIN_TIMEBOX_MS, n));
+    settings['execution-timebox-ms'] = Math.min(ceiling, Math.max(MIN_TIMEBOX_MS, n));
   } else if (raw !== undefined) {
     delete settings['execution-timebox-ms'];
   }

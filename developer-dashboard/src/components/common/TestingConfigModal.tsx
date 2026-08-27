@@ -5,12 +5,16 @@
 // lock, target credentials). Edits write straight through to the caller's state so
 // nothing is lost when the dialog closes; the caller keeps owning persistence.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, KeyRound, Crosshair, Route, Timer } from 'lucide-react';
 import { Modal } from '../ui/Modal';
+import { useAuth } from '../../context/AuthContext';
 import InfiltrationProfileSelector from './InfiltrationProfileSelector';
 import TargetAuthPanel, { isTargetAuthIncomplete, type TargetAuthDraft } from './TargetAuthPanel';
 import { TEST_DURATION_PRESETS, type BoundaryLockMode, type InfiltrationProfileId, type TestDurationId } from '../../types';
+
+// Guests are capped at the 5-minute preset; the backend clamp is the authority.
+const GUEST_DURATION_ID: TestDurationId = '5m';
 
 type ConfigTab = 'infiltration' | 'boundary' | 'duration' | 'auth';
 
@@ -64,8 +68,19 @@ export default function TestingConfigModal({
   authDraft,
   onAuthDraftChange,
 }: TestingConfigModalProps) {
+  const { isGuestMode } = useAuth();
   const [activeTab, setActiveTab] = useState<ConfigTab>('infiltration');
   const authIncomplete = isTargetAuthIncomplete(authDraft);
+
+  // Guests: Target Auth is disabled and the duration is pinned to 5 minutes.
+  const tabs = isGuestMode ? TABS.filter((tab) => tab.id !== 'auth') : TABS;
+  const durationPresets = isGuestMode
+    ? TEST_DURATION_PRESETS.filter((preset) => preset.id === GUEST_DURATION_ID)
+    : TEST_DURATION_PRESETS;
+  useEffect(() => {
+    if (isGuestMode && duration !== GUEST_DURATION_ID) onDurationChange(GUEST_DURATION_ID);
+    if (isGuestMode && activeTab === 'auth') setActiveTab('infiltration');
+  }, [isGuestMode, duration, onDurationChange, activeTab]);
 
   return (
     <Modal
@@ -90,7 +105,7 @@ export default function TestingConfigModal({
       </div>
 
       <div className="scroll-rail flex border-b border-(--border-hairline) px-2" role="tablist" aria-label="Configuration sections">
-        {TABS.map(({ id, label, icon: Icon }) => (
+        {tabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             role="tab"
@@ -175,9 +190,11 @@ export default function TestingConfigModal({
                 Test Duration
               </span>
               <span className="text-xs text-(--text-tertiary) font-sans -mt-1 mb-1">
-                Saved for future runs. The engine stops when the active time limit is reached.
+                {isGuestMode
+                  ? 'Guest runs are capped at 5 minutes. Sign in for longer runs.'
+                  : 'Saved for future runs. The engine stops when the active time limit is reached.'}
               </span>
-              {TEST_DURATION_PRESETS.map(({ id, label, sublabel }) => {
+              {durationPresets.map(({ id, label, sublabel }) => {
                 const selected = duration === id;
                 return (
                   <button
@@ -214,7 +231,7 @@ export default function TestingConfigModal({
           </div>
         )}
 
-        {activeTab === 'auth' && (
+        {activeTab === 'auth' && !isGuestMode && (
           <div role="tabpanel" id="config-panel-auth" aria-labelledby="config-tab-auth">
             <TargetAuthPanel draft={authDraft} onChange={onAuthDraftChange} />
           </div>

@@ -88,10 +88,17 @@ export class EngineHttpClient {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`[Gateway]  Start failed: ${response.status} - ${errorText}`);
-        // The API answers rejections (QUEUE_FULL, AUTH_CONFIG_INVALID, target
-        // routing) with a JSON body carrying operator-facing prose. Surface that
-        // instead of the raw payload, which reached the toast verbatim.
-        throw new Error(readServerMessage(errorText) ?? "We couldn't start the session. Please try again.");
+        // The API answers rejections (QUEUE_FULL, AUTH_CONFIG_INVALID, guest limits,
+        // target routing) with a JSON body carrying operator-facing prose. Surface
+        // that, and keep status/code so the caller can distinguish guest limits.
+        const parsed = ((): { code?: unknown; retryAfterSeconds?: unknown } => {
+          try { return JSON.parse(errorText); } catch { return {}; }
+        })();
+        const err = new Error(readServerMessage(errorText) ?? "We couldn't start the session. Please try again.") as Error & { status?: number; code?: string; retryAfterSeconds?: number };
+        err.status = response.status;
+        if (typeof parsed.code === 'string') err.code = parsed.code;
+        if (typeof parsed.retryAfterSeconds === 'number') err.retryAfterSeconds = parsed.retryAfterSeconds;
+        throw err;
       }
 
       // Capture the server-issued run token so a later refresh / reconnect can

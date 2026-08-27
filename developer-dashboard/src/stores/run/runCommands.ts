@@ -109,15 +109,20 @@ export async function startRun(
         // wait, 'active' → ACTIVE on instant pickup. Flipping to QUEUED here forced a
         // transient standby frame that reverted the moment that push landed.
     } catch (error) {
+        const err = error as Error & { status?: number; code?: string };
         const raw = error instanceof Error ? error.message : String(error);
         // The backend refuses authenticated runs only when its credential-encryption
         // key is unset — a deployment misconfig, not a product limit. Surface the fix.
         const isAuthOnQueue = raw.includes('AUTH_UNSUPPORTED_ON_QUEUE');
         if (isAuthOnQueue) console.error('[runCommands] Authenticated runs require the server credential key (BUGSAFARI_AUTH_KEY) to be configured.');
+        // Guest limit rejections carry the server's prose (rate/cooldown, one-run,
+        // Target-Auth-disabled); surface it so the block is legible, not silent.
+        const isGuestLimit = err.status === 429 || err.status === 403
+            || err.code === 'RATE_LIMITED' || err.code === 'GUEST_TARGET_AUTH_FORBIDDEN';
         const message = isAuthOnQueue
             ? "Authenticated runs aren't available right now. Try again later, or start a run without signing in to the target."
             : raw;
-        if (isAuthOnQueue) toast.error(message, { id: STATUS_TOAST_ID });
+        if (isAuthOnQueue || isGuestLimit) toast.error(message, { id: STATUS_TOAST_ID });
         useRunStore.getState().markLaunchFailed(message);
     } finally {
         // Release the latch once the POST settles; isActiveSession now gates the UI.

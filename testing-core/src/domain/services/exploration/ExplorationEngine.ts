@@ -1049,6 +1049,11 @@ export class ExplorationEngine {
       dialogReadOnly: () => this.dialogReadOnly,
       isEngineStopping: () => this.isStopRequested || this.isPaused || this.timeboxExceeded,
       abortForHarnessFault: (kind) => this.stop(kind === 'memory' ? 'harness-resource' : 'harness-environment'),
+      onMemoryDegrade: (detail) => {
+        emitter.applyMemoryThrottle('degraded');
+        if (typeof global.gc === 'function') global.gc();
+        emitter.emitMilestone(`Memory pressure detected. Degraded the live feed to protect the run (${detail}).`);
+      },
     });
 
     const stateRestorer = new StateRestorer({

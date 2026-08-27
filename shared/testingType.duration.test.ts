@@ -11,8 +11,11 @@ import {
   clampTimebox,
   MIN_TIMEBOX_MS,
   MAX_TIMEBOX_MS,
+  GUEST_MAX_TIMEBOX_MS,
   type OptimizationSettings,
 } from './types.js';
+
+const baseSettings = (): OptimizationSettings => ({ 'adaptive-risk-scorer': true, 'state-aware-hashing': true, 'concurrent-spam-event': true });
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -79,6 +82,29 @@ check('clampTimebox strips a non-finite value and no-ops on undefined settings',
   clampTimebox(s);
   assert.equal(s['execution-timebox-ms'], undefined);
   clampTimebox(undefined); // must not throw
+});
+
+check('GUEST_MAX_TIMEBOX_MS is 5 minutes and within the hard bounds', () => {
+  assert.equal(GUEST_MAX_TIMEBOX_MS, 300_000);
+  assert.ok(GUEST_MAX_TIMEBOX_MS >= MIN_TIMEBOX_MS && GUEST_MAX_TIMEBOX_MS <= MAX_TIMEBOX_MS);
+});
+
+check('clampTimebox with the guest max caps a 30-minute request to 5 minutes', () => {
+  const s = { ...baseSettings(), 'execution-timebox-ms': MAX_TIMEBOX_MS };
+  clampTimebox(s, GUEST_MAX_TIMEBOX_MS);
+  assert.equal(s['execution-timebox-ms'], GUEST_MAX_TIMEBOX_MS);
+});
+
+check('clampTimebox with the guest max still honors the MIN floor', () => {
+  const s = { ...baseSettings(), 'execution-timebox-ms': 1_000 };
+  clampTimebox(s, GUEST_MAX_TIMEBOX_MS);
+  assert.equal(s['execution-timebox-ms'], MIN_TIMEBOX_MS);
+});
+
+check('clampTimebox leaves an under-guest-cap value untouched', () => {
+  const s = { ...baseSettings(), 'execution-timebox-ms': 120_000 };
+  clampTimebox(s, GUEST_MAX_TIMEBOX_MS);
+  assert.equal(s['execution-timebox-ms'], 120_000);
 });
 
 console.log(`testingType.duration.test.ts: ${passed} checks passed`);

@@ -19,6 +19,9 @@ const safeText = (text: string): string => scrubSelectors(scrubCredentials(text)
 export interface RoomEmitter {
   emit(event: string, ...args: unknown[]): unknown;
   to(room: string): { emit(event: string, ...args: unknown[]): unknown };
+  /** True when the transport's write buffer is congested. Optional — the in-process
+   *  Socket.IO server has no cheap per-client signal, so it omits this (never backpressured). */
+  backpressured?(): boolean;
 }
 
 /** Outbound wire channels the recorder buffers for reconnect replay. */
@@ -110,6 +113,15 @@ export class SocketTelemetryGateway implements TelemetryGateway {
   public emitLiveFrame(base64Jpeg: string): void {
     this.recorder?.record('live-frame', base64Jpeg);
     this.channel().emit('live-frame', base64Jpeg);
+  }
+
+  // Congestion signal for the screencast: delegates to the transport when it exposes one.
+  public isFrameBackpressured(): boolean {
+    try {
+      return this.io.backpressured?.() ?? false;
+    } catch {
+      return false;
+    }
   }
 
   public emitForensicReport(raw: ForensicCrashReport): void {

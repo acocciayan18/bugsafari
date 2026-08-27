@@ -28,5 +28,9 @@ export interface TelemetryGateway {
 
   /** Emit browser console message from target page */
   emitBrowserConsole?(message: BrowserConsoleMessage): void;
+
+  /** True when the outbound frame transport (socket/Redis write queue) is congested,
+   *  so the screencast should throttle capture. Absent ⇒ treated as never backpressured. */
+  isFrameBackpressured?(): boolean;
 }
 

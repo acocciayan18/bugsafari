@@ -177,7 +177,8 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
                   onStartInitialization={(url, profile, boundaryMode, duration, targetAuth) => {
                     setTargetUrl(url);
                     writeTargetUrlDraft(url);
-                    startTest(url, { ...defaultOptimizationSettings, ...boundaryModeToFlags(boundaryMode), ...durationIdToFlags(duration) }, { profile }, targetAuth);
+                    // Guests may not drive Target Auth; the backend also rejects it (403).
+                    startTest(url, { ...defaultOptimizationSettings, ...boundaryModeToFlags(boundaryMode), ...durationIdToFlags(duration) }, { profile }, isGuestMode ? undefined : targetAuth);
                   }}
                 />
                 </RouteErrorBoundary>

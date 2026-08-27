@@ -1,5 +1,6 @@
-import { Worker, type Job } from 'bullmq';
+import { Queue, Worker, type Job } from 'bullmq';
 import { hostname } from 'node:os';
+import { setActiveRunCountProvider } from '../monitoring/resourceProbe.js';
 import { StartExplorationUseCase } from '../../application/useCases/StartExplorationUseCase.js';
 import { MongoFindingRepository } from '../database/repositories/MongoFindingRepository.js';
 import { connectDatabase } from '../database/mongooseClient.js';
@@ -125,6 +126,21 @@ export async function createSafariWorker(
   // so the API process can rebuild a refreshed client's dashboard cross-process.
   const runRegistry = new RunRegistry(redisUrl);
   const authVault = AuthVault.create(redisUrl);
+
+  // Peer-awareness for the adaptive memory budget. With per-worker concurrency clamped
+  // to 1, the queue's active-set size == number of busy workers == active runs (incl.
+  // self). Polled off the hot path into a cached int so the sync memory watchdog never
+  // hits Redis; getActiveCount is an O(1) LLEN.
+  const peerCountQueue = new Queue(SAFARI_TASK_QUEUE_NAME, { connection: { url: redisUrl } });
+  let activeRuns = 1;
+  const peerCountTimer = setInterval(() => {
+    void peerCountQueue
+      .getActiveCount()
+      .then((n) => { activeRuns = Math.max(1, n); })
+      .catch(() => undefined);
+  }, 2_000);
+  peerCountTimer.unref?.();
+  setActiveRunCountProvider(() => activeRuns);
   // 3s cadence still leaves a 20x margin under SNAPSHOT_TTL_SECONDS (60) for dead-
   // worker detection, and the dirty-flag below skips writes when nothing changed.
   const SNAPSHOT_INTERVAL_MS = 3_000;
@@ -355,6 +371,8 @@ async (job) => {
       // so the in-flight run settles with the right outcome instead of being stranded
       // Running when the process exits.
       await sessionManager.stopByOperator('internal-shutdown').catch(() => undefined);
+      clearInterval(peerCountTimer);
+      await peerCountQueue.close().catch(() => undefined);
       await worker.close();
       await controlSubscriber.close();
       await runRegistry.close();

@@ -211,6 +211,24 @@ export const startTestLimiter = createRateLimiter({
   message: 'Too many safari launches. Wait before starting another run.',
 });
 
+// Anonymous launch quota, tighter than the shared IP limit above and applied ONLY
+// to guests (see ifGuest). Bounds trial abuse without touching authed operators.
+export const guestStartWindowLimiter = createRateLimiter({
+  name: 'run:guest-start',
+  windowMs: 15 * 60_000,
+  max: 3,
+  message: 'Guest run limit reached. Create a free account to keep testing, or try again later.',
+});
+
+// Minimum spacing between guest launches so start/retest churn can't spin up runs
+// back-to-back.
+export const guestStartCooldownLimiter = createRateLimiter({
+  name: 'run:guest-cooldown',
+  windowMs: 30_000,
+  max: 1,
+  message: 'Please wait a moment before starting another guest run.',
+});
+
 export const analyzeLimiter = createRateLimiter({
   name: 'forensic:analyze',
   windowMs: 10 * 60_000,

@@ -216,9 +216,10 @@ export const LEGAL_DOCS = {
 export type LegalDocId = keyof typeof LEGAL_DOCS;
 
 export const GUEST_LIMITATIONS = [
-  'Your session is temporary and ends when you close this browser.',
-  'Session history is not saved, so past runs cannot be revisited.',
-  'Reports cannot be generated, exported, or downloaded.',
-  'Testing configurations and target profiles are not stored.',
-  'No data is written to the database at any point.',
+  'Runs are capped at 5 minutes, with one run at a time.',
+  'Fewer runs are allowed, with a short wait between launches.',
+  'Testing scope and scenarios are reduced and focused on the launch route.',
+  'Testing behind a login (Target Auth) is disabled.',
+  'Session history, reports, and share links are not available.',
+  'Nothing is saved to the database at any point.',
 ] as const;

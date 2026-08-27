@@ -53,7 +53,7 @@ import {
 } from '../verification/index.js';
 import { MAX_SOFT_FAIL_BODY_BYTES } from '../verification/softFailBody.js';
 import { SourceMapResolver } from '../../../infrastructure/monitoring/sourceMapResolver.js';
-import { sampleMemoryPressure, sampleLiveMemory, type LiveMemory } from '../../../infrastructure/monitoring/resourceProbe.js';
+import { sampleMemoryPressure, sampleAdaptiveMemory, type AdaptiveMemory } from '../../../infrastructure/monitoring/resourceProbe.js';
 
 // ACTION marker for a harness-side (BugSafari OOM) abort — the dashboard shows it as a system alert, not a bug.
 const HARNESS_RESOURCE_ABORT = 'harness-resource-abort';
@@ -418,6 +418,9 @@ export class StabilityMonitor {
   // Proactive memory watchdog: polls live container memory; latch-fires one harness abort.
   private memoryWatchdogTimer?: ReturnType<typeof setInterval>;
   private memoryAbortFired = false;
+  // Independent latch for the lower degrade tier — sheds reclaimable load once before
+  // any abort; a run may degrade, recover to 'ok', and still finish.
+  private memoryDegradeFired = false;
   // Wall-clock start per request, for duration when Playwright timing is unavailable.
   private readonly requestStartTimes = new WeakMap<Request, number>();
   // One source-map resolver per page so its decoded-map cache survives across faults.
@@ -1083,14 +1086,29 @@ export class StabilityMonitor {
   // aborts gracefully once usage crosses the watchdog threshold — before the container kills
   // the browser. Latch-once: the first crossing fires a single harness-resource abort, the
   // same terminating path the crash handler uses. `sample` is injectable for tests.
-  public armMemoryWatchdog(intervalMs: number = MEMORY_WATCHDOG_TICK_MS, sample: () => LiveMemory = sampleLiveMemory): void {
+  public armMemoryWatchdog(intervalMs: number = MEMORY_WATCHDOG_TICK_MS, sample: () => AdaptiveMemory = sampleAdaptiveMemory): void {
     if (this.memoryWatchdogTimer) clearInterval(this.memoryWatchdogTimer);
     this.memoryAbortFired = false; // fresh watch — a reused monitor instance must re-arm the latch
+    this.memoryDegradeFired = false;
 
     this.memoryWatchdogTimer = setInterval(() => {
       if (this.memoryAbortFired || this.deps.isEngineStopping()) return;
       const mem = sample();
-      if (!mem.overThreshold) return;
+
+      // Lower tier: shed reclaimable load ONCE (screencast throttle, gc) and keep
+      // polling — no abort, no dispose. A recovery to 'ok' lets the run finish.
+      if (mem.tier === 'degrade') {
+        if (this.memoryDegradeFired) return;
+        this.memoryDegradeFired = true;
+        this.deps.telemetry.emit('ACTION', {
+          actionExecuted: 'harness-memory-degrade',
+          message: `BugSafari is under memory pressure and is shedding load to protect the run (${mem.detail}). Live feed quality was reduced; testing continues.`,
+        });
+        this.deps.onMemoryDegrade?.(mem.detail);
+        return;
+      }
+
+      if (mem.tier !== 'abort') return;
       this.memoryAbortFired = true;
       this.disposeMemoryWatchdog();
       this.deps.telemetry.emit('ACTION', {

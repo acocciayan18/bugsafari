@@ -49,6 +49,11 @@ export class TelemetryEmitter {
   // on navigation, or a cross-process target swap). Re-arm and push a current-page
   // screenshot so the feed never freezes on the previous URL.
   private static readonly SCREENCAST_STALL_MS = 1000;
+  // Degrade-tier feed floor (memory watchdog): lower quality + fps to shed encode/bandwidth.
+  private static readonly SCREENCAST_DEGRADED_QUALITY = 20;
+  private static readonly SCREENCAST_DEGRADED_FPS = 3;
+  // Ack hold under consumer backpressure — paces capture to roughly this while the wire is full.
+  private static readonly BACKPRESSURE_ACK_DELAY_MS = 250;
 
   // Independent frame capture state
   private page: Page | null = null;
@@ -66,6 +71,12 @@ export class TelemetryEmitter {
   // dashboard's "first live-frame received" to localize a white feed to the exact
   // half (engine not emitting vs client not painting) that broke.
   private firstFrameLogged = false;
+  // Per-run mutable mirrors of the static screencast tunables so the memory watchdog
+  // can throttle the feed at runtime (statics can't be mutated per instance).
+  private quality = TelemetryEmitter.SCREENCAST_QUALITY;
+  private minIntervalMs = TelemetryEmitter.SCREENCAST_MIN_INTERVAL_MS;
+  // Deferred-ack timer used only under consumer backpressure (see deliverFrame).
+  private backpressureAckTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     public readonly gateway: TelemetryGateway,
@@ -138,7 +149,7 @@ export class TelemetryEmitter {
   private screencastParams(): Record<string, unknown> {
     return {
       format: 'jpeg',
-      quality: TelemetryEmitter.SCREENCAST_QUALITY,
+      quality: this.quality,
       maxWidth: TelemetryEmitter.SCREENCAST_MAX_WIDTH,
       maxHeight: TelemetryEmitter.SCREENCAST_MAX_HEIGHT,
       everyNthFrame: 1,
@@ -223,7 +234,7 @@ export class TelemetryEmitter {
     // hold this frame and ack it when the interval elapses — capping fps without
     // dropping to a stale backlog. Otherwise deliver straight through.
     const sinceLast = Date.now() - this.lastFrameEmitMs;
-    if (sinceLast >= TelemetryEmitter.SCREENCAST_MIN_INTERVAL_MS) {
+    if (sinceLast >= this.minIntervalMs) {
       this.deliverFrame(session, frame);
       return;
     }
@@ -237,26 +248,53 @@ export class TelemetryEmitter {
         const p = this.pendingFrame;
         this.pendingFrame = null;
         if (p) this.deliverFrame(p.session, { data: p.data, sessionId: p.sessionId });
-      }, TelemetryEmitter.SCREENCAST_MIN_INTERVAL_MS - sinceLast);
+      }, this.minIntervalMs - sinceLast);
     }
   }
 
   private deliverFrame(session: CDPSession, frame: { data: string; sessionId: number }): void {
     this.lastFrameEmitMs = Date.now();
     incCounter('bugsafari_screencast_frames_emitted_total', 'Screencast frames delivered to the gateway.');
-    // Ack releases Chrome to capture the next paint — the ack IS the backpressure
-    // release. A failed ack means the target/session is gone; safe to ignore.
-    session.send('Page.screencastFrameAck', { sessionId: frame.sessionId }).catch(() => undefined);
-    if (this.flags.isStopRequested() || this.flags.isPaused()) return;
-    // Suppress the pre-goto about:blank paint (a white frame) so the dashboard keeps
-    // its init overlay until the target actually renders, instead of flashing blank.
-    if (this.isBlankPage(this.page)) return;
-    this.noteFrameEmitted();
-    if (this.gateway.emitLiveFrameBinary) {
-      this.gateway.emitLiveFrameBinary(Buffer.from(frame.data, 'base64'));
-    } else {
-      this.gateway.emitLiveFrame(frame.data); // CDP frame.data is already base64 JPEG
+    // Emit BEFORE acking so the ack (which releases Chrome for the next paint) can be
+    // gated on the consumer draining — otherwise capture outruns a slow Redis/socket
+    // and frames pile into the write queue. Blank/stopped/paused suppress the emit
+    // only; the ack must still fire so the session is never wedged.
+    if (!this.flags.isStopRequested() && !this.flags.isPaused() && !this.isBlankPage(this.page)) {
+      this.noteFrameEmitted();
+      if (this.gateway.emitLiveFrameBinary) {
+        this.gateway.emitLiveFrameBinary(Buffer.from(frame.data, 'base64'));
+      } else {
+        this.gateway.emitLiveFrame(frame.data); // CDP frame.data is already base64 JPEG
+      }
     }
+    // A failed ack means the target/session is gone; safe to ignore.
+    const ack = (): void => {
+      void session.send('Page.screencastFrameAck', { sessionId: frame.sessionId }).catch(() => undefined);
+    };
+    // Under consumer backpressure, defer the ack so Chrome throttles capture to the
+    // drain rate. Chrome holds the next frame until acked, so at most one ack is pending.
+    if (this.gateway.isFrameBackpressured?.() && !this.backpressureAckTimer) {
+      this.backpressureAckTimer = setTimeout(() => {
+        this.backpressureAckTimer = null;
+        ack();
+      }, TelemetryEmitter.BACKPRESSURE_ACK_DELAY_MS);
+      this.backpressureAckTimer.unref?.();
+      return;
+    }
+    ack();
+  }
+
+  /** Runtime feed throttle driven by the memory watchdog's degrade tier. 'degraded'
+   *  drops quality + fps to shed encode/bandwidth; 'restore' returns to the env defaults. */
+  public applyMemoryThrottle(level: 'degraded' | 'restore'): void {
+    if (level === 'degraded') {
+      this.quality = TelemetryEmitter.SCREENCAST_DEGRADED_QUALITY;
+      this.minIntervalMs = Math.round(1000 / TelemetryEmitter.SCREENCAST_DEGRADED_FPS);
+    } else {
+      this.quality = TelemetryEmitter.SCREENCAST_QUALITY;
+      this.minIntervalMs = TelemetryEmitter.SCREENCAST_MIN_INTERVAL_MS;
+    }
+    if (this.screencastActive) void this.rearmScreencast();
   }
 
   // True while the page sits on the pre-navigation blank document, whose paint is a

@@ -7,9 +7,10 @@ import type { ControlBridgePublisher } from '../../infrastructure/queue/controlB
 import type { QueueStatusBroadcaster } from '../../infrastructure/queue/QueueStatusBroadcaster.js';
 import type { AuthVault } from '../../infrastructure/queue/AuthVault.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
-import { requireAuth, optionalAuth, type AuthRequest } from '../authentication/authMiddleware.js';
+import { requireAuth, optionalAuth, ifGuest, type AuthRequest } from '../authentication/authMiddleware.js';
+import { applyGuestLaunchPolicy, GUEST_MAX_TIMEBOX_MS } from '../../application/policy/guestPolicy.js';
 import { verifyShareToken } from '../authentication/shareToken.js';
-import { startTestLimiter, analyzeLimiter, writeLimiter, readLimiter, shareCreateLimiter } from '../middleware/rateLimiter.js';
+import { startTestLimiter, guestStartWindowLimiter, guestStartCooldownLimiter, analyzeLimiter, writeLimiter, readLimiter, shareCreateLimiter } from '../middleware/rateLimiter.js';
 import {
   createOrReuseShareLink,
   MAX_ACTIVE_SHARE_LINKS,
@@ -816,7 +817,7 @@ export function registerRoutes(
 
   // Start test - allowed for guests (optional auth)
   // IMPORTANT: Set the authenticated userId before executing so it persists to saved documents
-  app.post('/api/start-test', startTestLimiter, optionalAuth, async (request: AuthRequest, response: Response): Promise<void> => {
+  app.post('/api/start-test', startTestLimiter, optionalAuth, ifGuest(guestStartWindowLimiter), ifGuest(guestStartCooldownLimiter), async (request: AuthRequest, response: Response): Promise<void> => {
     obsLog.info(`[API]  POST /api/start-test received`);
     obsLog.info(`[API] Auth user: ${request.userId ?? 'guest'}`);
 
@@ -843,7 +844,8 @@ export function registerRoutes(
     // Resolve the operator-selected Unified Infiltration Profile into gated scenario
     // categories BEFORE the queue branch, so a distributed run carries the same gate
     // as a synchronous one (otherwise the worker defaults to all testing types).
-    const { profile: infiltrationProfile, selectedScenarios } = parseInfiltration(request.body);
+    const { profile: infiltrationProfile, selectedScenarios: requestedScenarios } = parseInfiltration(request.body);
+    let selectedScenarios = requestedScenarios;
     obsLog.info(`[API] Infiltration profile ${infiltrationProfile} resolved to:`, selectedScenarios);
 
     // Run token the client already holds from a previous launch (localStorage) —
@@ -864,18 +866,38 @@ export function registerRoutes(
     }
     const targetAuth = parsedAuth;
 
+    // Guests may not drive authenticated (behind-login) tests: credential handling
+    // and the auth-behind-login attack surface are reserved for real accounts.
+    if (request.isGuest && targetAuth) {
+      response.status(403).json({
+        error: 'GUEST_TARGET_AUTH_FORBIDDEN',
+        message: 'Testing behind a login requires an account. Sign in to use Target Auth.',
+      });
+      return;
+    }
+
     // Resolved before the queue branch so a distributed run enforces the same
     // timebox and tuning as a synchronous one.
-    const optimizationSettings = request.body?.optimization as OptimizationSettings | undefined;
-    clampTimebox(optimizationSettings);
+    let optimizationSettings = request.body?.optimization as OptimizationSettings | undefined;
+
+    // Guest launch envelope: force reduced scope/scenarios and a concrete settings
+    // object BEFORE both start branches, so the anonymous caps are authoritative.
+    if (request.isGuest) {
+      const guarded = applyGuestLaunchPolicy(optimizationSettings, selectedScenarios);
+      optimizationSettings = guarded.settings;
+      selectedScenarios = guarded.selectedScenarios;
+    }
+
+    clampTimebox(optimizationSettings, request.isGuest ? GUEST_MAX_TIMEBOX_MS : undefined);
     obsLog.info(`[API] Optimization settings:`, optimizationSettings);
 
     // Opt-in distributed path: hand the run to the Safari worker fleet instead of
     // running it in this process. Deliberately BEFORE tryActivate — the queue path
     // owns no in-process engine slot; admission is the worker's concern, so this
-    // must not touch the synchronous use case's active flag. Guest runs (no userId)
-    // enqueue too; the worker persists nothing.
-    if (taskQueue) {
+    // must not touch the synchronous use case's active flag. Guests are excluded:
+    // they run in-process so the concurrency-1 slot bounds them to one run at a
+    // time, one browser, no fleet fan-out, and no queue stacking.
+    if (taskQueue && !request.isGuest) {
       // Credentials never enter the job payload: BullMQ retains failed jobs in
       // Redis for 24h in plaintext. They travel through the AuthVault instead —
       // AES-256-GCM, 10-minute TTL, destroyed on first read by the worker. With

@@ -58,6 +58,17 @@ x-shared-env: &shared-env
   # the renderer for several seconds on a heavy in-page parse, tripping a false client
   # render freeze against the 5s default; widen it here so only a genuine lock-up fires.
   BUGSAFARI_FREEZE_TIMEOUT_MS: ${BUGSAFARI_FREEZE_TIMEOUT_MS:-8000}
+  # Adaptive per-run memory budget (resourceProbe.ts). RESERVE_SYSTEM_MB is OS + burst
+  # headroom above resident (NOT the api/redis/caddy ceilings — host-free already
+  # excludes what they hold). PER_WORKER_FLOOR_MB is reserved for each OTHER active
+  # worker. SAFETY_RATIO scales the host-aware budget (never the cgroup ceiling).
+  # DEGRADE_RATIO sheds load before the 0.85 abort ratio. HOST_FREE_FLOOR_MB is the
+  # hard host-pressure override that fires ahead of the kernel OOM killer.
+  BUGSAFARI_MEM_RESERVE_SYSTEM_MB: ${BUGSAFARI_MEM_RESERVE_SYSTEM_MB:-500}
+  BUGSAFARI_MEM_PER_WORKER_FLOOR_MB: ${BUGSAFARI_MEM_PER_WORKER_FLOOR_MB:-900}
+  BUGSAFARI_MEM_SAFETY_RATIO: ${BUGSAFARI_MEM_SAFETY_RATIO:-0.9}
+  BUGSAFARI_MEM_DEGRADE_RATIO: ${BUGSAFARI_MEM_DEGRADE_RATIO:-0.75}
+  BUGSAFARI_MEM_HOST_FREE_FLOOR_MB: ${BUGSAFARI_MEM_HOST_FREE_FLOOR_MB:-350}
 
 x-logging: &default-logging
   driver: json-file
@@ -155,7 +166,9 @@ services:
       # The cgroup holds Node AND Chromium (400-600MB RSS), so the Node heap is a
       # deliberate minority of it — a 1GB heap ceiling here would guarantee mid-run
       # OOM-kills, which BullMQ surfaces as a stalled/failed job and a lost run.
-      NODE_OPTIONS: "--max-old-space-size=384"
+      # --expose-gc lets the adaptive memory watchdog's degrade tier reclaim heap
+      # before it must abort a run under pressure.
+      NODE_OPTIONS: "--max-old-space-size=384 --expose-gc"
     command: ["npm", "run", "start:worker", "--workspace", "testing-core"]
     logging: *default-logging
     networks:
@@ -165,8 +178,15 @@ services:
       replicas: ${WORKER_REPLICAS:-2}
       resources:
         limits:
-          # Node heap 384MB + Chromium 400-600MB + binary/overhead ~150MB.
-          memory: 1100m
+          # HARD physical backstop only. The adaptive memory watchdog (resourceProbe.ts)
+          # sizes each run's real budget from live host-free memory minus reserved pools,
+          # so a lone run on an idle box may climb toward this ceiling while two busy
+          # workers each abort well below it — the box is over-committed on paper
+          # (1600x2 + api 768 + redis 192 + caddy 256 = 4416 > 4096) but limits are
+          # ceilings, not reservations, and the watchdog + HOST_FREE_FLOOR prevent both
+          # workers realizing their ceilings at once. Raise this ONLY with the adaptive
+          # layer deployed. Node heap 384MB + Chromium 400-600MB + overhead ~150MB.
+          memory: 1600m
           # Under-provisioned vs 1.0 on purpose so a Chromium burst never starves
           # the api event loop (control latency is operator-visible; exploration is
           # a background batch workload where a small slowdown is invisible).

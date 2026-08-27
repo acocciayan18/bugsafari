@@ -1,4 +1,4 @@
-import type { Request, Response, NextFunction } from 'express';
+import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { verifyTokenSync } from './authConfig.js';
 import { maskEmail } from './authValidation.js';
 
@@ -99,4 +99,16 @@ export function optionalAuth(
   }
 
   next();
+}
+
+// Run a middleware only for guests; authenticated requests pass straight through.
+// Must be chained AFTER optionalAuth so request.isGuest is already resolved.
+export function ifGuest(middleware: RequestHandler): RequestHandler {
+  return function guestOnly(request: AuthRequest, response: Response, next: NextFunction): void {
+    if (request.isGuest) {
+      middleware(request, response, next);
+      return;
+    }
+    next();
+  };
 }

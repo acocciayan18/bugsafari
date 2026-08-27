@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "fix-embedded-video-oom-freeze"
+git commit -m "Trace Stack section in BugSafari forensic cards"
 git push origin HEAD:dev --force
 
 

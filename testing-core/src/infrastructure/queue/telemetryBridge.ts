@@ -11,6 +11,10 @@ const obsLog = createLogger('[TelemetryBridge]');
 // processes stream live events to the dashboard without a Socket.IO adapter.
 export const TELEMETRY_BRIDGE_CHANNEL = 'safari:telemetry';
 
+// Bytes buffered in the publisher socket above which the screencast is told to back
+// off — a stalled subscriber lets frames pile into this write queue and grow the heap.
+const BACKPRESSURE_WRITE_BYTES = 8 * 1024 * 1024;
+
 interface BridgeMessage {
   room: string; // always run:${runToken} — an unrouted worker emit is never bridged
   event: string;
@@ -68,6 +72,18 @@ export class RedisTelemetryPublisher implements RoomEmitter {
     void this.pub.publish(TELEMETRY_BRIDGE_CHANNEL, JSON.stringify(message)).catch((error) => {
       obsLog.error('[TelemetryBridge] publish failed:', error instanceof Error ? error.message : error);
     });
+  }
+
+  // Congested when the ioredis socket's unflushed write buffer exceeds the threshold —
+  // the screencast reads this to throttle capture to the drain rate. Best-effort; any
+  // access failure degrades to "not backpressured".
+  public backpressured(): boolean {
+    try {
+      const stream = (this.pub as unknown as { stream?: { writableLength?: number } }).stream;
+      return (stream?.writableLength ?? 0) > BACKPRESSURE_WRITE_BYTES;
+    } catch {
+      return false;
+    }
   }
 
   public async close(): Promise<void> {

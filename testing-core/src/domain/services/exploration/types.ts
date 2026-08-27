@@ -195,6 +195,9 @@ export interface StabilityMonitorDeps {
    *  exhaustion or a browser/GPU/driver fault) — a BugSafari-side fault that stops testing
    *  and is never registered as a target finding. */
   abortForHarnessFault(kind: 'memory' | 'environment', detail: string): void;
+  /** Lower-tier memory pressure: shed reclaimable load (screencast throttle, gc) before
+   *  any abort. Optional — absent ⇒ the watchdog degrade tier is a no-op. */
+  onMemoryDegrade?(detail: string): void;
 }
 
 export interface StateRestorerDeps {

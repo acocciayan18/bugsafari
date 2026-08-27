@@ -31,7 +31,7 @@ export function GuestModeModal({ isOpen, onClose, onContinue, onCreateAccount }:
     </h3>
 
     <p className="mt-0.5 text-[13px] text-(--text-tertiary)">
-      Guest mode runs the full testing engine, but nothing is saved.
+      Guest mode runs a time and scope limited test, and nothing is saved.
     </p>
   </div>
 </div>
