@@ -121,10 +121,14 @@ export async function startRun(
         // Target-Auth-disabled); surface it so the block is legible, not silent.
         const isGuestLimit = err.status === 429 || err.status === 403
             || err.code === 'RATE_LIMITED' || err.code === 'GUEST_TARGET_AUTH_FORBIDDEN';
+        // Fleet-gate 503s (no worker connected, or a full backlog) carry deliberate
+        // operator prose. Without a toast the refusal only reaches the telemetry feed,
+        // which is exactly the silence this gate exists to end.
+        const isFleetRejection = err.code === 'FLEET_UNAVAILABLE' || err.code === 'QUEUE_FULL';
         const message = isAuthOnQueue
             ? "Authenticated runs aren't available right now. Try again later, or start a run without signing in to the target."
             : raw;
-        if (isAuthOnQueue || isGuestLimit) toast.error(message, { id: STATUS_TOAST_ID });
+        if (isAuthOnQueue || isGuestLimit || isFleetRejection) toast.error(message, { id: STATUS_TOAST_ID });
         useRunStore.getState().markLaunchFailed(message);
     } finally {
         // Release the latch once the POST settles; isActiveSession now gates the UI.

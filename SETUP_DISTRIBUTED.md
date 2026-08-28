@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "fix-network-issues-and-control"
+git commit -m "ConnectionStatusChip visibility and redesign"
 git push origin HEAD:dev --force
 
 

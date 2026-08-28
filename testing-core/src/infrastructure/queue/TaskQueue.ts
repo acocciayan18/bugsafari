@@ -177,6 +177,14 @@ export class TaskQueue {
     return this.queue.getWaitingCount();
   }
 
+  // Waiting jobs paired with the run they belong to, for the reconciler's ghost sweep.
+  // Deliberately NOT folded into positions(): that one is a 750ms-cached hot path fed by
+  // every queue transition, and it must keep returning ids only.
+  public async waitingJobRefs(): Promise<{ id: string; runToken: string }[]> {
+    const waiting = await this.queue.getWaiting();
+    return waiting.map((job) => ({ id: String(job.id), runToken: job.data?.runToken ?? '' }));
+  }
+
   // Authoritative BullMQ state of one job — drives recovery + initial pushes.
   public async getJobState(jobId: string): Promise<string> {
     return this.queue.getJobState(jobId);

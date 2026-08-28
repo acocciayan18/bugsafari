@@ -2,6 +2,7 @@ import type { Express, Request, Response } from 'express';
 import { parseTargetUrl, admitTargetChain } from '../../serverUtils.js';
 import { StartExplorationUseCase, type SaveFailureCode } from '../../application/useCases/StartExplorationUseCase.js';
 import { readMaxQueueDepth, type TaskQueue } from '../../infrastructure/queue/TaskQueue.js';
+import { resolveFleetAdmission } from '../../infrastructure/queue/fleetAdmission.js';
 import type { RunRegistry, RunRegistryEntry } from '../../infrastructure/queue/RunRegistry.js';
 import type { ControlBridgePublisher } from '../../infrastructure/queue/controlBridge.js';
 import type { QueueStatusBroadcaster } from '../../infrastructure/queue/QueueStatusBroadcaster.js';
@@ -997,17 +998,25 @@ export function registerRoutes(
           }
         }
 
-        // Bounded backlog. Without a ceiling one burst pins every job payload in
-        // Redis and hands later operators a wait no UI can honestly display; the
-        // duplicate-submission guard above already let this requester resume, so
-        // anyone reaching here is genuinely adding to the line.
-        const waiting = await taskQueue.waitingCount();
-        if (waiting >= maxQueueDepth) {
-          obsLog.warn(`[API] Queue full: ${waiting}/${maxQueueDepth} waiting — rejecting launch for ${targetUrl}`);
+        // Fleet gate. QUEUED is a mirror of BullMQ's `waiting` state, so an enqueue into
+        // a fleet with zero connected workers pins the run there forever while the
+        // dashboard renders an ordinary queue. Ask about capacity BEFORE joining the
+        // line: no worker at all is a refusal, a full backlog is the existing ceiling
+        // (without which one burst pins every job payload in Redis and hands later
+        // operators a wait no UI can honestly display). The duplicate-submission guard
+        // above already let this requester resume, so anyone reaching here is genuinely
+        // adding to the line.
+        const [waiting, workerCount] = await Promise.all([taskQueue.waitingCount(), taskQueue.workerCount()]);
+        const admission = resolveFleetAdmission({ workerCount, waiting, maxQueueDepth });
+        if (!admission.ok) {
+          obsLog.warn(admission.code === 'FLEET_UNAVAILABLE'
+            ? `[API] No worker is connected to the fleet — refusing launch for ${targetUrl}. Start a worker (npm run dev:worker) or scale the worker service.`
+            : `[API] Queue full: ${waiting}/${maxQueueDepth} waiting — rejecting launch for ${targetUrl}`);
           response.status(503).json({
-            error: 'QUEUE_FULL',
-            message: `The testing fleet is saturated (${waiting} runs already waiting). Please retry shortly.`,
-            queueDepth: waiting,
+            error: admission.code,
+            code: admission.code,
+            message: admission.message,
+            queueDepth: admission.queueDepth,
           });
           return;
         }

@@ -4,19 +4,26 @@ import { toast } from '../../infrastructure/notifications/ToastProvider';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
 import { resolveConnectionView, type ConnectionSeverity } from '../../stores/run/connectionState';
 
-// Top-right status indicator. Single host for every connection state the operator needs
+// Lower-left status indicator. Single host for every connection state the operator needs
 // to distinguish: Connected, Recovering, Disconnected, Stalled, Stopped. The decision
 // itself lives in resolveConnectionView so it is testable without React; this component
 // only owns the browser-only inputs (navigator, Network Information API) and rendering.
 //
-// A healthy link shows a quiet Connected pill rather than nothing, so "no chip" can
-// never be mistaken for "connected" — the ambiguity that made a dead stream invisible.
+// Shows only when there is something to say: a fault, or a brief post-recovery flash.
+// When the link is healthy and settled it fades out completely rather than lingering as
+// a dim pill, so a quiet dashboard stays uncluttered.
 const CONNECTED_FLASH_MS = 2500;
 
 const SEVERITY_CLASS: Record<ConnectionSeverity, string> = {
   critical: 'border-(--status-critical-border) bg-(--status-critical-bg) text-(--status-critical-fg)',
   warning: 'border-(--status-warning-border) bg-(--status-warning-bg) text-(--status-warning-fg)',
   stable: 'border-(--status-stable-border) bg-(--status-stable-bg) text-(--status-stable-fg)',
+};
+
+const DOT_CLASS: Record<ConnectionSeverity, string> = {
+  critical: 'bg-(--status-critical-fg) animate-pulse',
+  warning: 'bg-(--status-warning-fg) animate-pulse',
+  stable: 'bg-(--status-stable-fg)',
 };
 
 export default function ConnectionStatusChip() {
@@ -118,22 +125,25 @@ export default function ConnectionStatusChip() {
     }
   }, [reconnectGaveUp]);
 
-  // Quiet when healthy and uneventful: a persistent pill, but visually recessive.
-  const quiet = !down && !recovered;
+  // Visible only while there is something to report: a live fault, or the brief flash
+  // after a recovery. Otherwise it fades down and out completely (pointer-events off so
+  // it never blocks the UI beneath it), instead of lingering as a dim pill.
+  const visible = down || recovered;
 
   return (
     <div
       role="status"
       aria-live="polite"
       data-connection-phase={view.phase}
-      className={`fixed right-3 top-3 z-9999 flex items-center gap-2 rounded-[8px] border px-3 py-1.5 text-[13px] font-semibold shadow-sm backdrop-blur transition-opacity ${SEVERITY_CLASS[view.severity]} ${quiet ? 'opacity-60' : 'opacity-100'}`}
+      className={`fixed bottom-3 left-3 z-9999 flex items-center gap-2 rounded-full border py-1.5 pl-2.5 pr-3 text-[13px] font-semibold shadow-md backdrop-blur transition-all duration-300 ${SEVERITY_CLASS[view.severity]} ${visible ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-2 opacity-0'}`}
     >
+      <span className={`h-2 w-2 shrink-0 rounded-full ${DOT_CLASS[view.severity]}`} />
       {view.label}
       {reconnectGaveUp && (
         <button
           type="button"
           onClick={() => getEngineGateway().retryConnection()}
-          className="ml-1 rounded-[6px] border border-current px-2 py-0.5 text-[12px] font-semibold hover:opacity-80"
+          className="ml-1 rounded-full border border-current px-2 py-0.5 text-[12px] font-semibold hover:opacity-80"
         >
           Retry
         </button>

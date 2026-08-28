@@ -443,7 +443,12 @@ export const useRunStore = create<RunState>((set, get) => ({
             // Shared id makes repeated waiting pushes update in place instead of stacking.
             // The live place in line rides the chip, not the toast — a toast body that
             // changes every push re-announces itself to screen readers on each tick.
-            toast('Session queued. Waiting for an available worker, then execution starts automatically.', { id: STATUS_TOAST_ID, duration: Infinity });
+            // A definite zero-worker fleet must not promise an automatic start: nothing
+            // is connected to claim the job, so say that instead.
+            toast(update.workerCount === 0
+                ? 'No test worker is connected, so this run cannot start yet. It begins as soon as a worker comes online.'
+                : 'Session queued. Waiting for an available worker, then execution starts automatically.',
+                { id: STATUS_TOAST_ID, duration: Infinity });
             return;
         }
 

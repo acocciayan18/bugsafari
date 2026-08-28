@@ -1,5 +1,6 @@
 import { LoaderCircle } from 'lucide-react';
 import { useRunStore } from '../../stores/run/runStore';
+import { describeQueueStandby } from './queueStandby';
 
 // Standby indicator — job is waiting for a free worker; all controls locked.
 // Shows place in line plus fleet occupancy, so a queue that is moving still reads
@@ -10,17 +11,7 @@ export default function QueueStandbyChip() {
     const activeCount = useRunStore((s) => s.queueActiveCount);
     const workerCount = useRunStore((s) => s.queueWorkerCount);
 
-    // depth is the total waiting count, so it is never < position; guard anyway
-    // against a push that raced a job leaving the line.
-    const place = position !== null
-        ? `${position} of ${Math.max(depth, position)} waiting`
-        : 'awaiting worker';
-    // Capacity is unknown when Redis refuses CLIENT LIST — report only what is true.
-    const fleet = activeCount > 0
-        ? workerCount && workerCount > 0
-            ? `${activeCount} of ${workerCount} running`
-            : `${activeCount} running`
-        : null;
+    const { place, fleet } = describeQueueStandby({ position, depth, activeCount, workerCount });
 
     return (
         <span

@@ -16,6 +16,7 @@
     "typecheck": "npm run typecheck -w shared --if-present && npm run typecheck -w testing-core && npm run build -w developer-dashboard",
     "test": "npm run test -w shared --if-present && npm run test -w testing-core && npm run test -w developer-dashboard",
     "dev:server": "npm run dev -w testing-core",
+    "dev:worker": "npm run dev:worker -w testing-core",
     "dev:client": "npm run dev -w developer-dashboard",
     "lint": "eslint .",
     "format": "prettier --write \"testing-core/src/**/*.ts\" \"shared/**/*.ts\""

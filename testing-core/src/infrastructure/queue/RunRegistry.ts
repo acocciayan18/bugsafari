@@ -146,6 +146,19 @@ export class RunRegistry {
     return runToken ? this.findByRunToken(runToken) : null;
   }
 
+  /**
+   * Extend a still-live run's entry back to the full TTL. The reconciler calls this on
+   * every pass (every 5 min, far inside the 2h window), which is what makes a MISSING
+   * entry a sound orphan signal: without it a legitimately long-waiting job outlived its
+   * own index and the ghost sweep would mistake it for garbage.
+   */
+  public async touch(runToken: string, userId: string | null): Promise<void> {
+    const multi = this.redis.multi();
+    multi.expire(this.runKey(runToken), ENTRY_TTL_SECONDS);
+    if (userId) multi.expire(this.ownerKey(userId), ENTRY_TTL_SECONDS);
+    await multi.exec();
+  }
+
   /** Drop every key for a finished/stale run (worker on completion, API on stale hit). */
   public async clear(runToken: string, userId: string | null): Promise<void> {
     const keys = [this.runKey(runToken), this.snapshotKey(runToken), this.heartbeatKey(runToken)];
