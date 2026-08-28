@@ -742,6 +742,7 @@ function ReportFindingCard({
   sessionId,
   status,
   onVerify,
+  onShowResult,
   readOnly = false,
 }: {
   bug: ForensicCaughtBug;
@@ -750,13 +751,9 @@ function ReportFindingCard({
   sessionId?: string;
   status: VerifyStatus;
   onVerify: (request: VerifyFixRequest) => void;
+  onShowResult: (bugId: string) => void;
   readOnly?: boolean;
 }) {
-  const [showResult, setShowResult] = useState(false);
-  // True only after a user-initiated verify/re-verify this session, so the result
-  // modal auto-opens for a fresh run but never for a persisted verdict rehydrated
-  // on mount, refresh, or navigation back into the report.
-  const awaitingResult = useRef(false);
   // Normalized view — the shared <FindingCard> renders identity, metadata and
   // evidence exactly as the live Errors tab does.
   const view = useMemo(() => caughtBugToFindingView(bug, occurrences), [bug, occurrences]);
@@ -769,62 +766,39 @@ function ReportFindingCard({
       ? "This finding can't be replayed."
       : undefined;
 
-  // Settled verdict drives the card theme and the Verify/status button.
+  // Settled verdict drives the card theme and the Verify/status button. The result
+  // modal itself is owned by the page (single, FIFO-ordered surface across findings).
   const settled = status.state === 'done' ? status.result : null;
   const verdictMeta = settled ? metaForResult(settled) : null;
 
   const triggerVerify = (): void => {
     // Guard duplicates: never fire while a replay for this finding is queued or in flight.
     if (!canVerify || !sessionId || status.state === 'running' || status.state === 'queued') return;
-    awaitingResult.current = true;
     onVerify({ sessionId, bugId: bug.bugId });
   };
 
-  // Auto-open the result modal only when a user-initiated verify settles this
-  // session — a persisted verdict loaded on navigation stays behind the button.
-  useEffect(() => {
-    if (settled && awaitingResult.current) {
-      awaitingResult.current = false;
-      setShowResult(true);
-    }
-  }, [settled]);
-
   return (
-    <>
-      {/* Read-only (public share): keep the settled verdict THEME but drop the
-          AI suggested-fix button (aiFix) and the Verify Fix control (actions),
-          so nothing mutates or calls back. Saved fix text still renders. */}
-      <FindingCard
-        view={view}
-        index={index}
-        aiFix={!readOnly}
-        sessionId={sessionId}
-        theme={verdictMeta ?? BASE_FINDING_THEME}
-        actions={
-          readOnly ? undefined : (
-            <VerifyFixControl
-              status={status}
-              disabled={!canVerify || status.state === 'running'}
-              disabledReason={disabledReason}
-              onVerify={triggerVerify}
-              onOpenResult={() => setShowResult(true)}
-            />
-          )
-        }
-      />
-
-      {/* Dedicated verification outcome surface (auto-opens on completion) */}
-      {!readOnly && settled && showResult && (
-        <VerificationResultModal
-          result={settled}
-          onReverify={() => {
-            setShowResult(false);
-            triggerVerify();
-          }}
-          onClose={() => setShowResult(false)}
-        />
-      )}
-    </>
+    // Read-only (public share): keep the settled verdict THEME but drop the AI
+    // suggested-fix button (aiFix) and the Verify Fix control (actions), so nothing
+    // mutates or calls back. Saved fix text still renders.
+    <FindingCard
+      view={view}
+      index={index}
+      aiFix={!readOnly}
+      sessionId={sessionId}
+      theme={verdictMeta ?? BASE_FINDING_THEME}
+      actions={
+        readOnly ? undefined : (
+          <VerifyFixControl
+            status={status}
+            disabled={!canVerify || status.state === 'running'}
+            disabledReason={disabledReason}
+            onVerify={triggerVerify}
+            onOpenResult={() => onShowResult(bug.bugId)}
+          />
+        )
+      }
+    />
   );
 }
 
@@ -1084,12 +1058,22 @@ export default function ForensicReport({ shared = false }: { shared?: boolean } 
   );
   const { statuses, verify } = useRegressionVerifier();
 
+  // The verification result modal is a SINGLE page-level surface shared by every
+  // finding: `resultQueue` is a FIFO of bugIds awaiting display (head is visible), so
+  // results auto-open one at a time in finish order (A then B) instead of stacking.
+  const [resultQueue, setResultQueue] = useState<string[]>([]);
+  // Bugs whose verify the user initiated this session — only these auto-open on settle
+  // (a persisted verdict rehydrated on load stays behind its badge until clicked).
+  const awaitingAuto = useRef<Set<string>>(new Set());
+  const bugById = useMemo(() => new Map(runtimeBugs.map((b) => [b.bugId, b])), [runtimeBugs]);
+
   // Mirror a settled verdict into the cached report so reopening it via in-app
   // navigation restores the card (the backend persists it too; this keeps the
   // store's in-memory copy from serving the stale pre-verify report). A client-side
   // transport/timeout failure (durationMs 0) is never persisted, so it is skipped.
   const handleVerify = useCallback(
     async (request: VerifyFixRequest): Promise<void> => {
+      awaitingAuto.current.add(request.bugId); // user-initiated → auto-open its result when it settles
       const result = await verify(request);
       if (result.durationMs <= 0) return;
       const verification: PersistedVerification = { ...result, verifiedAt: new Date().toISOString() };
@@ -1100,6 +1084,23 @@ export default function ForensicReport({ shared = false }: { shared?: boolean } 
     },
     [verify],
   );
+
+  // Enqueue a settled user-initiated verify for display. Statuses settle one bug at a
+  // time, so append order == finish order == FIFO.
+  useEffect(() => {
+    const ready = [...awaitingAuto.current].filter((id) => statuses[id]?.state === 'done');
+    if (ready.length === 0) return;
+    ready.forEach((id) => awaitingAuto.current.delete(id));
+    setResultQueue((q) => [...q, ...ready.filter((id) => !q.includes(id))]);
+  }, [statuses]);
+
+  const resultFor = (bugId: string): VerifyFixResult | null => {
+    const s = statuses[bugId];
+    return s?.state === 'done' ? s.result : bugById.get(bugId)?.verification ?? null;
+  };
+  // Badge click: show that finding's result now, ahead of any auto-queued ones.
+  const showResultNow = (bugId: string): void => setResultQueue((q) => [bugId, ...q.filter((b) => b !== bugId)]);
+  const closeTopResult = (): void => setResultQueue((q) => q.slice(1));
 
   if (isLoading) return <ForensicReportSkeleton />;
 
@@ -1172,6 +1173,7 @@ export default function ForensicReport({ shared = false }: { shared?: boolean } 
                       sessionId={sessionId}
                       status={statuses[bug.bugId] ?? (bug.verification ? { state: 'done', result: bug.verification } : IDLE_VERIFY_STATUS)}
                       onVerify={handleVerify}
+                      onShowResult={showResultNow}
                       readOnly={shared}
                     />
                   ),
@@ -1204,7 +1206,20 @@ export default function ForensicReport({ shared = false }: { shared?: boolean } 
         </div>
       </main>
 
-      
+      {/* Single verification-result surface for the whole report: shows the head of the
+          FIFO queue, so auto-opened results appear one at a time in finish order. */}
+      {!shared && resultQueue[0] && resultFor(resultQueue[0]) && (
+        <VerificationResultModal
+          result={resultFor(resultQueue[0])!}
+          onReverify={() => {
+            const id = resultQueue[0];
+            closeTopResult();
+            const s = statuses[id];
+            if (sessionId && s?.state !== 'running' && s?.state !== 'queued') void handleVerify({ sessionId, bugId: id });
+          }}
+          onClose={closeTopResult}
+        />
+      )}
     </div>
   );
 }

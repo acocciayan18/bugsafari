@@ -348,6 +348,11 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
           timer.unref();
         });
         const result = await Promise.race([verifyPromise, timeout]);
+        // Release the per-operator slot BEFORE acking: the ack unblocks the client to fire
+        // its next queued verify, and the replay/browser has already settled here. Holding
+        // the slot across the awaited persist (a DB write, not a replay) races that next
+        // request into a false "already in progress" rejection.
+        verificationsInFlight.delete(userId);
         respond(result);
         // Persist the verdict so it survives a report refresh (non-fatal on failure).
         await regressionVerifier.persistVerification(sessionId, bugId, userId, result);

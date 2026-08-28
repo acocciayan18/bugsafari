@@ -20,6 +20,7 @@ import { createLogger } from '../../../infrastructure/observability/logger.js';
 const obsLog = createLogger('[RegressionVerifier]');
 
 const LAUNCH_TIMEOUT_MS = 30_000;
+const PREFLIGHT_TIMEOUT_MS = 6_000;
 const EMPTY_STATS: ReplayStepStats = { total: 0, executed: 0, skipped: 0, failed: 0, finalStepExecuted: false };
 
 /**
@@ -82,6 +83,20 @@ export class RegressionPlaybookVerifier {
         `(class=${originalBugClass}, timeline=${finding.timelineSource}) on ${finding.targetUrl}`,
     );
 
+    // Cheap liveness check before spending ~90s of browser nav timeouts on a dead host.
+    if (!(await this.isTargetReachable(finding.targetUrl))) {
+      return this.failed(
+        sessionId,
+        bugId,
+        originalBugClass,
+        startedAt,
+        `Could not reach target ${finding.targetUrl} (no response within ${PREFLIGHT_TIMEOUT_MS / 1000}s). Is the app running?`,
+        'TARGET_UNREACHABLE',
+        { ...EMPTY_STATS, total: finding.actionSteps.length },
+        finding.timelineSource,
+      );
+    }
+
     let browser: Browser | undefined;
     try {
       browser = await this.launchBrowser();
@@ -99,7 +114,16 @@ export class RegressionPlaybookVerifier {
 
       const probe = await this.attempt(browser, finding, originalBugClass, originalFaultType, emit);
       if (!probe.ok) {
-        return this.failed(sessionId, bugId, originalBugClass, startedAt, probe.error ?? 'Replay failed.', probe.failureReason);
+        return this.failed(
+          sessionId,
+          bugId,
+          originalBugClass,
+          startedAt,
+          probe.error ?? 'Replay failed.',
+          probe.failureReason,
+          probe.stepStats,
+          finding.timelineSource,
+        );
       }
 
       let decision = decide(probe);
@@ -141,7 +165,16 @@ export class RegressionPlaybookVerifier {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return this.failed(sessionId, bugId, originalBugClass, startedAt, `Replay error: ${message}`);
+      return this.failed(
+        sessionId,
+        bugId,
+        originalBugClass,
+        startedAt,
+        `Replay error: ${message}`,
+        'REPLAY_ERROR',
+        { ...EMPTY_STATS, total: finding.actionSteps.length },
+        finding.timelineSource,
+      );
     } finally {
       if (browser) {
         await browser.close().catch(() => undefined);
@@ -318,7 +351,11 @@ export class RegressionPlaybookVerifier {
     };
   }
 
-  /** The replay could not run at all — the verdict says nothing about the bug. */
+  /**
+   * The replay could not run at all — the verdict says nothing about the bug.
+   * `stepStats`/`timelineSource` carry the finding's real recorded totals when known,
+   * so a nav-fail card shows 0/N (not a misleading 0/0) and the true timeline.
+   */
   private failed(
     sessionId: string,
     bugId: string,
@@ -326,6 +363,8 @@ export class RegressionPlaybookVerifier {
     startedAt: number,
     error: string,
     reason: VerifyFixReason = 'REPLAY_ERROR',
+    stepStats: ReplayStepStats = { ...EMPTY_STATS },
+    timelineSource: VerifyFixResult['timelineSource'] = 'finding',
   ): VerifyFixResult {
     obsLog.warn(`[RegressionVerifier] VERIFICATION_FAILED (${reason}) for bug ${bugId}: ${error}`);
     return {
@@ -336,13 +375,25 @@ export class RegressionPlaybookVerifier {
       bugId,
       bugClass,
       stepsReplayed: 0,
-      stepStats: { ...EMPTY_STATS },
+      stepStats,
       matchedSignals: [],
       otherSignals: [],
-      timelineSource: 'finding',
+      timelineSource,
       summary: `Verification failed: ${error}`,
       durationMs: Date.now() - startedAt,
       error,
     };
+  }
+
+  // ANY HTTP response (even 4xx/5xx) = reachable; only a connection/DNS failure or
+  // timeout short-circuits. Advisory: catches the "host fully down" case the browser
+  // retries can't salvage, not slow-but-up targets (those keep the browser retry budget).
+  private async isTargetReachable(url: string): Promise<boolean> {
+    try {
+      await fetch(url, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(PREFLIGHT_TIMEOUT_MS) });
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
