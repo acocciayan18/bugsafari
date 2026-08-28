@@ -26,6 +26,7 @@ import {
   KeyRound,
   X,
   CircleQuestionMark,
+  CircleCheckBig,
 } from 'lucide-react';
 import { toast } from '../../infrastructure/notifications/ToastProvider';
 
@@ -35,6 +36,12 @@ import { useDarkMode } from '../../context/DarkModeContext';
 import { Skeleton } from '../ui/Skeleton';
 import { isDesktopNotifySupported, requestDesktopNotifyPermission } from '../../utils/desktopNotify';
 import { PASSWORD_MAX_LENGTH } from '../../utils/authLimits';
+import {
+  validatePasswordChange,
+  hasPasswordErrors,
+  SIGNOUT_COUNTDOWN_SECONDS,
+  type PasswordFieldErrors,
+} from './passwordChangeForm';
 import { useTour } from '../../tour/useTour';
 import { buildSettingsTourSteps } from '../../tour/tourSteps';
 import type { ThemeMode } from '../../types';
@@ -406,13 +413,34 @@ function SecuritySettingsSection() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPasswords, setShowPasswords] = useState({ current: false, new: false, confirm: false });
-  const [errors, setErrors] = useState<{ current?: string; new?: string; confirm?: string }>({});
-  const [successMessage, setSuccessMessage] = useState('');
+  const [errors, setErrors] = useState<PasswordFieldErrors>({});
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(SIGNOUT_COUNTDOWN_SECONDS);
+  // Guards the sign-out so the countdown reaching zero and the "Sign in now" button
+  // can never both fire it.
+  const signedOutRef = useRef(false);
 
   // Clear stale errors from prior visits when this section unmounts
   useEffect(() => {
     return () => clearErrors();
   }, [clearErrors]);
+
+  const signOutNow = () => {
+    if (signedOutRef.current) return;
+    signedOutRef.current = true;
+    window.dispatchEvent(new CustomEvent('bugsafari:session-expired'));
+  };
+
+  // Once the change succeeds, tick down the read window, then force the sign-out.
+  useEffect(() => {
+    if (!isSuccess) return;
+    if (secondsLeft <= 0) {
+      signOutNow();
+      return;
+    }
+    const timer = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [isSuccess, secondsLeft]);
 
   const resetForm = () => {
     setCurrentPassword('');
@@ -420,7 +448,6 @@ function SecuritySettingsSection() {
     setConfirmPassword('');
     setShowPasswords({ current: false, new: false, confirm: false });
     setErrors({});
-    setSuccessMessage('');
     clearPasswordSuccess();
     clearErrors();
   };
@@ -429,40 +456,23 @@ function SecuritySettingsSection() {
     setShowPasswords((prev) => ({ ...prev, [field]: !prev[field] }));
   };
 
-  const validateForm = (): boolean => {
-    const newErrors: { current?: string; new?: string; confirm?: string } = {};
-
-    if (!currentPassword) {
-      newErrors.current = 'Current password is required';
-    }
-    if (!newPassword) {
-      newErrors.new = 'New password is required';
-    } else if (newPassword.length < 8) {
-      newErrors.new = 'Password must be at least 8 characters';
-    }
-    if (!confirmPassword) {
-      newErrors.confirm = 'Please confirm your new password';
-    } else if (newPassword !== confirmPassword) {
-      newErrors.confirm = 'Passwords do not match';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
   const handleSubmit = async () => {
-    if (!validateForm()) return;
+    // Block re-entry while a change is in flight or already succeeded — an Enter press
+    // fires the form's onSubmit even with the disabled button.
+    if (isPasswordChanging || isSuccess) return;
+
+    const nextErrors = validatePasswordChange(currentPassword, newPassword, confirmPassword);
+    setErrors(nextErrors);
+    if (hasPasswordErrors(nextErrors)) return;
 
     const success = await changePassword(currentPassword, newPassword);
     if (success) {
-      // A successful change revokes every session it established, so the store fires
-      // 'bugsafari:session-expired' synchronously and App logs out. A deferred
-      // close/reset would never run — this component is already unmounting.
-      setSuccessMessage('Password changed. Signing you out, please sign in again.');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
       setShowPasswords({ current: false, new: false, confirm: false });
+      setSecondsLeft(SIGNOUT_COUNTDOWN_SECONDS);
+      setIsSuccess(true);
     }
   };
 
@@ -470,6 +480,34 @@ function SecuritySettingsSection() {
     resetForm();
     setIsOpen(false);
   };
+
+  if (isSuccess) {
+    return (
+      <div
+        role="status"
+        aria-live="assertive"
+        className="flex flex-col items-center gap-3 rounded-lg border border-(--status-stable-border) bg-(--status-stable-bg) px-4 py-6 text-center"
+      >
+        <CircleCheckBig className="h-8 w-8 text-(--status-stable-fg)" strokeWidth={ICON_STROKE} aria-hidden="true" />
+        <div>
+          <p className="text-sm font-semibold text-(--status-stable-fg)">Password changed successfully</p>
+          <p className="mt-1 text-sm text-(--text-secondary)">
+            For your security, every active session was signed out. You'll need to sign in again with your new password.
+          </p>
+        </div>
+        <p className="text-sm text-(--text-tertiary)" aria-hidden="true">
+          Signing you out in {secondsLeft}s
+        </p>
+        <button
+          type="button"
+          onClick={signOutNow}
+          className="mt-1 rounded-lg bg-(--surface-invert) px-4 py-2.5 text-sm font-semibold text-(--text-oninvert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) transition-colors duration-200 ease-in-out shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+        >
+          Sign in now
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -490,9 +528,13 @@ function SecuritySettingsSection() {
       >
         <div className="overflow-hidden">
           <form
-            onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
+            onSubmit={(e) => { e.preventDefault(); void handleSubmit(); }}
             className="space-y-4 pt-1"
           >
+            <p className="rounded-lg border border-(--border-hairline) bg-(--surface-inset) px-3 py-2.5 text-sm text-(--text-secondary)">
+              Changing your password signs you out of every active session. You'll sign back in with the new one.
+            </p>
+
             <PasswordInputField
               id="currentPassword"
               label="Current Password"
@@ -528,12 +570,6 @@ function SecuritySettingsSection() {
               error={errors.confirm}
               autoComplete="new-password"
             />
-
-            {successMessage && (
-              <div className="p-3 bg-(--status-stable-bg) border border-(--status-stable-border) rounded-lg">
-                <p className="text-sm text-(--status-stable-fg)">{successMessage}</p>
-              </div>
-            )}
 
             {/* Backend password errors — e.g. "current password incorrect" */}
             {passwordError && (

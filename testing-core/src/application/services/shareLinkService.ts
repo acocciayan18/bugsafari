@@ -71,6 +71,12 @@ export function computeExpiresAt(ttl: ShareTtl, now: Date): Date {
   return new Date(now.getTime() + SHARE_TTL_MS[ttl]);
 }
 
+// Read-side guard for the public route: a snapshot is servable only while the link
+// is unrevoked AND unexpired. Revoked kills access immediately, even before expiry.
+export function isShareSnapshotServable(link: { revokedAt?: Date | null; expiresAt: Date }, now: Date): boolean {
+  return !link.revokedAt && link.expiresAt.getTime() > now.getTime();
+}
+
 // Reuse an active same-ttl link; else cap-check, freeze a snapshot, and atomically
 // insert-or-revive the single active row. A lost race falls back to the winner's row.
 export async function createOrReuseShareLink(

@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import {
   generateShareToken,
   isReusableLink,
+  isShareSnapshotServable,
   computeExpiresAt,
   createOrReuseShareLink,
   MAX_ACTIVE_SHARE_LINKS,
@@ -107,6 +108,14 @@ async function main(): Promise<void> {
   await check('computeExpiresAt applies the preset window', () => {
     assert.equal(computeExpiresAt('1h', T0).getTime(), T0.getTime() + SHARE_TTL_MS['1h']);
     assert.equal(computeExpiresAt('30d', T0).getTime(), T0.getTime() + SHARE_TTL_MS['30d']);
+  });
+
+  await check('isShareSnapshotServable blocks revoked links even before expiry, and expired links', () => {
+    const future = new Date(T0.getTime() + SHARE_TTL_MS['30d']);
+    assert.equal(isShareSnapshotServable({ revokedAt: null, expiresAt: future }, T0), true, 'live unrevoked serves');
+    assert.equal(isShareSnapshotServable({ revokedAt: T0, expiresAt: future }, T0), false, 'revoked never serves, expiry in the future notwithstanding');
+    assert.equal(isShareSnapshotServable({ revokedAt: null, expiresAt: new Date(T0.getTime() - 1) }, T0), false, 'expired never serves');
+    assert.equal(isShareSnapshotServable({ expiresAt: future }, T0), true, 'absent revokedAt is treated as live');
   });
 
   await check('repeated create with the same ttl reuses one row and rebuilds no snapshot', async () => {

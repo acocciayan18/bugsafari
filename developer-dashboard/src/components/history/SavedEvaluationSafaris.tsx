@@ -588,7 +588,7 @@ export default function SavedEvaluationSafaris() {
         onConfirm={() => void handlePermanentConfirm()}
         onClose={() => setPurgeState({ isOpen: false, record: null, isDeleting: false })}
         title="Delete permanently?"
-        message={`This permanently removes the evaluation for ${purgeState.record?.targetUrl ?? 'this run'} and everything captured with it. This cannot be undone.`}
+        message={`This permanently removes the evaluation for ${purgeState.record?.targetUrl ?? 'this run'} and everything captured with it, including any active share links, which stop working immediately. This cannot be undone.`}
         confirmLabel="Delete forever"
         isLoading={purgeState.isDeleting}
         confirmationPhrase={purgeState.record && isImportantSession(purgeState.record.findingCount) ? purgeState.record.id : undefined}

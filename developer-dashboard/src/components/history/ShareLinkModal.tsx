@@ -317,7 +317,7 @@ export function ShareLinkModal({ recordId, isOpen, onClose }: ShareLinkModalProp
                     </div>
 
                     <div className="flex items-center justify-between gap-2 border-t border-(--border-hairline) pt-2.5">
-                      <span className="text-xs tabular-nums text-(--text-tertiary)">Created {formatCreated(link.createdAt)}</span>
+                      <span className="text-xs tabular-nums text-(--text-tertiary)">{formatCreated(link.createdAt)}</span>
                       {confirmId === link.id ? (
                         <span className="flex items-center gap-1.5">
                           <span className="text-xs font-medium text-(--text-secondary)">Revoke?</span>

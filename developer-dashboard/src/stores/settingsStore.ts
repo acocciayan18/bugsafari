@@ -271,8 +271,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
             // stored refresh token is already dead — drop it rather than letting the next
             // rotation fail as a "revoked session" alarm.
             clearSession();
-            toast.success('Password changed. Please sign in again.');
-            window.dispatchEvent(new CustomEvent('bugsafari:session-expired'));
+            // Sign-out is deferred to the caller: it shows the confirmation, then fires
+            // 'bugsafari:session-expired' so the success state is actually seen.
             return true;
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to change password';

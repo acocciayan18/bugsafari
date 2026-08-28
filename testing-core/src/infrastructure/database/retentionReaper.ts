@@ -6,6 +6,7 @@ import { ForensicAnalysisModel } from './models/ForensicAnalysisModel.js';
 import { BrainConfigModel } from './models/BrainConfigModel.js';
 import { ConsoleLogModel } from './models/ConsoleLogModel.js';
 import { NetworkLogModel } from './models/NetworkLogModel.js';
+import { ShareLinkModel } from './models/ShareLinkModel.js';
 import { selectOrphans } from './reapPolicy.js';
 
 export type CascadeCounts = Record<string, number>;
@@ -39,13 +40,19 @@ interface ChildCollection {
   field: string;
 }
 
-const CHILD_COLLECTIONS: ChildCollection[] = [
+export const CHILD_COLLECTIONS: ChildCollection[] = [
   { name: ForensicErrorModel.collection.collectionName, field: 'forensicRunId' },
   { name: ForensicTelemetryModel.collection.collectionName, field: 'forensicRunId' },
   { name: ForensicAnalysisModel.collection.collectionName, field: 'forensicRunId' },
   { name: BrainConfigModel.collection.collectionName, field: 'sessionId' },
   { name: ConsoleLogModel.collection.collectionName, field: 'forensicRunId' },
   { name: NetworkLogModel.collection.collectionName, field: 'forensicRunId' },
+  // Share links carry a FROZEN self-contained report snapshot and are served
+  // without re-checking the parent session, so they must die WITH a permanent
+  // delete (and the reaper purge) or a deleted report stays publicly readable
+  // until the link's own TTL. Hard-purged here keyed by sessionId. Archive/Trash
+  // are reversible and never reach this cascade, so their links stay live.
+  { name: ShareLinkModel.collection.collectionName, field: 'sessionId' },
   // Deprecated and modelless: nothing has written `findings` since verified
   // defects moved to forensic_errors + session.forensicTrace. Listed anyway so
   // pre-deprecation rows are reclaimed with their session instead of orphaning

@@ -13,6 +13,7 @@ import { verifyShareToken } from '../authentication/shareToken.js';
 import { startTestLimiter, guestStartWindowLimiter, guestStartCooldownLimiter, analyzeLimiter, writeLimiter, readLimiter, shareCreateLimiter } from '../middleware/rateLimiter.js';
 import {
   createOrReuseShareLink,
+  isShareSnapshotServable,
   MAX_ACTIVE_SHARE_LINKS,
   ShareLinkLimitError,
   SnapshotUnavailableError,
@@ -1854,7 +1855,7 @@ obsLog.info('[API] Saved to sessions:', result.message, '| runId:', result.runId
       // TTL-reaps at expiresAt, but the window between expiry and reap is guarded here).
       const link = await ShareLinkModel.findOne({ token }).select('snapshot expiresAt revokedAt').lean();
       if (link) {
-        if (link.revokedAt || link.expiresAt.getTime() <= Date.now()) {
+        if (!isShareSnapshotServable(link, new Date())) {
           response.status(401).json({ error: 'This share link is invalid or has expired.' });
           return;
         }

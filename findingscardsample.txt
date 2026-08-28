@@ -1,74 +1,84 @@
 Runtime Stability Exception
 Medium
+
 CWE-248
 Status
-NEEDS VERIFICATION 74%
+CONFIRMED 99%
 Message
-product search failed: Cannot read properties of undefined (reading 'length')
+The element has no supported sources.
 Element
-clearance
+Play Hymn
+button.rounded-lg.bg-red-700
 Reproduction Playbook
 
 1
 open
-Navigate to /products
+Navigate to /
 2
 click
-Click the "Add" button, repeated 2 times in quick succession
+Click the "College Bulletin Board" button, repeated 17 times in quick succession
 Route
-/products
+/
 ·
 Section
-"All products"
+"College of Arts & Sciences"
 ·
 Element
-"Add" button
+"College Bulletin Board" button
 3
-type
-Type "<script>eval(atob("YWxlcnQoIlhTUyIp"))</script>" into the "Search" field
-Route
-/products
-·
-Element
-"Search" field
-4
-submit
-Press Enter to submit the form
-Route
-/products?search=%3Cscript%3Eeval%28atob%28%22YWxlcnQoIlhTUyIp%22%29%29%3C%2Fscript%3E
-5
 click
-Click the "clearance" button. Result: the app moved to /products?search=%3Csvg+onload%3Dalert%28document.domain%29%3E&category=clearance
+Click the "About ▾" button, repeated 5 times in quick succession
 Route
-/products?search=%3Csvg+onload%3Dalert%28document.domain%29%3E
-·
-Sidebar
-"Category"
+/
 ·
 Element
-"clearance" button
+"About ▾" button
+4
+click
+Click the "Student Services ▾" button, repeated 2 times in quick succession
+Route
+/
+·
+Element
+"Student Services ▾" button
+5
+rapid
+Click 10 points spread evenly across the visible area of the 1440×900 window
+Route
+/
 6
 click
-Click the "clearance" button
+Click the "University Updates ▾" button, repeated 2 times in quick succession
 Route
-/products?search=%3Csvg+onload%3Dalert%28document.domain%29%3E&category=clearance
-·
-Sidebar
-"Category"
+/
 ·
 Element
-"clearance" button
+"University Updates ▾" button
 7
-bypass
-Remove the browser validation from the "Mutated" network request, enter "https://supervision-castle-nation-sen.trycloudflare.com/api/products?search=%3Csvg+onload%3Dalert%28document.domain%29%3E&category=clearance", then submit the form
+click
+Click the "Sports" button, repeated 17 times in quick succession
 Route
-/products?search=%3Csvg+onload%3Dalert%28document.domain%29%3E&category=clearance
+/
+·
+Navigation
+"Explore"
 ·
 Element
-"Mutated" network request
+"Sports" button
+8
+click
+Click the "Play Hymn" button, repeated 2 times in quick succession
+Route
+/
+·
+Section
+"Explore"
+·
+Element
+"Play Hymn" button
 Suggested Fix
 
-The code read a field on a value that was `undefined`, so the object was never set before it was used. Guard it with `obj?.field` or check `if (obj)` first. Often the data has not loaded yet.
+A promise failed and nothing caught it: a failed `await` or `.then` with no `.catch`. Wrap the async call in try/catch and show the error to the user.
 
 Suggested fix:
 1. Reproduce the fault using the replay checklist above
@@ -76,89 +86,27 @@ Suggested fix:
 3. Add a test that confirms it stays stable
 
 
-Runtime Stability Exception
-Medium
-CWE-248
-Status
-NEEDS VERIFICATION 74%
+Client Render Freeze
+High
+CWE-834
 Message
-%o %s %s TypeError: Cannot read properties of null (reading 'name')
+Client render freeze: the main thread was blocked, so the page could not respond to input or repaint.
 Reproduction Playbook
 
 1
-open
-Navigate to /products?category=home
-2
-rapid
-Click 5 controls at the same time: the "Go" button, the "home" button, the "clearance" button, the "All" button and the "☕" link
-Route
-/products?category=home
+click
+Click 5 controls at the same time: the "Academics ▾" button, the "Student Services ▾" button, the "← Back to Events" link, the "LANI Scholarship" link and the "Registrar's Office" link
+Observed result
+5 of 5 clicks registered in 218ms
 Suggested Fix
 
-The code read a field on `null`, usually a missing page element (`querySelector` returned null) or an empty API result. Confirm the lookup found something before using it.
+Suggested fix: free the main thread
+1. Move long synchronous work (large loops, parsing, layout) off the main thread with a Web Worker, or split it into async chunks so the view can paint
+2. If the view keeps re-rendering, find a state update inside render or an effect with no dependency guard (setState triggers render, which triggers setState again)
+3. Look for a subscription or observer that re-adds nodes on every change (toasts, live feeds, infinite scroll)
+4. Memoize derived values so a new object each render cannot keep retriggering the effect
 
-Suggested fix:
-1. Reproduce the fault using the replay checklist above
-2. Apply that guard at the failing line
-3. Add a test that confirms it stays stable
-
-
-
-Infinite Loading
-Medium
-CWE-400
-Status
-NEEDS VERIFICATION
-Message
-GET https://supervision-castle-nation-sen.trycloudflare.com/api/products/p9 (PENDING_TIMEOUT) never finished, so the screen stayed stuck loading.
-API Endpoint
-GET https://supervision-castle-nation-sen.trycloudflare.com/api/products/p9
-Reproduction Playbook
-
-1
-open
-Navigate to /cart
-2
-rapid
-Click 5 controls at the same time: the "Quantity" field, the "Add to cart" button, the "Buy now" button, the "Shop" link and the "home" link
-Route
-/cart
-Suggested Fix
-
-The request failed or never came back, and the screen never left its loading state.
-Suggested fix: give loading a way out
-1. Add a request timeout (AbortController or an axios timeout) so a stuck call cannot wait forever
-2. Show an error or retry screen on failure instead of leaving the spinner up
-3. Clear the loading flag in a finally block so both success and error paths stop loading
-
-
-
-Boundary Stress Failure
-Medium
-CWE-400
-Status
-NEEDS VERIFICATION 44%
-Message
-Network request failed: GET /api/products/p10 (net::ERR_FAILED) — Injected network fault. The application failed to handle the simulated failure properly.
-API Endpoint
-GET /api/products/p10
-Reproduction Playbook
-
-1
-open
-Navigate to /products?category=home
-2
-rapid
-Click 5 controls at the same time: the "home" button, the "All" button, the "clearance" button, the "☕" link and the "🧶" link
-Route
-/products?category=home
-Suggested Fix
-
-For this finding
-• Address: GET /api/products/p10
-
-Suggested fix: handle slow, cancelled, and overwhelming requests
-1. Add a request timeout and cancel in-flight calls that are superseded
-2. Add retry with backoff plus a visible error and timeout state for the user
-3. Guard the call site against empty, slow, or cancelled replies, and debounce bursts
-
+▼
+Stack Trace
+Click to collapse
+Heartbeat evaluate call exceeded 8000ms timeout.
