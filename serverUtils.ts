@@ -16,7 +16,7 @@ import {
   DEFAULT_PROTECTED_HOSTS,
   PUBLIC_TARGET_REQUIRED_MESSAGE,
   SELF_TARGET_FORBIDDEN_MESSAGE,
-} from '../../shared/url.js';
+} from './shared/url.js';
 
 // BugSafari's own hosts, which must never be tested: the shared default plus any
 // BUGSAFARI_PROTECTED_ORIGINS (comma/space-separated) the deployment configures.
