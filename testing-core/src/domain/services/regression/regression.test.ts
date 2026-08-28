@@ -242,22 +242,6 @@ check('uncorroborated same-class pageerror → weak (blocks RESOLVED, not proof)
   assert.equal(b.weak.length, 1);
 });
 
-check('probe bugClassOverride matching original → strong', () => {
-  const c = collect();
-  c.addExternal({
-    faultType: 'NETWORK',
-    message: 'API hang: GET http://target.test/api pending > 8s',
-    bugClassOverride: 'INFINITE_LOADING',
-  });
-  const b = c.evaluate({
-    originalBugClass: 'INFINITE_LOADING',
-    originalFaultType: 'NETWORK',
-    originalMessage: 'stuck loading',
-    pageContent: '',
-  });
-  assert.equal(b.strong.length, 1);
-});
-
 check('CLIENT_SIDE_CONSTRAINT_BYPASS override (endpoint still accepted invalid) → strong', () => {
   const c = collect();
   c.addExternal({
@@ -456,7 +440,6 @@ console.log('isReplayVerifiable — class gate');
 
 check('replay-detectable classes verifiable; oracle/timing classes are not', () => {
   assert.ok(isReplayVerifiable('RUNTIME_STABILITY_EXCEPTION'));
-  assert.ok(isReplayVerifiable('INFINITE_LOADING'));
   assert.ok(isReplayVerifiable('NOSQL_INJECTION'));
   assert.ok(isReplayVerifiable('SQL_INJECTION'));
   assert.ok(isReplayVerifiable('SECURITY_VULNERABILITY_LEAK'));

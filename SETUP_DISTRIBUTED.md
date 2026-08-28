@@ -188,13 +188,13 @@ git push origin dev --force
 
 
 git add .
-git commit -m "History page filter dropdown"
+git commit -m "History page dropdown redesign"
 git push origin HEAD:dev --force
 
 
 git init
 git add .
-git commit -m " finding-card-consistency-audit"
+git commit -m "History page dropdown redesign"
 git checkout -b 8-29-Ayan-1
 git push --set-upstream origin 8-29-Ayan-1
 

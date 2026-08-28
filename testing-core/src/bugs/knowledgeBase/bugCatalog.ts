@@ -233,18 +233,6 @@ export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
       '3. Add a test that forges role=admin in browser storage and confirms the server still denies access',
     ),
   },
-  INFINITE_LOADING: {
-    title: 'The screen stayed stuck loading',
-    description: 'A request failed or never came back and the UI kept showing a loading spinner, with no error message or timeout to recover.',
-    defaultSeverity: 'HIGH',
-    cwe: 'CWE-400',
-    remediation: remediation(
-      'Suggested fix: give loading a way out',
-      '1. Add a request timeout (AbortController or an axios timeout) so a stuck call cannot wait forever',
-      '2. Show an error or retry screen on failure instead of leaving the spinner up',
-      '3. Clear the loading flag in a finally block so both success and error paths stop loading',
-    ),
-  },
   CLIENT_RENDER_FREEZE: {
     title: 'The page froze and stopped responding',
     description: 'The main thread stayed busy — either a long synchronous task blocked it, or the view kept re-rendering without settling — so the page could not respond to input or repaint.',

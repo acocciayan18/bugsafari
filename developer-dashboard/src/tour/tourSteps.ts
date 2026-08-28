@@ -118,9 +118,15 @@ const HISTORY_ANCHORS: TourAnchor[] = [
     description: 'Search your saved tests by the website address you tested.',
   },
   {
+    selector: '[data-tour="history-sort"]',
+    title: 'Sort your tests',
+    description: 'Order the list by Date, Severity, or Status, then use the arrow to flip between ascending and descending.',
+    align: 'end',
+  },
+  {
     selector: '[data-tour="history-filters"]',
-    title: 'Sort and filter',
-    description: 'Sort the list, or filter it by how serious the findings were.',
+    title: 'Filter by severity',
+    description: 'Narrow the list to tests whose findings hit a given severity.',
     align: 'end',
   },
   {

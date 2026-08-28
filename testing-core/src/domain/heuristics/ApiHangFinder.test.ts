@@ -43,11 +43,9 @@ check('loader present in both probes with overlap reports one defect', () => {
   const r = f.evaluate(obs());
   assert.ok(r);
   assert.equal(r!.isNew, true);
-  assert.equal(r!.defect.occurrence, 1);
-  assert.equal(r!.defect.bugClass, 'INFINITE_LOADING');
-  assert.equal(r!.defect.severity, 'HIGH');
-  assert.equal(r!.defect.cwe, 'CWE-400');
-  assert.ok(r!.defect.message.startsWith('[Stuck loading]'));
+  assert.equal(r!.diagnostic.occurrence, 1);
+  assert.equal(r!.diagnostic.severity, 'HIGH');
+  assert.ok(r!.diagnostic.message.startsWith('[Stuck loading]'));
   assert.equal(f.totalFound(), 1);
 });
 
@@ -107,10 +105,8 @@ check('PENDING_TIMEOUT with a persistent spinner AND the request still pending i
   const f = new ApiHangFinder();
   const r = f.evaluate(obs({ trigger: 'PENDING_TIMEOUT', url: 'http://app.test/api/profile', pendingMs: 18000, stillPending: true }));
   assert.ok(r);
-  assert.equal(r!.defect.bugClass, 'INFINITE_LOADING');
-  assert.equal(r!.defect.severity, 'MEDIUM');
-  assert.equal(r!.defect.verificationStatus, 'NEEDS_VERIFICATION');
-  assert.equal(r!.defect.corroborated, false);
+  assert.equal(r!.diagnostic.severity, 'MEDIUM');
+  assert.equal(r!.diagnostic.corroborated, false);
 });
 
 check('a slow PENDING_TIMEOUT that resolves within the sustained window is not a hang', () => {
@@ -126,8 +122,7 @@ check('a PENDING_TIMEOUT exactly at the sustained threshold is a hang (boundary)
   const f = new ApiHangFinder();
   const r = f.evaluate(obs({ trigger: 'PENDING_TIMEOUT', url: 'http://app.test/api/profile', pendingMs: 15000, stillPending: true }));
   assert.ok(r);
-  assert.equal(r!.defect.bugClass, 'INFINITE_LOADING');
-  assert.equal(r!.defect.severity, 'MEDIUM');
+  assert.equal(r!.diagnostic.severity, 'MEDIUM');
 });
 
 check('the sustained-duration gate is PENDING_TIMEOUT-only — a failed request with a spinner still hangs', () => {
@@ -135,8 +130,7 @@ check('the sustained-duration gate is PENDING_TIMEOUT-only — a failed request 
   const f = new ApiHangFinder();
   const r = f.evaluate(obs({ trigger: 'REQUEST_FAILED', pendingMs: 0 }));
   assert.ok(r);
-  assert.equal(r!.defect.bugClass, 'INFINITE_LOADING');
-  assert.equal(r!.defect.severity, 'HIGH');
+  assert.equal(r!.diagnostic.severity, 'HIGH');
 });
 
 check('PENDING_TIMEOUT that settled mid-probe (stillPending false, no other signal) is not a hang', () => {
@@ -149,9 +143,8 @@ check('PENDING_TIMEOUT with blocked inputs is a corroborated HIGH hang', () => {
   const f = new ApiHangFinder();
   const r = f.evaluate(obs({ trigger: 'PENDING_TIMEOUT', pendingMs: 18000, confirm: probe({ inputsBlocked: true }) }));
   assert.ok(r);
-  assert.equal(r!.defect.severity, 'HIGH');
-  assert.equal(r!.defect.corroborated, true);
-  assert.equal(r!.defect.verificationStatus, 'CONFIRMED');
+  assert.equal(r!.diagnostic.severity, 'HIGH');
+  assert.equal(r!.diagnostic.corroborated, true);
 });
 
 check('a persistent DECORATIVE indicator alone (overlay) is never a hang', () => {
@@ -165,7 +158,7 @@ check('a decorative overlay PLUS a persistent spinner is a hang (spinner is the 
   const both = probe({ indicators: ['[class*="overlay"]', '.spinner'], signature: '.spinner' });
   const r = f.evaluate(obs({ initial: both, confirm: both }));
   assert.ok(r);
-  assert.equal(r!.defect.bugClass, 'INFINITE_LOADING');
+  assert.equal(r!.diagnostic.severity, 'HIGH');
 });
 
 check('isLongLivedRequestUrl matches RSC/SSE/websocket/streaming, not plain APIs', () => {
@@ -189,7 +182,7 @@ check('repeat of same endpoint+trigger collapses — isNew false, occurrence inc
   const second = f.evaluate(obs());
   assert.ok(second);
   assert.equal(second!.isNew, false);
-  assert.equal(second!.defect.occurrence, 2);
+  assert.equal(second!.diagnostic.occurrence, 2);
   assert.equal(f.totalFound(), 1);
 });
 
@@ -197,16 +190,16 @@ check('SERVER_ERROR trigger carries the HTTP status in evidence', () => {
   const f = new ApiHangFinder();
   const r = f.evaluate(obs({ trigger: 'SERVER_ERROR', status: 503 }));
   assert.ok(r);
-  assert.equal(r!.defect.trigger, 'SERVER_ERROR');
-  assert.ok(r!.defect.evidence[0].includes('HTTP 503'));
+  assert.equal(r!.diagnostic.trigger, 'SERVER_ERROR');
+  assert.ok(r!.diagnostic.evidence[0].includes('HTTP 503'));
 });
 
 check('PENDING_TIMEOUT trigger carries the pending duration in evidence', () => {
   const f = new ApiHangFinder();
   const r = f.evaluate(obs({ trigger: 'PENDING_TIMEOUT', pendingMs: 18000, stillPending: true }));
   assert.ok(r);
-  assert.equal(r!.defect.trigger, 'PENDING_TIMEOUT');
-  assert.ok(r!.defect.evidence[0].includes('pending 18000ms'));
+  assert.equal(r!.diagnostic.trigger, 'PENDING_TIMEOUT');
+  assert.ok(r!.diagnostic.evidence[0].includes('pending 18000ms'));
 });
 
 check('distinct triggers on the same url are distinct findings', () => {
@@ -221,15 +214,15 @@ check('the issuing page URL passes through to the defect (reproduction anchor, n
   const r = f.evaluate(obs({ url: 'http://app.test/api/orders', pageUrl: 'http://app.test/network-errors' }));
   assert.ok(r);
   // Endpoint is domain-stripped (host never leaks); the page URL is the reproduction anchor.
-  assert.equal(r!.defect.endpoint, '/api/orders');
-  assert.equal(r!.defect.pageUrl, 'http://app.test/network-errors');
+  assert.equal(r!.diagnostic.endpoint, '/api/orders');
+  assert.equal(r!.diagnostic.pageUrl, 'http://app.test/network-errors');
 });
 
 check('two hangs on different endpoints/pages carry distinct pageUrls (no shared anchor)', () => {
   const a = new ApiHangFinder().evaluate(obs({ url: 'http://app.test/api/orders', pageUrl: 'http://app.test/network-errors' }));
   const b = new ApiHangFinder().evaluate(obs({ url: 'http://app.test/api/drop', pageUrl: 'http://app.test/api-hang' }));
   assert.ok(a && b);
-  assert.notEqual(a!.defect.pageUrl, b!.defect.pageUrl);
+  assert.notEqual(a!.diagnostic.pageUrl, b!.diagnostic.pageUrl);
 });
 
 console.log('\nApiHangFinder — evidence, corroboration & bounds');
@@ -238,27 +231,19 @@ check('inputsBlocked adds a blocked-inputs evidence line', () => {
   const f = new ApiHangFinder();
   const r = f.evaluate(obs({ confirm: probe({ inputsBlocked: true }) }));
   assert.ok(r);
-  assert.ok(r!.defect.evidence.some((e) => e.includes('Inputs stayed disabled')));
+  assert.ok(r!.diagnostic.evidence.some((e) => e.includes('Inputs stayed disabled')));
 });
 
 check('scenarioActive sets corroborated and adds an evidence line', () => {
   const f = new ApiHangFinder();
   const r = f.evaluate(obs({ scenarioActive: true }));
   assert.ok(r);
-  assert.equal(r!.defect.corroborated, true);
-  assert.ok(r!.defect.evidence.some((e) => e.includes('Corroborated')));
-});
-
-check('advice carries the catalog remediation', () => {
-  const f = new ApiHangFinder();
-  const r = f.evaluate(obs());
-  assert.ok(r);
-  assert.ok(r!.defect.advice.length > 0);
-  assert.ok(r!.defect.advice.includes('Suggested fix: give loading a way out'));
+  assert.equal(r!.diagnostic.corroborated, true);
+  assert.ok(r!.diagnostic.evidence.some((e) => e.includes('Corroborated')));
 });
 
 check('bugId is stable across finder instances for the same endpoint+trigger', () => {
-  const build = () => new ApiHangFinder().evaluate(obs())!.defect.bugId;
+  const build = () => new ApiHangFinder().evaluate(obs())!.diagnostic.bugId;
   const a = build();
   const b = build();
   assert.equal(a, b);
@@ -283,18 +268,10 @@ check('an ephemeral tunnel host never leaks into the endpoint or message', () =>
   const f = new ApiHangFinder();
   const r = f.evaluate(obs({ url: 'https://supervision-castle-nation-sen.trycloudflare.com/api/products/p9' }));
   assert.ok(r);
-  assert.equal(r!.defect.endpoint, '/api/products/p9');
-  assert.ok(r!.defect.message.includes('/api/products/p9'), r!.defect.message);
-  assert.ok(!/trycloudflare/.test(r!.defect.message), 'tunnel host must not leak into the message');
-  assert.ok(!/trycloudflare/.test(r!.defect.endpoint), 'tunnel host must not leak into the endpoint');
-});
-
-check('every reported hang carries a numeric confidence score for the finding card', () => {
-  const f = new ApiHangFinder();
-  const failed = f.evaluate(obs({ trigger: 'REQUEST_FAILED' }));
-  assert.equal(typeof failed!.defect.confidenceScore, 'number');
-  const pending = new ApiHangFinder().evaluate(obs({ trigger: 'PENDING_TIMEOUT', pendingMs: 18000, stillPending: true, url: 'http://app.test/api/other' }));
-  assert.equal(typeof pending!.defect.confidenceScore, 'number');
+  assert.equal(r!.diagnostic.endpoint, '/api/products/p9');
+  assert.ok(r!.diagnostic.message.includes('/api/products/p9'), r!.diagnostic.message);
+  assert.ok(!/trycloudflare/.test(r!.diagnostic.message), 'tunnel host must not leak into the message');
+  assert.ok(!/trycloudflare/.test(r!.diagnostic.endpoint), 'tunnel host must not leak into the endpoint');
 });
 
 console.log(`\n${passed} passed`);

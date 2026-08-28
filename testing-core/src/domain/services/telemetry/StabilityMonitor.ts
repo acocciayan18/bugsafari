@@ -25,7 +25,7 @@ import { resolveRuntimeCulprit } from './runtimeCulprit.js';
 import { resolveControlName, isDescriptiveControlName } from '../../../../../shared/reproduction.js';
 import { RuntimeStabilityFinder, type RuntimeObservation, type RuntimeSubtype } from '../../heuristics/RuntimeStabilityFinder.js';
 import { DuplicateActionFinder, buildDuplicateReplaySteps, type DuplicateActionDefect } from '../../heuristics/DuplicateActionFinder.js';
-import { ApiHangFinder, isBackgroundTelemetryUrl, isLongLivedRequestUrl, type LoadingProbe, type ApiHangDefect, type HangTrigger } from '../../heuristics/ApiHangFinder.js';
+import { ApiHangFinder, isBackgroundTelemetryUrl, isLongLivedRequestUrl, type LoadingProbe, type HangDiagnostic, type HangTrigger } from '../../heuristics/ApiHangFinder.js';
 import { initialSweepState, isSweepDue, advanceSweep, type SweepPolicy } from '../../heuristics/hangSweep.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
 import type {
@@ -62,7 +62,7 @@ const MEMORY_WATCHDOG_TICK_MS = 2000;
 // ACTION marker for a demoted browser/GPU/driver crash — an environment fault, never a target finding.
 const HARNESS_CRASH_DEMOTED = 'harness-crash-demoted';
 
-// Infinite-loading watchdog tunables. A fetch/XHR still pending past HANG_THRESHOLD_MS is a
+// Hang-diagnostic watchdog tunables. A fetch/XHR still pending past HANG_THRESHOLD_MS is a
 // hang candidate; CONFIRM_MS is the persistence gap between the two DOM probes; the rest bound cost.
 const MAX_PENDING = 300;
 const WATCHDOG_TICK_MS = 1000;
@@ -1379,7 +1379,7 @@ export class StabilityMonitor {
     const rt = request.resourceType();
     if (rt !== 'xhr' && rt !== 'fetch') return;
     // A fire-and-forget telemetry/analytics/beacon that never settles is not a UI hang —
-    // never watchdog it, so its pending timeout can't manufacture an INFINITE_LOADING finding.
+    // never watchdog it, so its pending timeout can't manufacture a false hang diagnostic.
     if (isBackgroundTelemetryUrl(request.url())) return;
     // Long-lived-by-design traffic (Next.js RSC prefetch ?_rsc=, SSE, websocket, streaming/poll)
     // stays pending for seconds without blocking the UI — never watchdog it for PENDING_TIMEOUT.
@@ -1477,13 +1477,11 @@ export class StabilityMonitor {
       });
       if (!result) return;
       if (result.isNew) {
-        // The stuck request's start is the true fault instant; the watchdog + confirm
-        // gap fire ~10s later, so Date.now() here would over-keep post-fault actions.
-        void this.reportApiHang(page, result.defect, trigger.startMs ?? Date.now());
-      } else if (result.defect.occurrence === 3 || result.defect.occurrence % 25 === 0) {
+        this.emitHangDiagnostic(page, result.diagnostic);
+      } else if (result.diagnostic.occurrence === 3 || result.diagnostic.occurrence % 25 === 0) {
         this.deps.telemetry.emit('ACTION', {
           actionExecuted: 'api-hang-recurred',
-          message: ` ${result.defect.message} — recurred ${result.defect.occurrence}× this run`,
+          message: ` ${result.diagnostic.message} — recurred ${result.diagnostic.occurrence}× this run`,
         });
       }
     } catch {
@@ -1545,135 +1543,20 @@ export class StabilityMonitor {
     }
   }
 
-  // Report one confirmed infinite-loading fault. Direct SIGNAL emit like reportDuplicateAction —
-  // the finder's two-probe persistence check self-gates, so this bypasses verifyFault and reports
-  // under INFINITE_LOADING with the finder's stable, signature-derived bugId.
-  private async reportApiHang(page: Page, defect: ApiHangDefect, faultAtMs: number): Promise<void> {
+  // Surface a sustained API hang as DIAGNOSTIC telemetry only — a NETWORK-tab line plus a
+  // milestone. It is deliberately NOT promoted to a classified finding: normal network or
+  // slow-loading delays must never be reported as bugs. The finder's two-probe persistence
+  // gate + endpoint/trigger dedup keep the diagnostic line from spamming on transient loads.
+  private emitHangDiagnostic(page: Page, diagnostic: HangDiagnostic): void {
     const t = this.deps.telemetry;
-    const url = defect.endpoint || page.url();
-    const timestamp = new Date().toISOString();
-    const breadcrumbs = this.deps.getBreadcrumbs();
-    const stackTrace = defect.evidence.join('\n');
-
-    // Anchor the reproduction on the PAGE the hung request was issued from, never the API
-    // endpoint (url) — an endpoint matches no recorded page, so the minimizer would fall back
-    // to dumping the whole session tail (and two hangs swept together would share it verbatim).
-    const reproduction = ActiveScenarioTracker.flushSnapshot({
-      faultUrl: defect.pageUrl ?? page.url(),
-      faultAtMs,
-      culpritSelector: this.culpritSelectorAt(faultAtMs),
-    });
-    const stateFingerprint = await captureStateFingerprint(page);
-    const reproductionPlaybook = reproduction.narrative;
-
-    const scenario = resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName());
-    // A dropped/hung request that left the UI stuck IS the network-broke-the-UI case,
-    // so it promotes here and its evidence goes through the same completion contract.
-    const complete = ensureFindingEvidence({
-      attribution: {
-        bugClass: defect.bugClass,
-        cwe: defect.cwe,
-        scenario: scenario.scenario,
-        testingType: scenario.testingType,
-        stepIndex: reproduction.actions.length,
-        origin: 'TARGET_APP',
-        confidence: defect.confidence,
-        confidenceScore: defect.confidenceScore,
-        verificationStatus: defect.verificationStatus,
-        corroborated: defect.corroborated,
-      },
-      advice: defect.advice,
-      reproductionPlaybook,
-      context: `${defect.method} ${url}`,
-    });
-    const attribution: FindingAttribution = complete.attribution;
-
+    const url = diagnostic.endpoint || page.url();
     t.emit('NETWORK', {
       url,
-      method: defect.method,
-      message: ` ${defect.message}`,
-      severity: defect.severity === 'MEDIUM' ? 'INFO' : 'WARNING',
-      attribution,
+      method: diagnostic.method,
+      message: ` ${diagnostic.message}`,
+      severity: diagnostic.severity === 'MEDIUM' ? 'INFO' : 'WARNING',
     });
-    t.emitMilestone(` API hang: ${defect.method} ${url}`);
-
-    const severity = resolveSeverity({
-      severity: defect.severity,
-      bugClass: attribution.bugClass,
-      confidence: attribution.confidence,
-      verificationStatus: attribution.verificationStatus,
-    });
-
-    // Name the control the hung request fired from, so live Telemetry matches the
-    // saved Element instead of falling back to a bare <tag> from the breadcrumbs.
-    // No acted control (a background/polled call) ⇒ name the hung endpoint itself.
-    const culpritSelector = this.culpritSelectorAt(faultAtMs);
-    const culpritLabel = this.culpritLabelAt(faultAtMs) ?? `${defect.method} ${url}`;
-
-    t.gateway.emitIncidentReport({
-      bugId: defect.bugId,
-      timestamp,
-      reason: defect.message,
-      url,
-      stackTrace,
-      steps: this.deps.breadcrumbsToActionRecords(breadcrumbs),
-      reproductionActions: reproduction.actions,
-      stateFingerprint,
-      reproductionPlaybook: complete.reproductionPlaybook,
-      advice: complete.advice,
-      attribution,
-      severity,
-      culpritSelector,
-      culpritLabel,
-    });
-
-    t.gateway.emitForensicReport({
-      timestamp,
-      reason: defect.message,
-      url,
-      stackTrace,
-      breadcrumbs,
-      reproductionActions: reproduction.actions,
-      stateFingerprint,
-      reproductionPlaybook: complete.reproductionPlaybook,
-      advice: complete.advice,
-      attribution,
-      severity,
-      culpritSelector,
-      culpritLabel,
-    });
-
-    this.deps.persistForensicError({
-      type: ForensicErrorType.TIMEOUT_FAILURE,
-      severity: FAULT_TO_FORENSIC[severity],
-      message: ` ${defect.message}`,
-      stackTrace,
-      url,
-      endpoint: url,
-      method: defect.method,
-      bugClass: complete.attribution.bugClass,
-      scenario: attribution.scenario,
-      cwe: complete.attribution.cwe,
-    });
-
-    // type is deliberately not NETWORK/ACCESSIBILITY so registerConfirmedBug streams it to the Errors tab.
-    this.deps.registerConfirmedBug({
-      bugId: defect.bugId,
-      type: 'INFINITE_LOADING',
-      message: defect.message,
-      selector: culpritSelector ?? '',
-      elementLabel: culpritLabel,
-      payloadUsed: defect.method,
-      advice: complete.advice,
-      stackTrace,
-      reproductionSteps: complete.reproductionPlaybook,
-      reproductionActions: reproduction.actions,
-      stateFingerprint,
-      attribution,
-      severity,
-      timestamp: new Date(timestamp),
-      streamed: true, // already emitted to the Errors tab above
-    });
+    t.emitMilestone(` API hang (diagnostic): ${diagnostic.method} ${url}`);
   }
 
   /**

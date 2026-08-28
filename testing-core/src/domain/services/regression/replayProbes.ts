@@ -4,10 +4,10 @@
 // The thin FaultCollector only hears raw pageerror/console/HTTP faults, so bug
 // classes first caught by StabilityMonitor's richer detectors could never
 // reproduce and always read RESOLVED. This module ports the cheap deterministic
-// subset (unhandled rejections, renderer crash, API-hang watchdog, soft-fail
-// body scan, freeze heartbeat) and names which classes replay can verify at all.
+// subset (unhandled rejections, renderer crash, soft-fail body scan, freeze
+// heartbeat) and names which classes replay can verify at all.
 
-import type { Page, Request, Response } from 'playwright';
+import type { Page, Response } from 'playwright';
 import { pathOf, type FaultCollector } from './FaultCollector.js';
 import type { FaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
 import {
@@ -18,11 +18,8 @@ import {
 } from '../verification/softFailBody.js';
 import { detectApiContractViolation } from '../verification/apiContractBody.js';
 
-// A first-party request still pending this long after the timeline finished is a hang.
-export const HANG_THRESHOLD_MS = 8_000;
 // Main-thread heartbeat ceiling for the one-shot freeze probe.
 const FREEZE_PROBE_TIMEOUT_MS = 5_000;
-const HANG_RESOURCE_TYPES = new Set(['xhr', 'fetch', 'document']);
 
 /**
  * Classes a deterministic replay can actually evidence. Everything else must be
@@ -43,7 +40,6 @@ export const REPLAY_VERIFIABLE_CLASSES: ReadonlySet<string> = new Set([
   'SECURITY_VULNERABILITY_LEAK',
   'ROUTE_MUTATION_FAILURE',
   'STRUCTURAL_NAVIGATION_LOGIC',
-  'INFINITE_LOADING',
   // The replay re-runs the recorded bypass (strip client validation → submit the invalid
   // value) and observes the fault endpoint: still 2xx ⇒ the server accepted it, constraint
   // still bypassable (STILL_ACTIVE); 4xx ⇒ the server now rejects it (RESOLVED).
@@ -85,7 +81,6 @@ declare global {
  * drain() after the settle window → detach() in the caller's finally.
  */
 export class ReplayProbes {
-  private readonly pendingRequests = new Map<Request, number>();
   private readonly bodyScans: Array<Promise<void>> = [];
   private crashed = false;
 
@@ -112,11 +107,6 @@ export class ReplayProbes {
       })
       .catch(() => undefined);
 
-    if (this.bugClass === 'INFINITE_LOADING') {
-      this.page.on('request', this.onRequest);
-      this.page.on('requestfinished', this.onRequestSettled);
-      this.page.on('requestfailed', this.onRequestSettled);
-    }
     if (this.bugClass === 'BOUNDARY_STRESS_FAILURE') {
       this.page.on('response', this.onResponse);
     }
@@ -147,19 +137,6 @@ export class ReplayProbes {
       this.collector.addExternal({ faultType: 'EXCEPTION', message: rejection.message, url: this.safeUrl() });
     }
 
-    if (this.bugClass === 'INFINITE_LOADING') {
-      const now = Date.now();
-      for (const [request, startedAt] of this.pendingRequests) {
-        if (now - startedAt < HANG_THRESHOLD_MS) continue;
-        this.collector.addExternal({
-          faultType: 'NETWORK',
-          message: `API hang: ${request.method()} ${request.url()} pending > ${HANG_THRESHOLD_MS / 1000}s`,
-          url: request.url(),
-          bugClassOverride: 'INFINITE_LOADING',
-        });
-      }
-    }
-
     if (this.faultType === 'FREEZE') {
       const alive = await Promise.race([
         this.page.evaluate(() => true).catch(() => false),
@@ -178,25 +155,13 @@ export class ReplayProbes {
 
   public detach(): void {
     this.page.off('crash', this.onCrash);
-    this.page.off('request', this.onRequest);
-    this.page.off('requestfinished', this.onRequestSettled);
-    this.page.off('requestfailed', this.onRequestSettled);
     this.page.off('response', this.onResponse);
     this.page.off('response', this.onApiContractResponse);
     this.page.off('response', this.onConstraintResponse);
-    this.pendingRequests.clear();
   }
 
   private readonly onCrash = (): void => {
     this.crashed = true;
-  };
-
-  private readonly onRequest = (request: Request): void => {
-    if (HANG_RESOURCE_TYPES.has(request.resourceType())) this.pendingRequests.set(request, Date.now());
-  };
-
-  private readonly onRequestSettled = (request: Request): void => {
-    this.pendingRequests.delete(request);
   };
 
   private readonly onResponse = (response: Response): void => {

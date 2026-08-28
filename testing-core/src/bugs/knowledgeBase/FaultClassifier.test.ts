@@ -441,10 +441,10 @@ check('ensureFindingEvidence refines a self-gating finder CWE from its signal', 
 
 check('ensureFindingEvidence leaves single-shape / no-signal CWE untouched', () => {
   const loading = ensureFindingEvidence({
-    attribution: { bugClass: 'INFINITE_LOADING', cwe: BUG_CATALOG.INFINITE_LOADING.cwe },
+    attribution: { bugClass: 'RUNTIME_STABILITY_EXCEPTION', cwe: BUG_CATALOG.RUNTIME_STABILITY_EXCEPTION.cwe },
     reproductionPlaybook: ['Step 1. do it'],
   });
-  assert.equal(loading.attribution.cwe, BUG_CATALOG.INFINITE_LOADING.cwe);
+  assert.equal(loading.attribution.cwe, BUG_CATALOG.RUNTIME_STABILITY_EXCEPTION.cwe);
 });
 
 console.log(`\nAll ${passed} assertions passed.`);

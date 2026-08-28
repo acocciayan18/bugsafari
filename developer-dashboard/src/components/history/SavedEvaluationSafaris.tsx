@@ -26,7 +26,7 @@ import { useTour } from '../../tour/useTour';
 import { buildHistoryTourSteps } from '../../tour/tourSteps';
 import { SORT_FIELD_LABELS, type SortField, type SeverityFilter, type EvaluationSafari } from '../../stores/history/types';
 import { INFILTRATION_PROFILE_CATALOG, isImportantSession, type InfiltrationProfileId, type SessionHistoryState } from '../../types';
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, CircleQuestionMark, ClipboardCheck, Hash, Layers, Lock, RefreshCcw, Search, SignalHigh, TriangleAlert, Undo2 } from 'lucide-react';
+import { ArrowDownUp, ArrowDownWideNarrow, ArrowUpNarrowWide, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, CircleQuestionMark, ClipboardCheck, Hash, Layers, Lock, RefreshCcw, Search, SignalHigh, TriangleAlert, Undo2 } from 'lucide-react';
 
 // Operator-facing profile label, or '' when the row predates profile recording.
 const profileLabel = (id?: InfiltrationProfileId): string =>
@@ -38,6 +38,10 @@ const STATE_TABS: { value: SessionHistoryState; label: string }[] = [
   { value: 'archived', label: 'Archived' },
   { value: 'trashed', label: 'Trash' },
 ];
+
+// Sort fields as dropdown options — mirrors SORT_FIELD_LABELS in operator order.
+const SORT_FIELD_TABS: { value: SortField; label: string }[] = (Object.keys(SORT_FIELD_LABELS) as SortField[])
+  .map((field) => ({ value: field, label: SORT_FIELD_LABELS[field] }));
 
 // Severity buckets, in descending urgency.
 const SEVERITY_TABS: { value: SeverityFilter; label: string }[] = [
@@ -377,20 +381,17 @@ export default function SavedEvaluationSafaris() {
                 </div>
               </div>
               {/* Sort controls — field picker + direction toggle */}
-              <div className="flex items-center gap-2">
-                <label htmlFor="history-sort-field" className="shrink-0 text-[13px] font-medium text-[var(--text-secondary)]">
+              <div data-tour="history-sort" className="flex items-center gap-2">
+                <label className="shrink-0 text-[13px] font-medium text-[var(--text-secondary)]">
                   Sort by
                 </label>
-                <select
-                  id="history-sort-field"
+                <FilterDropdown
+                  ariaLabel="Sort by field"
+                  icon={<ArrowDownUp className="h-4 w-4" />}
+                  options={SORT_FIELD_TABS}
                   value={sortConfig.field}
-                  onChange={(e) => setSortConfig((prev) => ({ ...prev, field: e.target.value as SortField }))}
-                  className="h-8 min-w-0 flex-1 cursor-pointer rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] px-2 text-[13px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--border-focus)] sm:flex-none"
-                >
-                  {(Object.keys(SORT_FIELD_LABELS) as SortField[]).map((field) => (
-                    <option key={field} value={field}>{SORT_FIELD_LABELS[field]}</option>
-                  ))}
-                </select>
+                  onChange={(field) => setSortConfig((prev) => ({ ...prev, field }))}
+                />
                 <button
                   onClick={() => setSortConfig((prev) => ({ ...prev, direction: prev.direction === 'asc' ? 'desc' : 'asc' }))}
                   className="flex h-8 items-center gap-1 cursor-pointer rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] px-2 text-[13px] font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors"

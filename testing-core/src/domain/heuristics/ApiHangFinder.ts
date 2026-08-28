@@ -1,7 +1,5 @@
-import { BUG_CATALOG } from '../../bugs/knowledgeBase/bugCatalog.js';
 import { STRONG_LOADING_SELECTORS } from '../../bugs/knowledgeBase/signalPatterns.js';
 import { endpointLabel, routePath } from '../../../../shared/reproduction.js';
-import type { FaultConfidence, VerificationStatus } from '../../../../shared/types/verification.js';
 
 const STRONG_SET = new Set<string>(STRONG_LOADING_SELECTORS);
 
@@ -15,7 +13,7 @@ const SUSTAINED_PENDING_MS = 15_000;
 
 // Background telemetry / analytics / beacon endpoints. A hang or failure on one of these
 // never blocks the user-facing UI — the app fired it fire-and-forget — so a PENDING_TIMEOUT
-// (or failure) against one must NOT become an INFINITE_LOADING finding. Matched on host +
+// (or failure) against one must NOT surface a hang diagnostic. Matched on host +
 // path with word boundaries so "/analytics/event" hits but "/analytics-report" (a real page)
 // does not, and "/login" is never mistaken for a "log" endpoint.
 const BACKGROUND_TELEMETRY_RE =
@@ -35,7 +33,7 @@ export function isBackgroundTelemetryUrl(url?: string): boolean {
 // Long-lived-by-design request classes. These stay pending for seconds or forever WITHOUT
 // blocking the UI: Next.js RSC prefetch (?_rsc=, RSC:/Next-Router-Prefetch: headers), SSE
 // (Accept: text/event-stream), websocket upgrades, and streaming/poll/subscribe endpoints.
-// A pending timeout on one of these is never an INFINITE_LOADING bug — it must not be watchdogged.
+// A pending timeout on one of these is never a UI hang — it must not be watchdogged.
 const LONG_LIVED_URL_RE =
   /(?:[?&]_rsc=|\/(?:stream|streaming|events|subscribe|subscription|sse|poll|longpoll|long-poll|hub|socket|ws|watch)(?:[/.?#]|$))/i;
 
@@ -85,33 +83,26 @@ export interface HangObservation {
   pageUrl?: string;
 }
 
-// A confirmed API failure that left the UI stuck in a loading state with no recovery.
-export interface ApiHangDefect {
+// A sustained API hang observation, surfaced as NETWORK-tab telemetry for diagnostics only.
+// NOT a reportable finding — normal slow/loading delays never promote to a classified bug.
+export interface HangDiagnostic {
   bugId: string;
-  bugClass: 'INFINITE_LOADING';
   severity: 'HIGH' | 'MEDIUM';
-  confidence: FaultConfidence;
-  verificationStatus: VerificationStatus;
-  // Numeric score (0..1) mirroring the confidence tier, so the finding card shows a
-  // verification percentage for hangs like every other reported finding.
-  confidenceScore: number;
-  cwe: string;
   message: string;
   endpoint: string;
   method: string;
   trigger: HangTrigger;
   evidence: string[];
-  advice: string;
   occurrence: number;
   corroborated: boolean;
-  // Issuing document URL (never the API endpoint) — the reproduction anchor.
+  // Issuing document URL (never the API endpoint) — the diagnostic anchor.
   pageUrl?: string;
 }
 
-// Pure, event-fed infinite-loading detector. Holds no Playwright references and never
-// throws — StabilityMonitor injects the request facts + two DOM snapshots. Fires only
-// when a loading indicator persists across both probes (recovered-gracefully gate),
-// then collapses repeats of the same endpoint+trigger into one occurrence-counted finding.
+// Pure, event-fed hang detector for DIAGNOSTIC telemetry. Holds no Playwright references
+// and never throws — StabilityMonitor injects the request facts + two DOM snapshots. Emits
+// only when a loading indicator persists across both probes (recovered-gracefully gate),
+// then collapses repeats of the same endpoint+trigger into one occurrence-counted note.
 export class ApiHangFinder {
   private readonly reported = new Map<string, number>();
   private observations = 0;
@@ -119,7 +110,7 @@ export class ApiHangFinder {
   // Evaluate one correlated hang observation. Returns null unless a loading indicator was
   // present in both probes with an overlapping signature. First confirmation → isNew:true;
   // further confirmations of the same endpoint+trigger → isNew:false with occurrence bumped.
-  public evaluate(o: HangObservation): { defect: ApiHangDefect; isNew: boolean } | null {
+  public evaluate(o: HangObservation): { diagnostic: HangDiagnostic; isNew: boolean } | null {
     this.observations += 1;
     // A background telemetry/analytics/beacon timeout is never a user-facing hang — ignore
     // it regardless of any coincidental spinner elsewhere on the page (req: no false positives).
@@ -147,11 +138,11 @@ export class ApiHangFinder {
 
     const occurrence = (this.reported.get(bugId) ?? 0) + 1;
     this.reported.set(bugId, occurrence);
-    const defect = this.build(bugId, method, o, occurrence);
-    return { defect, isNew: !alreadyReported };
+    const diagnostic = this.build(bugId, method, o, occurrence);
+    return { diagnostic, isNew: !alreadyReported };
   }
 
-  // Distinct infinite-loading defects seen this run.
+  // Distinct hang diagnostics seen this run.
   public totalFound(): number {
     return this.reported.size;
   }
@@ -168,18 +159,11 @@ export class ApiHangFinder {
     return (confirm.indicators ?? []).filter((i) => before.has(i));
   }
 
-  // Grade a confirmed hang. Failed/5xx are firm HIGH/SIGNAL; a PENDING_TIMEOUT is only HIGH when a
-  // strong second signal (blocked inputs or stress probe) corroborates it, else MEDIUM/NEEDS_VERIFICATION.
-  private grade(o: HangObservation, corroborated: boolean): Pick<ApiHangDefect, 'severity' | 'confidence' | 'verificationStatus' | 'confidenceScore'> {
-    if (o.trigger === 'PENDING_TIMEOUT' && !corroborated) {
-      return { severity: 'MEDIUM', confidence: 'INFERRED', verificationStatus: 'NEEDS_VERIFICATION', confidenceScore: 0.5 };
-    }
-    return {
-      severity: 'HIGH',
-      confidence: 'SIGNAL',
-      verificationStatus: corroborated ? 'CONFIRMED' : 'NEEDS_VERIFICATION',
-      confidenceScore: corroborated ? 0.8 : 0.65,
-    };
+  // Diagnostic emphasis for the NETWORK line. Failed/5xx are firm HIGH; an uncorroborated
+  // PENDING_TIMEOUT is a softer MEDIUM (INFO on the tab), since it could still be a slow load.
+  private severityFor(o: HangObservation, corroborated: boolean): 'HIGH' | 'MEDIUM' {
+    if (o.trigger === 'PENDING_TIMEOUT' && !corroborated) return 'MEDIUM';
+    return 'HIGH';
   }
 
   private bugIdFor(method: string, url: string, trigger: HangTrigger): string {
@@ -196,7 +180,7 @@ export class ApiHangFinder {
       .toLowerCase();
   }
 
-  private build(bugId: string, method: string, o: HangObservation, occurrence: number): ApiHangDefect {
+  private build(bugId: string, method: string, o: HangObservation, occurrence: number): HangDiagnostic {
     // Clean, domain-stripped endpoint: an ephemeral tunnel/proxy host (e.g. *.trycloudflare.com)
     // must never leak into the finding's message or its API Endpoint field.
     const cleanRef = endpointLabel(method, o.url);       // "GET /api/products/p9"
@@ -214,21 +198,14 @@ export class ApiHangFinder {
     if (o.scenarioActive) evidence.push('Corroborated by an active NetworkSaboteur/AsyncStateRacer stress probe');
     // Corroboration = a second INDEPENDENT signal beyond the persistent spinner: blocked inputs or a stress probe.
     const corroborated = o.scenarioActive || o.confirm.inputsBlocked;
-    const grade = this.grade(o, corroborated);
     return {
       bugId,
-      bugClass: 'INFINITE_LOADING',
-      severity: grade.severity,
-      confidence: grade.confidence,
-      verificationStatus: grade.verificationStatus,
-      confidenceScore: grade.confidenceScore,
-      cwe: BUG_CATALOG.INFINITE_LOADING.cwe,
+      severity: this.severityFor(o, corroborated),
       message: `[Stuck loading] ${cleanRef} (${o.trigger}) never finished, so the screen stayed stuck loading.`,
       endpoint,
       method,
       trigger: o.trigger,
       evidence,
-      advice: this.buildAdvice(),
       occurrence,
       corroborated,
       pageUrl: o.pageUrl,
@@ -240,10 +217,6 @@ export class ApiHangFinder {
     if (o.trigger === 'SERVER_ERROR' && typeof o.status === 'number') return `: HTTP ${o.status}`;
     if (o.trigger === 'PENDING_TIMEOUT' && typeof o.pendingMs === 'number') return `: pending ${o.pendingMs}ms`;
     return o.failureDetail ? `: ${o.failureDetail}` : '';
-  }
-
-  private buildAdvice(): string {
-    return `The request failed or never came back, and the screen never left its loading state.\n${BUG_CATALOG.INFINITE_LOADING.remediation}`;
   }
 
   // djb2 — stable, cheap, no crypto dependency.

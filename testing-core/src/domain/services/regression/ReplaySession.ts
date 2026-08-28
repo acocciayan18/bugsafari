@@ -15,7 +15,7 @@ import type { FaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
 import type { ReplayStepStats, StateFingerprint, VerifyFixReason } from '../../../../../shared/types.js';
 import { FaultCollector, type SignalBuckets } from './FaultCollector.js';
 import { ReplayActionRunner, type ReplayStepStatus } from './ReplayActionRunner.js';
-import { ReplayProbes, HANG_THRESHOLD_MS, requiresBodyScan } from './replayProbes.js';
+import { ReplayProbes, requiresBodyScan } from './replayProbes.js';
 
 import { createLogger } from '../../../infrastructure/observability/logger.js';
 
@@ -25,7 +25,6 @@ const obsLog = createLogger('[ReplaySession]');
 export const PER_STEP_SETTLE_MS = 400;
 export const FINAL_SETTLE_MS = 800;
 const NETWORK_SETTLE_MS = 3_000;
-const HANG_SETTLE_MS = HANG_THRESHOLD_MS + 2_000;
 const NAV_TIMEOUT_MS = 30_000;
 // Retry + backoff + bounded hydration wait for the replay's target load, mirroring the
 // exploration engine — so a slow or cold link does not make every finding undecidable.
@@ -228,9 +227,8 @@ export function stripNonRendered(html: string): string {
     .replace(/<!--[\s\S]*?-->/g, ' ');
 }
 
-/** Adaptive validation window: hangs need to outlast the hang threshold, network faults land late. */
-function settleFor(bugClass: string, faultType: FaultType): number {
-  if (bugClass === 'INFINITE_LOADING') return HANG_SETTLE_MS;
+/** Adaptive validation window: network faults land late, everything else settles fast. */
+function settleFor(_bugClass: string, faultType: FaultType): number {
   if (faultType === 'NETWORK') return NETWORK_SETTLE_MS;
   return FINAL_SETTLE_MS;
 }
