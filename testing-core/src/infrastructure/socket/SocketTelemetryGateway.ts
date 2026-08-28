@@ -1,5 +1,5 @@
-import type { AccessibilityFinding, DiscoveredElement, FindingOccurrencePatch, FindingUpgrade, ForensicCrashReport, IncidentReport, ReproductionVerdict, TelemetryEvent, TelemetryDeduper, TimeSyncPayload } from '../../../../shared/types.js';
-import { ACCESSIBILITY_EVENT, FINDING_OCCURRENCE_EVENT, FINDING_UPGRADE_EVENT, REPRODUCTION_VERDICT_EVENT, TIME_SYNC_EVENT, createTelemetryDeduper } from '../../../../shared/types.js';
+import type { AccessibilityFinding, DiscoveredElement, FindingOccurrencePatch, FindingUpgrade, ForensicCrashReport, IncidentReport, ReproductionVerdict, RunHealthPayload, TelemetryEvent, TelemetryDeduper, TimeSyncPayload } from '../../../../shared/types.js';
+import { ACCESSIBILITY_EVENT, FINDING_OCCURRENCE_EVENT, FINDING_UPGRADE_EVENT, REPRODUCTION_VERDICT_EVENT, RUN_HEALTH_EVENT, TIME_SYNC_EVENT, createTelemetryDeduper } from '../../../../shared/types.js';
 import type { BrowserConsoleMessage, TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import { scrubCredentials } from '../../domain/services/telemetry/credentialScrub.js';
 import { scrubSelectors } from '../../../../shared/reproduction.js';
@@ -108,6 +108,13 @@ export class SocketTelemetryGateway implements TelemetryGateway {
 
   public emitTargets(targets: DiscoveredElement[]): void {
     this.channel().emit('discovered-elements', targets);
+  }
+
+  // Engine liveness transition. Not recorded: health is derived from the heartbeat on
+  // every restore, so replaying a stale 'stalled' from the buffer would contradict a
+  // snapshot that already recomputed it.
+  public emitRunHealth(payload: RunHealthPayload): void {
+    this.channel().emit(RUN_HEALTH_EVENT, payload);
   }
 
   public emitLiveFrame(base64Jpeg: string): void {

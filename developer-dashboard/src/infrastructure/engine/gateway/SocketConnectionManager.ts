@@ -1,7 +1,7 @@
 import { io, type Socket } from 'socket.io-client';
 import type { BrowserConsoleMessage } from '../../../application/ports/EngineGateway';
-import type { AccessibilityFinding, ActiveSessionSnapshot, FindingOccurrencePatch, FindingUpgrade, ForensicCrashReport, IncidentReport, QueueSubscribeRequest, QueueUpdate, ReproductionVerdict, SessionAttachAck, StopReason, TelemetryEvent, TimeSyncPayload } from '../../../types';
-import { ACCESSIBILITY_EVENT, FINDING_OCCURRENCE_EVENT, FINDING_UPGRADE_EVENT, QUEUE_SUBSCRIBE_EVENT, QUEUE_UPDATE_EVENT, REPRODUCTION_VERDICT_EVENT, SESSION_ATTACH_EVENT, SESSION_SNAPSHOT_EVENT, TIME_SYNC_EVENT } from '../../../types';
+import type { AccessibilityFinding, ActiveSessionSnapshot, FindingOccurrencePatch, FindingUpgrade, ForensicCrashReport, IncidentReport, QueueSubscribeRequest, QueueUpdate, ReproductionVerdict, RunControlAck, RunHealthPayload, SessionAttachAck, StopReason, TelemetryEvent, TimeSyncPayload } from '../../../types';
+import { ACCESSIBILITY_EVENT, FINDING_OCCURRENCE_EVENT, FINDING_UPGRADE_EVENT, QUEUE_SUBSCRIBE_EVENT, QUEUE_UPDATE_EVENT, REPRODUCTION_VERDICT_EVENT, RUN_HEALTH_EVENT, SESSION_ATTACH_EVENT, SESSION_SNAPSHOT_EVENT, TIME_SYNC_EVENT } from '../../../types';
 import { logger } from '../../../utils/logger';
 import { canAttach, storedAuthToken } from './attachEligibility';
 
@@ -21,6 +21,7 @@ type ReconnectFailedHandler = () => void;
 type SessionSnapshotHandler = (snapshot: ActiveSessionSnapshot) => void;
 type QueueUpdateHandler = (update: QueueUpdate) => void;
 type TimeSyncHandler = (payload: TimeSyncPayload) => void;
+type RunHealthHandler = (payload: RunHealthPayload) => void;
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
@@ -40,6 +41,11 @@ const RECONNECT = {
   delayMaxMs: envInt(import.meta.env?.VITE_SOCKET_RECONNECT_DELAY_MAX_MS, 5000),
   jitter: 0.5,
 };
+
+// How long to wait for a control ack before falling back to HTTP. Generously above a
+// normal round-trip: this is a "the socket is not really carrying traffic" detector, not
+// a latency budget.
+const CONTROL_ACK_TIMEOUT_MS = 4000;
 
 /**
  * Socket.IO lifecycle + event binding/dispatch for the engine gateway. Owns the
@@ -80,6 +86,7 @@ export class SocketConnectionManager {
   private sessionSnapshotHandler: SessionSnapshotHandler | null = null;
   private queueUpdateHandler: QueueUpdateHandler | null = null;
   private timeSyncHandler: TimeSyncHandler | null = null;
+  private runHealthHandler: RunHealthHandler | null = null;
   // Invoked when every attach retry failed — the coordinator falls back to the
   // HTTP snapshot so a run we own is never lost to a room we couldn't join.
   private attachExhaustedHandler: (() => void) | null = null;
@@ -210,6 +217,13 @@ export class SocketConnectionManager {
         clearTimeout(this.connectionTimeoutId);
         this.connectionTimeoutId = null;
       }
+      // Report it. A refused handshake (rejected JWT, blocked origin) used to produce
+      // console noise and nothing else, leaving the UI with no signal at all until the
+      // 25s backstop — so the dashboard looked healthy while carrying no traffic.
+      if (this.connectionStateValue !== 'reconnecting') {
+        this.connectionStateValue = 'disconnected';
+        this.connectedHandler?.(false);
+      }
     });
 
     this.socket.on('error', (error: Error) => {
@@ -231,6 +245,16 @@ export class SocketConnectionManager {
     this.socket.on(SESSION_SNAPSHOT_EVENT, this.handleSessionSnapshot);
     this.socket.on(QUEUE_UPDATE_EVENT, this.handleQueueUpdate);
     this.socket.on(TIME_SYNC_EVENT, this.handleTimeSync);
+    this.socket.on(RUN_HEALTH_EVENT, this.handleRunHealth);
+
+    // Re-arm on the browser coming back online. Socket.IO's budget is ~45s, so a laptop
+    // sleep or a tunnel outage longer than that latched 'reconnect_failed' forever and
+    // orphaned a run that was still alive on the backend — recoverable only by a manual
+    // reload. The browser telling us the link is back is exactly the moment to retry.
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', this.handleBrowserOnline);
+      document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    }
 
     // Manager-level reconnection lifecycle drives the "reconnecting…" overlay.
     this.socket.io.on('reconnect_attempt', this.handleReconnectAttempt);
@@ -265,6 +289,11 @@ export class SocketConnectionManager {
     this.socket.off(SESSION_SNAPSHOT_EVENT, this.handleSessionSnapshot);
     this.socket.off(QUEUE_UPDATE_EVENT, this.handleQueueUpdate);
     this.socket.off(TIME_SYNC_EVENT, this.handleTimeSync);
+    this.socket.off(RUN_HEALTH_EVENT, this.handleRunHealth);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', this.handleBrowserOnline);
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    }
     this.socket.io.off('reconnect_attempt', this.handleReconnectAttempt);
     this.socket.io.off('reconnect', this.handleReconnect);
     this.socket.io.off('reconnect_failed', this.handleReconnectFailed);
@@ -287,32 +316,44 @@ export class SocketConnectionManager {
     this.connect();
   }
 
-  public pauseTest(): void {
-    this.socket.emit('pause-test');
-  }
-
-  public resumeTest(): void {
-    this.socket.emit('resume-test');
-  }
-
-  public stopTest(): void {
-    this.socket.emit('stop-test');
-  }
-
   /**
-   * Emit stop over the socket (used by the coordinator's forceStop when
-   * connected). Resolves after a short window so the emit reaches the wire.
+   * Send a control and WAIT for the server's verdict.
+   *
+   * These were fire-and-forget emits: a rejection (not the owner, per-socket event
+   * budget exhausted) was dropped silently while the dashboard held its optimistic
+   * PAUSING/STOPPING, which is the "Pause/Stop do nothing and the UI stays stuck"
+   * symptom. Resolves null when no ack arrives in time — deliberately distinct from an
+   * explicit refusal, because a timeout proves nothing about whether the command landed
+   * and the caller falls back to HTTP rather than rolling back a possibly-applied state.
    */
-  public stopViaSocket(reason: StopReason = 'operator'): Promise<void> {
-    logger.debug('[Gateway] Attempting stop via socket...');
+  private emitControl(event: string, payload?: unknown): Promise<RunControlAck | null> {
     return new Promise((resolve) => {
-      this.socket.emit('stop-test', { reason });
-      // Give socket time to send before resolving
-      setTimeout(() => {
-        logger.debug('[Gateway] Socket stop sent');
-        resolve();
-      }, 100);
+      let settled = false;
+      const done = (ack: RunControlAck | null): void => {
+        if (settled) return;
+        settled = true;
+        resolve(ack);
+      };
+      const timer = setTimeout(() => done(null), CONTROL_ACK_TIMEOUT_MS);
+      const handle = (ack: RunControlAck): void => {
+        clearTimeout(timer);
+        done(ack ?? null);
+      };
+      if (payload === undefined) this.socket.emit(event, handle);
+      else this.socket.emit(event, payload, handle);
     });
+  }
+
+  public pauseTest(): Promise<RunControlAck | null> {
+    return this.emitControl('pause-test');
+  }
+
+  public resumeTest(): Promise<RunControlAck | null> {
+    return this.emitControl('resume-test');
+  }
+
+  public stopTest(reason: StopReason = 'operator'): Promise<RunControlAck | null> {
+    return this.emitControl('stop-test', { reason });
   }
 
   private readonly handleConnect = (): void => {
@@ -353,6 +394,32 @@ export class SocketConnectionManager {
     console.warn('[Gateway] Reconnection attempts exhausted');
     this.connectionStateValue = 'disconnected';
     this.reconnectFailedHandler?.();
+  };
+
+  /**
+   * Retry after the automatic budget was exhausted. Reuses the SAME socket (not
+   * reconnect(), which drops the run token for an identity switch) so the run we own is
+   * re-attached on success rather than abandoned.
+   */
+  public retryNow(): void {
+    if (this.socket.connected) return;
+    this.connectionStateValue = 'connecting';
+    this.reconnectingHandler?.(0);
+    this.socket.connect();
+  }
+
+  private readonly handleBrowserOnline = (): void => {
+    if (this.socket.connected) return;
+    logger.debug('[Gateway] Browser back online — retrying the socket.');
+    this.retryNow();
+  };
+
+  // A backgrounded tab gets its timers throttled, so the retry budget can drain while
+  // nobody is watching. Returning to the tab is a fresh chance to reconnect.
+  private readonly handleVisibilityChange = (): void => {
+    if (typeof document === 'undefined' || document.visibilityState !== 'visible') return;
+    if (this.socket.connected) return;
+    this.retryNow();
   };
 
   private readonly handleTelemetry = (event: TelemetryEvent): void => {
@@ -401,6 +468,10 @@ export class SocketConnectionManager {
 
   private readonly handleTimeSync = (payload: TimeSyncPayload): void => {
     this.timeSyncHandler?.(payload);
+  };
+
+  private readonly handleRunHealth = (payload: RunHealthPayload): void => {
+    this.runHealthHandler?.(payload);
   };
 
   private readonly handleQueueUpdate = (update: QueueUpdate): void => {
@@ -461,6 +532,9 @@ export class SocketConnectionManager {
   public onTimeSync(handler: TimeSyncHandler): void {
     this.timeSyncHandler = handler;
   }
+  public onRunHealth(handler: RunHealthHandler): void {
+    this.runHealthHandler = handler;
+  }
   public onAttachExhausted(handler: () => void): void {
     this.attachExhaustedHandler = handler;
   }
@@ -476,6 +550,13 @@ export class SocketConnectionManager {
     this.forensicHandler = null;
     this.incidentHandler = null;
     this.reproductionVerdictHandler = null;
+    // These three were omitted, so a teardown left them pointing at the previous store
+    // binding — a finding patch or timer sync after an identity switch would still be
+    // applied to state that no longer belongs to the current operator.
+    this.findingUpgradeHandler = null;
+    this.findingOccurrenceHandler = null;
+    this.timeSyncHandler = null;
+    this.runHealthHandler = null;
     this.accessibilityHandler = null;
     this.frameHandler = null;
     this.urlChangedHandler = null;

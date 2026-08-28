@@ -1,22 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRunStore } from '../../stores/run/runStore';
 import { toast } from '../../infrastructure/notifications/ToastProvider';
+import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
+import { resolveConnectionView, type ConnectionSeverity } from '../../stores/run/connectionState';
 
-// Top-right network indicator. Surfaces two independent axes: the dashboard↔BugSafari
-// link (browser offline / socket reconnecting / reconnect gave up) and the engine's
-// reachability of the TARGET app (unstable / auto-paused). Shown only on a state
-// change; the socket's initial connecting phase is never treated as a loss, and a
-// brief "Connected" flash confirms recovery.
+// Top-right status indicator. Single host for every connection state the operator needs
+// to distinguish: Connected, Recovering, Disconnected, Stalled, Stopped. The decision
+// itself lives in resolveConnectionView so it is testable without React; this component
+// only owns the browser-only inputs (navigator, Network Information API) and rendering.
+//
+// A healthy link shows a quiet Connected pill rather than nothing, so "no chip" can
+// never be mistaken for "connected" — the ambiguity that made a dead stream invisible.
 const CONNECTED_FLASH_MS = 2500;
 
-type Severity = 'critical' | 'warning' | 'stable';
-
-interface ChipState {
-  label: string;
-  severity: Severity;
-}
-
-const SEVERITY_CLASS: Record<Severity, string> = {
+const SEVERITY_CLASS: Record<ConnectionSeverity, string> = {
   critical: 'border-(--status-critical-border) bg-(--status-critical-bg) text-(--status-critical-fg)',
   warning: 'border-(--status-warning-border) bg-(--status-warning-bg) text-(--status-warning-fg)',
   stable: 'border-(--status-stable-border) bg-(--status-stable-bg) text-(--status-stable-fg)',
@@ -27,6 +24,9 @@ export default function ConnectionStatusChip() {
   const isReconnecting = useRunStore((s) => s.isReconnecting);
   const reconnectAttempt = useRunStore((s) => s.reconnectAttempt);
   const reconnectGaveUp = useRunStore((s) => s.reconnectGaveUp);
+  const isRestoring = useRunStore((s) => s.isRestoring);
+  const engineHealth = useRunStore((s) => s.engineHealth);
+  const status = useRunStore((s) => s.status);
   const targetNetworkPhase = useRunStore((s) => s.targetNetworkPhase);
 
   const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
@@ -70,30 +70,25 @@ export default function ConnectionStatusChip() {
   // phase must not flash a loss. True internet loss (navigator) counts always.
   const hasConnectedOnce = useRef(false);
   if (isConnected) hasConnectedOnce.current = true;
-  const socketDown = hasConnectedOnce.current && !isConnected;
 
-  // Highest-priority problem wins: link loss masks a target problem (we can't even
-  // trust the target signal while the socket is down).
-  const problem: ChipState | null = !online
-    ? { label: 'No Internet', severity: 'critical' }
-    : reconnectGaveUp
-      ? { label: 'Connection lost — reload to resume', severity: 'critical' }
-      : isReconnecting
-        ? { label: `Reconnecting…${reconnectAttempt ? ` (attempt ${reconnectAttempt})` : ''}`, severity: 'warning' }
-        : socketDown
-          ? { label: 'Connection lost — retrying', severity: 'critical' }
-          : targetNetworkPhase === 'PAUSED_NETWORK'
-            ? { label: 'Target unreachable — paused, retrying', severity: 'warning' }
-            : targetNetworkPhase === 'DEGRADED'
-              ? { label: 'Target connection unstable', severity: 'warning' }
-              : slowLink
-                ? { label: 'Slow connection — live updates may lag', severity: 'warning' }
-                : null;
+  const view = resolveConnectionView({
+    online,
+    isConnected,
+    isReconnecting,
+    reconnectAttempt,
+    reconnectGaveUp,
+    isRestoring,
+    hasConnectedOnce: hasConnectedOnce.current,
+    engineHealth,
+    status,
+    targetNetworkPhase,
+    slowLink,
+  });
 
-  const down = problem !== null;
+  const down = view.severity !== 'stable';
 
-  // "Connected" flash only on a real recovery transition (down → up), never on the
-  // initial establishment.
+  // Emphasise the chip briefly after a real recovery (down → up), then settle back to
+  // the quiet Connected pill.
   const wasDown = useRef(down);
   const [recovered, setRecovered] = useState(false);
   useEffect(() => {
@@ -110,29 +105,39 @@ export default function ConnectionStatusChip() {
     }
   }, [down]);
 
-  // One-time actionable prompt when auto-reconnect gives up (reload required).
+  // One-time actionable prompt when auto-reconnect gives up. Retry is now in-page: the
+  // socket re-arms on `online`/tab-focus too, so a full reload is a last resort, not the
+  // only way back to a run that is still alive on the backend.
   const gaveUpToasted = useRef(false);
   useEffect(() => {
     if (reconnectGaveUp && !gaveUpToasted.current) {
       gaveUpToasted.current = true;
-      toast.network("Connection lost. We couldn't reconnect automatically, so reload the page to resume your session.", { duration: Infinity });
+      toast.network("Connection lost. Your session is still running — press Retry to reconnect.", { duration: Infinity });
     } else if (!reconnectGaveUp) {
       gaveUpToasted.current = false;
     }
   }, [reconnectGaveUp]);
 
-  if (!down && !recovered) return null;
-
-  const label = problem?.label ?? 'Connected';
-  const cls = SEVERITY_CLASS[problem?.severity ?? 'stable'];
+  // Quiet when healthy and uneventful: a persistent pill, but visually recessive.
+  const quiet = !down && !recovered;
 
   return (
     <div
       role="status"
       aria-live="polite"
-      className={`fixed right-3 top-3 z-9999 flex items-center gap-2 rounded-[8px] border px-3 py-1.5 text-[13px] font-semibold shadow-sm backdrop-blur ${cls}`}
+      data-connection-phase={view.phase}
+      className={`fixed right-3 top-3 z-9999 flex items-center gap-2 rounded-[8px] border px-3 py-1.5 text-[13px] font-semibold shadow-sm backdrop-blur transition-opacity ${SEVERITY_CLASS[view.severity]} ${quiet ? 'opacity-60' : 'opacity-100'}`}
     >
-      {label}
+      {view.label}
+      {reconnectGaveUp && (
+        <button
+          type="button"
+          onClick={() => getEngineGateway().retryConnection()}
+          className="ml-1 rounded-[6px] border border-current px-2 py-0.5 text-[12px] font-semibold hover:opacity-80"
+        >
+          Retry
+        </button>
+      )}
     </div>
   );
 }

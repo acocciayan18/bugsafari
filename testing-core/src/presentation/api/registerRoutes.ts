@@ -34,8 +34,8 @@ import { forensicErrorRepository } from '../../infrastructure/database/repositor
 import { forensicTelemetryRepository } from '../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
 import { networkLogRepository } from '../../infrastructure/database/repositories/NetworkLogRepository.js';
 import { consoleLogRepository } from '../../infrastructure/database/repositories/ConsoleLogRepository.js';
-import { telemetryEventRepository } from '../../infrastructure/database/repositories/TelemetryEventRepository.js';
-import { SNAPSHOT_TELEMETRY_LIMIT } from '../../infrastructure/database/queryLimits.js';
+import { hydrateSnapshotFromDb } from '../../application/services/snapshotHydration.js';
+import { engineHealthPhase } from '../../application/services/runHealth.js';
 import { SessionModel, type ISession } from '../../infrastructure/database/models/SessionModel.js';
 import { generateRunCode, generateUniqueRunCode } from '../../infrastructure/database/runCodeGenerator.js';
 import { normalizeRunCode } from '../../../../shared/runCode.js';
@@ -65,7 +65,6 @@ import {
   type SuggestFixResponse,
   type SuggestInsightsRequest,
   type SuggestInsightsResponse,
-  type TelemetryEvent,
   clampTimebox,
   defaultOptimizationSettings,
   isAllowedShareTtl,
@@ -623,22 +622,6 @@ export function registerRoutes(
   // Lifecycle states in which the run is still live (controls stay bound to it).
   const LIVE_LIFECYCLES = new Set(['QUEUED', 'STARTING', 'RUNNING', 'PAUSING', 'PAUSED', 'STOPPING', 'INTERRUPTED']);
 
-  // Backfill a restore snapshot's telemetry from the durable Mongo stream so a
-  // refreshed/reconnected client recovers the recent history, not just the capped
-  // in-memory replay tail. Reads only the most-recent SNAPSHOT_TELEMETRY_LIMIT rows —
-  // the client slices to that same window on hydrate, so shipping the full 5000-row
-  // stream only inflated the payload and the synchronous parse before first paint.
-  // Only replaces when the DB holds strictly more than the buffer, so an
-  // empty/lagging collection never truncates a good in-memory snapshot.
-  const hydrateTelemetryFromDb = async <T extends { sessionId?: string | null; telemetry?: TelemetryEvent[] } | null>(
-    snapshot: T,
-  ): Promise<T> => {
-    if (!snapshot?.sessionId || !snapshot.telemetry) return snapshot;
-    const rows = await telemetryEventRepository.findRecentByRunId(snapshot.sessionId, SNAPSHOT_TELEMETRY_LIMIT).catch(() => []);
-    if (rows.length > snapshot.telemetry.length) snapshot.telemetry = rows;
-    return snapshot;
-  };
-
   // Backlog ceiling for the distributed path, read once at wiring time.
   const maxQueueDepth = readMaxQueueDepth();
 
@@ -815,6 +798,85 @@ export function registerRoutes(
       response.status(500).json({ ok: false, error: `Failed to stop the session: ${errorMessage}` });
     }
   });
+
+  /**
+   * Socket-less pause/resume, mirroring POST /api/safari/stop's resolution order.
+   *
+   * Pause and resume used to exist ONLY as socket emits, so a degraded or dead socket
+   * made them impossible: the dashboard set its optimistic PAUSING, the emit went
+   * nowhere, and nothing could recover it. Stop already had this fallback; these give
+   * the other two controls the same standing.
+   */
+  const applyRunControl = async (
+    command: 'pause' | 'resume',
+    request: AuthRequest,
+    response: Response,
+  ): Promise<void> => {
+    const knownRunToken = typeof request.body?.runToken === 'string' && request.body.runToken ? request.body.runToken : undefined;
+    const userId = request.userId ?? null;
+
+    // ── Distributed topology: the run executes in a worker process.
+    if (taskQueue && runRegistry && (knownRunToken || userId)) {
+      try {
+        const entry = knownRunToken
+          ? await runRegistry.findByRunToken(knownRunToken)
+          : await runRegistry.findByOwner(userId!);
+        // Guest entries are possession-proven (userId null); authenticated ones demand
+        // the matching identity — the same rule the stop path and the socket enforce.
+        if (entry && entry.userId && entry.userId !== userId) {
+          response.status(403).json({ ok: false, error: `You do not have permission to ${command} this session.` });
+          return;
+        }
+        if (entry) {
+          const state = await taskQueue.getJobState(entry.jobId).catch(() => 'unknown');
+          if (state !== 'active') {
+            // A queued job holds no engine, and a finished one has nothing to pause.
+            response.json({ ok: true, applied: false, message: 'This session is not currently executing.' });
+            return;
+          }
+          if (!controlPublisher) {
+            response.status(503).json({ ok: false, error: 'Control channel to the worker fleet is unavailable.' });
+            return;
+          }
+          // Durable intent first, then the (lossy) bridge — so a dropped publish is still
+          // applied by the worker's own poll rather than vanishing.
+          await runRegistry.markControlRequested(entry.runToken, command).catch(() => undefined);
+          controlPublisher.publish(command, entry.runToken);
+          obsLog.info(`[API] ${command} bridged to worker for run ${entry.runToken}`);
+          response.json({ ok: true, applied: true, message: `Session ${command} dispatched to the executing worker.` });
+          return;
+        }
+      } catch (error) {
+        obsLog.error(`[API]  Distributed ${command} failed:`, error instanceof Error ? error.message : error);
+        response.status(502).json({ ok: false, error: `Could not reach the run queue to ${command} this session.` });
+        return;
+      }
+    }
+
+    // ── Synchronous topology: the engine runs in this process.
+    if (!sessionManager.getActiveEngine()) {
+      response.json({ ok: true, applied: false, message: 'No active session.' });
+      return;
+    }
+    if (!sessionManager.ownsActiveRun(userId, knownRunToken)) {
+      response.status(403).json({ ok: false, error: `You do not have permission to ${command} this session.` });
+      return;
+    }
+    try {
+      if (command === 'pause') await sessionManager.pauseByOperator();
+      else sessionManager.resumeByOperator();
+      response.json({ ok: true, applied: true, message: `Safari session ${command}d.` });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      obsLog.error(`[API] Error on ${command}:`, errorMessage);
+      response.status(500).json({ ok: false, error: `Failed to ${command} the session: ${errorMessage}` });
+    }
+  };
+
+  app.post('/api/safari/pause', writeLimiter, optionalAuth, (request: AuthRequest, response: Response) =>
+    applyRunControl('pause', request, response));
+  app.post('/api/safari/resume', writeLimiter, optionalAuth, (request: AuthRequest, response: Response) =>
+    applyRunControl('resume', request, response));
 
   // Start test - allowed for guests (optional auth)
   // IMPORTANT: Set the authenticated userId before executing so it persists to saved documents
@@ -1076,7 +1138,7 @@ export function registerRoutes(
     const runToken = extractStringParam(request.query.runToken);
     const local = sessionManager.getSnapshotFor(request.userId ?? null, runToken);
     if (local || !taskQueue || !runRegistry) {
-      response.json({ snapshot: local ? await hydrateTelemetryFromDb(local) : null });
+      response.json({ snapshot: local ? await hydrateSnapshotFromDb(local) : null });
       return;
     }
 
@@ -1106,10 +1168,16 @@ export function registerRoutes(
         // Worker publishes a throttled replay snapshot to Redis; fall back to a
         // minimal RUNNING shell if the run just started and none exists yet.
         const workerSnapshot = await runRegistry.readSnapshot(entry.runToken);
+        // Liveness is recomputed here rather than trusted from the snapshot: a wedged
+        // worker stops writing snapshots too, so a stale one would keep asserting it is
+        // healthy. This branch used to answer a bare RUNNING shell for a dead worker,
+        // which is what left a refreshed dashboard stuck on Running indefinitely.
+        const heartbeatAgeMs = await runRegistry.readHeartbeatAgeMs(entry.runToken).catch(() => null);
+        const engineHealth = engineHealthPhase(heartbeatAgeMs);
         const snapshot = workerSnapshot
-          ? { ...workerSnapshot, jobId: entry.jobId }
-          : { ...queuedSnapshot(entry, null, 0), status: 'RUNNING' as const };
-        response.json({ snapshot: await hydrateTelemetryFromDb(snapshot) });
+          ? { ...workerSnapshot, jobId: entry.jobId, engineHealth }
+          : { ...queuedSnapshot(entry, null, 0), status: 'RUNNING' as const, engineHealth };
+        response.json({ snapshot: await hydrateSnapshotFromDb(snapshot) });
         return;
       }
 
@@ -1118,7 +1186,7 @@ export function registerRoutes(
       // otherwise the entry is stale — clean it up.
       const finalSnapshot = await runRegistry.readSnapshot(entry.runToken);
       if (finalSnapshot && !LIVE_LIFECYCLES.has(finalSnapshot.status)) {
-        response.json({ snapshot: await hydrateTelemetryFromDb({ ...finalSnapshot, jobId: entry.jobId }) });
+        response.json({ snapshot: await hydrateSnapshotFromDb({ ...finalSnapshot, jobId: entry.jobId }) });
         return;
       }
       await runRegistry.clear(entry.runToken, entry.userId);

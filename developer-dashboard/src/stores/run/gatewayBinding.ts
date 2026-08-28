@@ -153,6 +153,10 @@ export function bindGatewayToRunStore(gateway: EngineGateway): void {
     gateway.onFindingUpgrade((upgrade) => s().applyFindingUpgrade(upgrade));
     gateway.onFindingOccurrence((patch) => s().applyFindingOccurrence(patch));
     gateway.onUrlChanged((url) => s().setCurrentUrl(url));
+    // Engine liveness. Immediate, never batched: this is the signal that tells the
+    // operator the stream went quiet, so delaying it behind the coalescing window would
+    // defeat its whole purpose.
+    gateway.onRunHealth((payload) => s().setEngineHealth(payload.phase));
 
     // Hot paths are throttled; everything else stays immediate for control latency.
     gateway.onTelemetry((event) => {

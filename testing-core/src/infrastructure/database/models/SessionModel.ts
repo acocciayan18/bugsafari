@@ -35,6 +35,9 @@ export interface ICaughtBug {
   selector: string;
   /** Human name of the culprit control, shown in the report instead of the selector. */
   elementLabel?: string;
+  /** Route the fault surfaced on. Carried so a checkpointed finding can be replayed
+   *  back onto the live Errors tab (IncidentReport.url) after a refresh. */
+  url?: string;
   /** How many times this identical fault fired this session (dedup at save). */
   occurrences?: number;
   payloadUsed: string;
@@ -277,6 +280,13 @@ const sessionSchema = new Schema(
       default: 0,
       min: [0, 'Finding count cannot be negative'],
     },
+    // Last mid-run flush of the engine's finding ledger. Its presence is what proves a
+    // report's findings survived independently of the operator ever pressing Save.
+    findingsCheckpointedAt: {
+      type: Date,
+      required: false,
+      default: null,
+    },
     actionTraceCount: {
       type: Number,
       required: true,
@@ -377,6 +387,8 @@ const sessionSchema = new Schema(
           message: { type: String, default: '' },
           selector: { type: String, default: '' },
           elementLabel: { type: String, default: '' },
+          // Route the fault surfaced on — restores IncidentReport.url on a rehydrate.
+          url: { type: String, default: '' },
           // How many times this identical fault fired this session (dedup at save).
           occurrences: { type: Number, default: 1 },
           payloadUsed: { type: String, default: '' },
@@ -564,6 +576,8 @@ export interface ISession extends Document {
   /** Operator-selected execution timebox (ms); absent on sessions predating the field. */
   executionTimeboxMs?: number;
   findingCount: number;
+  /** Last mid-run finding checkpoint; absent when the run never flushed one. */
+  findingsCheckpointedAt?: Date | null;
   actionTraceCount: number;
   brainSnapshotCount: number;
   config: ISessionConfig;

@@ -1,6 +1,7 @@
 import { Types, isValidObjectId } from "mongoose";
 import type {
   BrainState,
+  CheckpointFinding,
   CreateSessionInput,
   FindingRepository,
   SaveBrainConfigInput,
@@ -87,6 +88,32 @@ public async createSession(input: CreateSessionInput): Promise<string> {
       executionTimeboxMs: input.executionTimeboxMs,
     };
     return createWithRunCodeRetry((code) => SessionModel.create({ ...base, runId: code }), input.runId);
+  }
+
+  /**
+   * Mid-run checkpoint of the confirmed-finding ledger. Owner-scoped like every other
+   * mutation here, and a no-op for an unresolvable id so a guest run (no session doc)
+   * costs nothing. `findingCount` is kept in step because History reads it directly and
+   * a checkpointed run that never reaches Save must still report an honest count.
+   */
+  public async checkpointFindings(
+    sessionId: string,
+    userId: string,
+    bugs: CheckpointFinding[],
+  ): Promise<void> {
+    const objectId = toObjectId(sessionId);
+    const ownerId = toObjectId(userId);
+    if (!objectId || !ownerId) return;
+    await SessionModel.updateOne(
+      { _id: objectId, userId: ownerId },
+      {
+        $set: {
+          'forensicTrace.caughtBugs': bugs,
+          findingCount: bugs.length,
+          findingsCheckpointedAt: new Date(),
+        },
+      },
+    );
   }
 
   public async markSessionTerminated(

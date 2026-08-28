@@ -5,6 +5,7 @@ import type {
     ActiveSessionSnapshot,
     FindingOccurrencePatch,
     FindingUpgrade,
+    EngineHealthPhase,
     ForensicCrashReport,
     IncidentReport,
     NetworkPhase,
@@ -128,6 +129,9 @@ export interface RunState {
     // socket). Driven by the engine's NETWORK_ACTION telemetry markers.
     targetNetworkPhase: NetworkPhase;
     isRestoring: boolean;
+    // Engine liveness for the live run, orthogonal to `status`: a stalled engine leaves
+    // the run ACTIVE and the socket connected, it just stops emitting.
+    engineHealth: EngineHealthPhase;
     isQueued: boolean;
     queuePosition: number | null;
     queueDepth: number;
@@ -140,6 +144,7 @@ export interface RunState {
     setReconnecting: (attempt: number) => void;
     setReconnectFailed: () => void;
     setRestoring: (restoring: boolean) => void;
+    setEngineHealth: (phase: EngineHealthPhase) => void;
     setCurrentUrl: (url: string) => void;
     setLiveFrame: (frame: string) => void;
     setSessionHistory: (history: SessionHistoryEntry[]) => void;
@@ -208,6 +213,7 @@ export const useRunStore = create<RunState>((set, get) => ({
     reconnectGaveUp: false,
     targetNetworkPhase: 'ONLINE',
     isRestoring: false,
+    engineHealth: 'live',
     isQueued: false,
     queuePosition: null,
     queueDepth: 0,
@@ -223,6 +229,7 @@ export const useRunStore = create<RunState>((set, get) => ({
     // Reconnection budget exhausted — clear the retry spinner and latch the terminal state.
     setReconnectFailed: () => set({ isReconnecting: false, isConnected: false, reconnectGaveUp: true }),
     setRestoring: (isRestoring) => set({ isRestoring }),
+    setEngineHealth: (engineHealth) => set({ engineHealth }),
     setCurrentUrl: (currentUrl) => set({ currentUrl }),
     setSessionHistory: (sessionHistory) => set({ sessionHistory }),
     setSavingSession: (isSavingSession) => set({ isSavingSession }),
@@ -566,6 +573,10 @@ export const useRunStore = create<RunState>((set, get) => ({
             terminationOutcome: live ? null : snapshot.terminationOutcome,
             terminationReason: live ? null : snapshot.terminationReason,
             isLaunching: false,
+            // The backend recomputes liveness on every restore, so this is fresher than
+            // any 'run-health' push we may have missed while disconnected. A terminal
+            // run is never stalled — it stopped emitting because it ended.
+            engineHealth: live ? snapshot.engineHealth ?? 'live' : 'live',
             isQueued: queued,
             queuePosition: queued ? snapshot.queuePosition ?? null : null,
             queueDepth: queued ? snapshot.queueDepth ?? 0 : 0,
@@ -612,6 +623,8 @@ export const useRunStore = create<RunState>((set, get) => ({
             // optimistic ACTIVE, so there is no ACTIVE→QUEUED→ACTIVE flicker.
             status: 'STARTING',
             isInitializing: true,
+            // A fresh run inherits no liveness verdict from the last one.
+            engineHealth: 'live',
             liveFrame: null,
             telemetry: [],
             networkEvents: [],
@@ -698,6 +711,7 @@ export const useRunStore = create<RunState>((set, get) => ({
             isInitializing: false,
             isQueued: false,
             isReconnecting: false,
+            engineHealth: 'live',
             hasRunCompleted: false,
             hasTimeLimitExceeded: false,
             terminationOutcome: null,

@@ -4,6 +4,7 @@ import type {
   AccessibilityFinding,
   ActiveSessionSnapshot,
   BrowserConsoleMessage,
+  EngineHealthPhase,
   FindingOccurrencePatch,
   FindingUpgrade,
   ForensicCrashReport,
@@ -22,6 +23,7 @@ import { SessionModel } from '../../infrastructure/database/models/SessionModel.
 import type { SocketTelemetryGateway, TelemetryRecordKind, TelemetryRecorder } from '../../infrastructure/socket/SocketTelemetryGateway.js';
 import { TargetHealthMonitor } from './TargetHealthMonitor.js';
 import { ownsRun } from './runOwnership.js';
+import { engineHealthPhase, shouldAnnounceHealth } from './runHealth.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
 import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
 import { NetworkQuarantine } from '../../infrastructure/monitoring/NetworkQuarantine.js';
@@ -151,6 +153,14 @@ interface ActiveRun {
   terminationOutcome: RunTerminationOutcome | null;
   terminationReason: string | null;
   health: TargetHealthMonitor;
+  // Last engine emit of any kind. Absence past ENGINE_STALE_MS is what tells a
+  // connected dashboard the engine stopped responding instead of leaving it on a live
+  // status with a dead stream for the rest of the timebox.
+  lastActivityAt: number;
+  // Last health phase announced to the run room, so only transitions are pushed. Seeded
+  // 'live' (not undefined) so a healthy run's first sweep is a no-op rather than an
+  // "engine is responding again" notice for an engine that never stopped.
+  announcedHealth: EngineHealthPhase;
   graceTimer: ReturnType<typeof setTimeout> | null;
   // Armed the moment a stop is dispatched; force-releases the run if it hasn't torn
   // down within STOP_TIMEOUT_MS (a hung engine.stop / non-unwinding run()). Cleared
@@ -200,6 +210,8 @@ interface ActiveRun {
  */
 export class SessionManager implements TelemetryRecorder {
   private gateway: SocketTelemetryGateway | null = null;
+  // True while the manager emits its OWN telemetry, so the liveness clock ignores it.
+  private emittingSelfTelemetry = false;
   private run: ActiveRun | null = null;
   // Monotonic revision of the snapshot's non-frame content, bumped on every
   // meaningful record(). The worker's periodic publisher skips the Redis write when
@@ -424,6 +436,8 @@ export class SessionManager implements TelemetryRecorder {
       terminationOutcome: null,
       terminationReason: null,
       health,
+      lastActivityAt: Date.now(),
+      announcedHealth: 'live',
       graceTimer: null,
       stopWatchdogTimer: null,
       reservationTimer: null,
@@ -571,6 +585,15 @@ export class SessionManager implements TelemetryRecorder {
   public record(kind: TelemetryRecordKind, payload: unknown): void {
     const run = this.run;
     if (!run) return;
+
+    // In-process liveness stamp. Any ENGINE emit — a frame included, since the capture
+    // loop is itself proof the engine is turning — proves the engine is alive. This is
+    // the sync path's equivalent of the worker's Redis heartbeat.
+    //
+    // Self-generated telemetry is excluded deliberately: the manager's own "engine has
+    // stopped responding" milestone routes through this same recorder, so counting it
+    // would refresh the clock the notice was reporting on and flap live↔stalled forever.
+    if (!this.emittingSelfTelemetry) run.lastActivityAt = Date.now();
 
     // A live-frame changes only lastFrame, which the periodic snapshot omits, so it
     // must not mark the snapshot dirty — otherwise the dirty-flag never settles and
@@ -825,8 +848,41 @@ export class SessionManager implements TelemetryRecorder {
       accessibility: [...run.accessibility],
       browserConsole: [...run.browserConsole],
       lastFrame: run.lastFrame,
+      engineHealth: this.healthOf(run),
       sessionId: run.sessionId ?? run.engine.getLastSessionId?.() ?? null,
     };
+  }
+
+  // A run that is not executing is not expected to emit, so it can never be stalled:
+  // PAUSED is silent by design, and the transient/terminal states are being torn down.
+  private healthOf(run: ActiveRun): EngineHealthPhase {
+    if (run.status !== 'RUNNING' && run.status !== 'STARTING') return 'live';
+    return engineHealthPhase(Date.now() - run.lastActivityAt);
+  }
+
+  /**
+   * Sweep the in-process run's liveness and push a transition to its room. Announced on
+   * the edge only: re-emitting 'stalled' every tick would spam the room for the rest of
+   * the timebox, and the recovery edge is what clears the operator's banner.
+   *
+   * Never terminates the run — a legitimately slow step is indistinguishable from a hang
+   * from out here, so the timebox stays the only automatic terminator.
+   */
+  public sweepEngineHealth(): void {
+    const run = this.run;
+    if (!run) return;
+    const phase = this.healthOf(run);
+    if (!shouldAnnounceHealth(run.announcedHealth, phase)) return;
+    run.announcedHealth = phase;
+    const lastHeartbeatAgeMs = Date.now() - run.lastActivityAt;
+    this.gateway?.emitRunHealth?.({ runToken: run.runToken, phase, lastHeartbeatAgeMs });
+    if (phase === 'stalled') {
+      obsLog.warn(`[SessionManager] Run ${run.runCode} has not emitted for ${lastHeartbeatAgeMs}ms — reporting STALLED.`);
+      this.emitMilestone('The engine has stopped responding. The session is still held; you can stop it at any time.');
+    } else {
+      obsLog.info(`[SessionManager] Run ${run.runCode} is emitting again — clearing STALLED.`);
+      this.emitMilestone('The engine is responding again.');
+    }
   }
 
   // ── Disconnect grace window ────────────────────────────────────────────────
@@ -1138,7 +1194,7 @@ export class SessionManager implements TelemetryRecorder {
 
   private emitEngineAction(actionExecuted: string, message: string): void {
     // Route through the gateway so it's buffered for replay AND room-scoped.
-    this.gateway?.emitTelemetry({
+    this.emitSelf({
       timestamp: new Date().toISOString(),
       type: 'ACTION',
       meta: { actionExecuted, message },
@@ -1146,11 +1202,25 @@ export class SessionManager implements TelemetryRecorder {
   }
 
   private emitMilestone(message: string): void {
-    this.gateway?.emitTelemetry({
+    this.emitSelf({
       timestamp: new Date().toISOString(),
       type: 'ACTION',
       meta: { actionExecuted: 'system-milestone', message },
     });
+  }
+
+  /**
+   * Emit telemetry the MANAGER authored (milestones, lifecycle notices) rather than the
+   * engine. Flagged so record() does not read it as proof the engine is alive — these
+   * are emitted precisely when it may not be.
+   */
+  private emitSelf(event: TelemetryEvent): void {
+    this.emittingSelfTelemetry = true;
+    try {
+      this.gateway?.emitTelemetry(event);
+    } finally {
+      this.emittingSelfTelemetry = false;
+    }
   }
 
   /** Push the current snapshot to a specific socket (used on server-driven replay). */

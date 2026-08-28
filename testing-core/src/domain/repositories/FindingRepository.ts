@@ -6,6 +6,12 @@ import type {
   SeverityCounts,
   TestingTypeId,
 } from '../../../../shared/types.js';
+import type { ICaughtBug } from '../../infrastructure/database/models/SessionModel.js';
+
+/** Persisted finding shape a checkpoint writes. Aliased so callers speak the domain's
+ *  vocabulary while reusing the one schema-backed definition (as actionStepMapper does
+ *  for ActionStepTrace) instead of duplicating a twenty-field interface. */
+export type CheckpointFinding = ICaughtBug;
 
 export interface CreateSessionInput {
   targetUrl: string;
@@ -84,6 +90,19 @@ export interface SessionHistoryRecord {
  */
 export interface FindingRepository {
   createSession(input: CreateSessionInput): Promise<string>;
+  /**
+   * Mid-run checkpoint of the engine's confirmed-finding ledger onto the run's own
+   * session document. The manual-save path used to be the only writer of
+   * `forensicTrace.caughtBugs`, which made the browser's in-memory buffer the sole
+   * author of the permanent report: a refresh, a dropped socket, or a worker kill
+   * silently dropped findings the backend had already observed. Called repeatedly
+   * and idempotently, so it replaces the array wholesale rather than appending.
+   */
+  checkpointFindings(
+    sessionId: string,
+    userId: string,
+    bugs: CheckpointFinding[],
+  ): Promise<void>;
   /**
    * Settle a session with its real termination outcome. Derives the coarse status
    * from `outcome` and records both the outcome and its operator-facing reason, so

@@ -48,6 +48,37 @@ export function isImportantSession(findingCount: number): boolean {
 export const SESSION_ATTACH_EVENT = 'session-attach' as const;
 export const SESSION_SNAPSHOT_EVENT = 'session-snapshot' as const;
 export const TIME_SYNC_EVENT = 'time-sync' as const;
+export const RUN_HEALTH_EVENT = 'run-health' as const;
+
+/**
+ * Engine liveness, deliberately ORTHOGONAL to {@link RunLifecycleStatus}.
+ *
+ * A status says what the run is meant to be doing; this says whether the engine is
+ * still turning. A wedged worker used to read as RUNNING for its whole timebox because
+ * nothing watched the one artifact that would have revealed it, so the dashboard sat on
+ * a live status with a dead stream. Modelling it as a separate signal keeps the status
+ * transition table untouched and lets a stalled run stay stoppable.
+ *
+ * 'stalled' NEVER terminates a run: a legitimately slow step (a long navigation, a heavy
+ * in-page parse on a throttled worker) is indistinguishable from a hang from the outside.
+ * The timebox remains the only automatic terminator.
+ */
+export type EngineHealthPhase = 'live' | 'stalled';
+
+export interface RunHealthPayload {
+  runToken: string;
+  phase: EngineHealthPhase;
+  /** Age of the last engine heartbeat in ms; null when none has been recorded yet. */
+  lastHeartbeatAgeMs: number | null;
+}
+
+/** Server → client acknowledgement of a pause/resume/stop command. */
+export interface RunControlAck {
+  /** True once the command has been applied locally or handed to the control bridge. */
+  accepted: boolean;
+  /** Why it was refused — surfaced so the client can roll back its optimistic status. */
+  reason?: 'not-owner' | 'no-active-session' | 'rate-limited' | 'unsupported';
+}
 
 /** Authoritative timebox clock streamed by the engine (~1 Hz). The frontend timer
  *  is a display slaved to this; it never runs an independent countdown. `elapsedActiveMs`
@@ -84,6 +115,9 @@ export interface ActiveSessionSnapshot {
   browserConsole: BrowserConsoleMessage[];
   /** Latest base64 JPEG frame (no data: prefix); only the newest is retained. */
   lastFrame: string | null;
+  /** Engine liveness at snapshot time. Orthogonal to `status`: a stalled run is still
+   *  RUNNING as far as intent goes, it just stopped emitting. Absent ⇒ treat as 'live'. */
+  engineHealth?: EngineHealthPhase;
   /** Forensic run id (Mongo). Lets a restore backfill the full telemetry stream
    *  from the durable `telemetry_events` collection past the capped replay buffer. */
   sessionId?: string | null;

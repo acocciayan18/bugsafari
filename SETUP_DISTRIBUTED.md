@@ -194,9 +194,9 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "fix-findings-card-defects"
-git checkout -b 8-28-Ayan-5
-git push --set-upstream origin 8-28-Ayan-5
+git commit -m "fix-network-issues-and-control"
+git checkout -b 8-28-Ayan-6
+git push --set-upstream origin 8-28-Ayan-6
 
 
 

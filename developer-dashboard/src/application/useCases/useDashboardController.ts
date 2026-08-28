@@ -24,6 +24,11 @@ const LIVENESS_PROBE_INTERVAL_MS = 10000;
 // backend guards duplicate pause/stop, so a re-issued command is a safe keep-alive
 // against a control emit dropped on a flaky socket — never an escalation.
 const TRANSITION_REDELIVER_MS = 15000;
+// How long a PAUSING/STOPPING may sit unsettled before the UI says so. A pause settles
+// in-flight tasks and a stop flushes pending writes, so seconds are normal; three
+// re-delivery rounds without progress is not, and silently spinning forever is what
+// left the operator watching a frozen "Pausing…".
+const TRANSITION_STALL_MS = 45000;
 
 // Ref-counted so StrictMode's synthetic unmount never disconnects a live socket
 let mountCount = 0;
@@ -187,20 +192,40 @@ function useTransitionRedelivery(status: TestSessionStatus): void {
         if (status !== 'PAUSING' && status !== 'STOPPING') return;
 
         const gateway = getEngineGateway();
-        // Stop re-delivers via forceStop (socket with HTTP fallback) so it survives a
-        // dropped socket; pause is socket-only, matching its backend control channel.
+        // Both now re-deliver over socket-with-HTTP-fallback. Pause used to be
+        // socket-only, matching a backend that had no pause endpoint — so a pause issued
+        // on a dead socket could never land, however many times it was re-sent.
         const redeliver = status === 'PAUSING'
-            ? () => gateway.pauseTest()
+            ? () => void gateway.pauseTest().catch((error) => logger.error('[useDashboardController] Pause re-delivery failed:', error))
             : () => void gateway.forceStop().catch((error) => logger.error('[useDashboardController] Stop re-delivery failed:', error));
+
+        const startedAt = Date.now();
+        let escalated = false;
 
         const interval = setInterval(() => {
             // Re-deliver only while still stuck in the very same transition.
             if (useRunStore.getState().status !== status) return;
             logger.warn(`[useDashboardController] ${status} still settling — re-delivering ${status === 'PAUSING' ? 'pause' : 'stop'}.`);
             redeliver();
+            // Past the escalation window, stop silently spinning: a transition this slow
+            // is not "settling in-flight tasks" any more, and an operator staring at
+            // "Pausing…" with no explanation is exactly the reported symptom. The loop
+            // keeps running — the engine can still recover — but the state is now visible.
+            if (!escalated && Date.now() - startedAt >= TRANSITION_STALL_MS) {
+                escalated = true;
+                useRunStore.getState().setEngineHealth('stalled');
+            }
         }, TRANSITION_REDELIVER_MS);
 
-        return () => clearInterval(interval);
+        return () => {
+            clearInterval(interval);
+            // Leaving the transition clears an escalation this hook raised. The backend
+            // only pushes 'live' for a heartbeat recovery, so a client-side escalation
+            // has to retract itself or the banner would outlive the stall.
+            if (escalated && useRunStore.getState().engineHealth === 'stalled') {
+                useRunStore.getState().setEngineHealth('live');
+            }
+        };
     }, [status]);
 }
 
@@ -247,6 +272,7 @@ export function useDashboardController() {
             reconnectAttempt: s.reconnectAttempt,
             reconnectGaveUp: s.reconnectGaveUp,
             isRestoring: s.isRestoring,
+            engineHealth: s.engineHealth,
             isQueued: s.isQueued,
             queuePosition: s.queuePosition,
             queueDepth: s.queueDepth,

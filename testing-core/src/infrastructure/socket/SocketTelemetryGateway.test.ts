@@ -37,6 +37,7 @@ function emitEveryChannel(gateway: SocketTelemetryGateway): void {
   gateway.emitAccessibility({ id: 'image-alt', impact: 'serious' } as never);
   gateway.emitBrowserConsole({ timestamp: new Date().toISOString(), level: 'error', type: 'error', message: 'oops' } as never);
   gateway.emitReproductionVerdict({ sessionId: 's', bugId: 'b' } as never);
+  gateway.emitRunHealth({ runToken: 'token-A', phase: 'stalled', lastHeartbeatAgeMs: 61_000 });
 }
 
 // ── A run owns the wire: everything is room-scoped, nothing is broadcast ──────

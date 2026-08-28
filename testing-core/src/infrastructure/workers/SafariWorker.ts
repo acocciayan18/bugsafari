@@ -10,7 +10,7 @@ import { sessionManager } from '../../application/services/SessionManager.js';
 import { SAFARI_TASK_QUEUE_NAME, type SafariTaskPayload } from '../queue/TaskQueue.js';
 import { RedisTelemetryPublisher } from '../queue/telemetryBridge.js';
 import { ControlBridgeSubscriber } from '../queue/controlBridge.js';
-import { RunRegistry } from '../queue/RunRegistry.js';
+import { RunRegistry, shouldApplyControlIntent } from '../queue/RunRegistry.js';
 import { AuthVault } from '../queue/AuthVault.js';
 import { admitTargetChain } from '../../serverUtils.js';
 import { validateJobPayload } from '../../validation/jobPayload.js';
@@ -220,7 +220,15 @@ async (job) => {
       // never run its full timebox and pin this worker's slot. Fires once; stopByOperator
       // is idempotent against STOPPING.
       let selfStopFired = false;
+      // Same backstop extended to pause/resume, which had none: a bridged pause dropped
+      // by a Redis blip left the dashboard in PAUSING with nothing to recover it. Tracks
+      // the last applied seq so a repeat poll is a no-op.
+      let appliedControlSeq = 0;
       const snapshotTimer = setInterval(() => {
+        // Liveness stamp FIRST and unconditionally — before the polls and outside the
+        // dirty-flag gate below. If the event loop stops turning this tick never runs, and
+        // the stamp ageing out is the API's only evidence that the engine is wedged.
+        void runRegistry.writeHeartbeat(payload.runToken).catch(() => undefined);
         if (!selfStopFired) {
           void runRegistry.findByRunToken(payload.runToken)
             .then((entry) => {
@@ -228,7 +236,14 @@ async (job) => {
                 selfStopFired = true;
                 obsLog.warn(`[SafariWorker] stop flag observed for runCode=${payload.runCode} (bridged stop likely dropped) — self-stopping.`);
                 void sessionManager.stopByOperator('operator');
+                return;
               }
+              // A stop in flight outranks any pause/resume still on the entry.
+              if (selfStopFired || !shouldApplyControlIntent(entry?.controlIntent, appliedControlSeq)) return;
+              const intent = entry!.controlIntent!;
+              appliedControlSeq = intent.seq;
+              obsLog.warn(`[SafariWorker] ${intent.command} intent #${intent.seq} observed for runCode=${payload.runCode} — applying (bridged command may have been dropped).`);
+              sessionManager.applyOperatorControl(intent.command, payload.runToken);
             })
             .catch(() => undefined);
         }

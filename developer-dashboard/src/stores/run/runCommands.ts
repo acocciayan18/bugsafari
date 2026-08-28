@@ -7,8 +7,10 @@ import { saveSessionToHistory } from '../../services/historyService';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
 import { buildSavedNetworkRows } from '../../utils/networkLogBuilder';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
+import type { RunControlOutcome } from '../../application/ports/EngineGateway';
+import { canApplyRollback, refusalMessage, shouldRollbackControl } from './controlOutcome';
 import { useRunStore, runRefs } from './runStore';
-import { RUN_ID_STORAGE_KEY, RUN_CODE_STORAGE_KEY, JOB_ID_STORAGE_KEY, RUN_CONTROL_STORAGE_KEY, STATUS_TOAST_ID, resolveStatus, resolvePendingReissue } from './types';
+import { RUN_ID_STORAGE_KEY, RUN_CODE_STORAGE_KEY, JOB_ID_STORAGE_KEY, RUN_CONTROL_STORAGE_KEY, STATUS_TOAST_ID, resolveStatus, resolvePendingReissue, type TestSessionStatus } from './types';
 
 // Remember a pause/stop/resume the operator just issued, keyed to this run's code, so a
 // refresh landing mid-transition can re-issue it instead of silently resuming the run.
@@ -130,22 +132,40 @@ export async function startRun(
     }
 }
 
-export function pauseRun(): void {
+/**
+ * Apply a control outcome. `resolveStatus` is bypassed on rollback deliberately: this is
+ * an authoritative correction, and PAUSING→ACTIVE is not a forward transition the state
+ * machine would otherwise allow.
+ */
+function applyControlOutcome(
+    outcome: RunControlOutcome,
+    from: TestSessionStatus,
+    optimistic: TestSessionStatus,
+    verb: string,
+): void {
+    if (!shouldRollbackControl(outcome)) return;
+    if (!canApplyRollback(useRunStore.getState().status, optimistic)) return; // already moved on
+    useRunStore.setState({ status: from });
+    writeStorage(RUN_CONTROL_STORAGE_KEY, null);
+    toast.error(refusalMessage(outcome.reason, verb), { id: STATUS_TOAST_ID });
+}
+
+export async function pauseRun(): Promise<void> {
     const status = useRunStore.getState().status;
     if (status !== 'ACTIVE') return;
-    getEngineGateway().pauseTest();
     writePendingControl('pause');
     // Optimistic transition (via the state machine) so the control locks immediately
     // instead of staying clickable until the engine's telemetry round-trip lands.
     useRunStore.setState({ status: resolveStatus(status, 'PAUSING') });
+    applyControlOutcome(await getEngineGateway().pauseTest(), status, 'PAUSING', 'pause');
 }
 
-export function resumeRun(): void {
+export async function resumeRun(): Promise<void> {
     const status = useRunStore.getState().status;
     if (status !== 'PAUSED') return;
-    getEngineGateway().resumeTest();
     writePendingControl('resume');
     useRunStore.setState({ status: resolveStatus(status, 'ACTIVE') });
+    applyControlOutcome(await getEngineGateway().resumeTest(), status, 'ACTIVE', 'resume');
 }
 
 // Restore-time recovery for a control command issued just before a refresh. The socket
@@ -163,9 +183,10 @@ export function reissuePendingControl(snapshot: ActiveSessionSnapshot): void {
     const action = resolvePendingReissue(kind, useRunStore.getState().status);
     if (!action) return;
     const gateway = getEngineGateway();
-    if (action === 'stop') { gateway.stopTest(); useRunStore.setState({ status: resolveStatus(useRunStore.getState().status, 'STOPPING') }); }
-    else if (action === 'pause') { gateway.pauseTest(); useRunStore.setState({ status: resolveStatus(useRunStore.getState().status, 'PAUSING') }); }
-    else { gateway.resumeTest(); useRunStore.setState({ status: resolveStatus(useRunStore.getState().status, 'ACTIVE') }); }
+    const current = useRunStore.getState().status;
+    if (action === 'stop') { void gateway.stopTest(); useRunStore.setState({ status: resolveStatus(current, 'STOPPING') }); }
+    else if (action === 'pause') { void gateway.pauseTest(); useRunStore.setState({ status: resolveStatus(current, 'PAUSING') }); }
+    else { void gateway.resumeTest(); useRunStore.setState({ status: resolveStatus(current, 'ACTIVE') }); }
 }
 
 export async function stopRun(): Promise<void> {
@@ -196,10 +217,10 @@ export async function stopRun(): Promise<void> {
     // STARTING included: the engine may be booting; the backend defers the stop
     // (pendingStop) and applies it the instant the engine attaches.
     if (status === 'ACTIVE' || status === 'PAUSED' || status === 'STARTING') {
-        gateway.stopTest();
         writePendingControl('stop');
         // Optimistic transition so Stop/Pause/Resume lock immediately (spam window).
         useRunStore.setState({ status: resolveStatus(status, 'STOPPING') });
+        applyControlOutcome(await gateway.stopTest(), status, 'STOPPING', 'stop');
     }
 }
 

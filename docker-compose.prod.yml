@@ -69,6 +69,18 @@ x-shared-env: &shared-env
   BUGSAFARI_MEM_SAFETY_RATIO: ${BUGSAFARI_MEM_SAFETY_RATIO:-0.9}
   BUGSAFARI_MEM_DEGRADE_RATIO: ${BUGSAFARI_MEM_DEGRADE_RATIO:-0.75}
   BUGSAFARI_MEM_HOST_FREE_FLOOR_MB: ${BUGSAFARI_MEM_HOST_FREE_FLOOR_MB:-350}
+  # Engine liveness. The worker stamps a heartbeat every ~3s regardless of activity; past
+  # STALE_MS with no stamp the api reports the run STALLED to its dashboard so a wedged
+  # worker stops reading as healthy. The run is never auto-terminated — the timebox
+  # remains the only automatic terminator. Raise STALE_MS if 0.6-vCPU workers under a
+  # Chromium burst are being reported stalled while genuinely alive.
+  BUGSAFARI_ENGINE_STALE_MS: ${BUGSAFARI_ENGINE_STALE_MS:-45000}
+  BUGSAFARI_ENGINE_HEALTH_SWEEP_MS: ${BUGSAFARI_ENGINE_HEALTH_SWEEP_MS:-15000}
+  # Durable finding checkpoint: the engine flushes its ledger to the run's session doc
+  # mid-run, so a refresh / dropped socket / OOM-killed worker cannot lose findings the
+  # backend already confirmed. Dirty-gated, so a quiet run costs no writes.
+  BUGSAFARI_FINDING_CHECKPOINT_MS: ${BUGSAFARI_FINDING_CHECKPOINT_MS:-10000}
+  BUGSAFARI_FINDING_CHECKPOINT_THRESHOLD: ${BUGSAFARI_FINDING_CHECKPOINT_THRESHOLD:-5}
   # Media routing (mediaRoute.ts): abort heavy sub-resources to cut Chromium memory.
   # Images preserved. Set BUGSAFARI_MEDIA_ROUTE=0 to disable; edit the CSV to add types
   # (e.g. media,font,image) to trade image fidelity for headroom on huge image sites.

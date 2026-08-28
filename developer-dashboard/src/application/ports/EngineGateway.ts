@@ -1,4 +1,4 @@
-import type { AccessibilityFinding, ActiveSessionSnapshot, BrowserConsoleMessage, FindingOccurrencePatch, FindingUpgrade, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, ReproductionVerdict, SessionHistoryEntry, StopReason, TargetAuthConfig, TelemetryEvent, TimeSyncPayload, ExplorationRunConfig } from '../../types';
+import type { AccessibilityFinding, ActiveSessionSnapshot, BrowserConsoleMessage, FindingOccurrencePatch, FindingUpgrade, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, ReproductionVerdict, RunControlAck, RunHealthPayload, SessionHistoryEntry, StopReason, TargetAuthConfig, TelemetryEvent, TimeSyncPayload, ExplorationRunConfig } from '../../types';
 
 // Re-export the single shared console contract so existing port consumers
 // (runStore, gatewayBinding, SocketConnectionManager) keep their import path.
@@ -27,6 +27,20 @@ export interface StopRunResult {
   alreadyStopped?: boolean;
   jobId?: string;
   message?: string;
+  error?: string;
+}
+
+/**
+ * Outcome of a pause/resume/stop. `ok` is the backend's real verdict, never assumed —
+ * these commands were fire-and-forget, so a refusal (not the owner, rate-limited) was
+ * invisible and the UI held an optimistic transition it could never leave.
+ * `via` records which channel carried it, purely for diagnosis.
+ */
+export interface RunControlOutcome {
+  ok: boolean;
+  via: 'socket' | 'http';
+  /** Server-supplied refusal code when the command was explicitly rejected. */
+  reason?: RunControlAck['reason'];
   error?: string;
 }
 
@@ -64,6 +78,10 @@ export interface EngineGateway {
   onQueueUpdate(handler: (update: QueueUpdate) => void): void;
   /** Authoritative timebox clock (~1 Hz) the frontend timer slaves to. */
   onTimeSync(handler: (payload: TimeSyncPayload) => void): void;
+  /** Engine liveness transitions for the live run (live ⇄ stalled). */
+  onRunHealth(handler: (payload: RunHealthPayload) => void): void;
+  /** Retry the socket after the automatic reconnect budget was exhausted. */
+  retryConnection(): void;
   removeAllListeners(): void;
   /** Seed the run token (e.g. from localStorage) so the socket can re-attach on connect. */
   setRunId(runId: string | null): void;
@@ -79,12 +97,12 @@ export interface EngineGateway {
   /** Launch a run; resolves with the run token and (when queued) its jobId.
    *  `targetAuth` is ephemeral — it is sent once and never stored anywhere. */
   startTest(targetUrl: string, optimizationSettings?: OptimizationSettings, infiltration?: ExplorationRunConfig, targetAuth?: TargetAuthConfig): Promise<StartTestResult>;
-  /** Pause the live engine (socket emit); no-op if the run isn't executing. */
-  pauseTest(): void;
-  /** Resume a paused engine (socket emit). */
-  resumeTest(): void;
-  /** Stop the live engine (socket emit); for QUEUED runs use cancelQueuedRun. */
-  stopTest(): void;
+  /** Pause the live engine. Socket first, HTTP fallback; resolves with the real verdict. */
+  pauseTest(): Promise<RunControlOutcome>;
+  /** Resume a paused engine. Socket first, HTTP fallback. */
+  resumeTest(): Promise<RunControlOutcome>;
+  /** Stop the live engine; for QUEUED runs use cancelQueuedRun. */
+  stopTest(reason?: StopReason): Promise<RunControlOutcome>;
   /** Force a fresh socket handshake under the current identity (account switch). */
   reconnect(): void;
   saveSession(targetUrl: string): Promise<void>;

@@ -36,6 +36,7 @@ import type { BrowserInfo } from '../../../infrastructure/playwright/PlaywrightB
 import { ReproductionPlaybookStore } from '../../../infrastructure/monitoring/reproductionPlaybookStore.js';
 import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
 import { describeRedirectLoopObservation, narrateActionRecords, resolveElementLabel } from '../forensics/narration.js';
+import { toSavedCaughtBug } from '../forensics/findingProjection.js';
 import { forensicErrorRepository, type CreateForensicErrorParams } from '../../../infrastructure/database/repositories/ForensicErrorRepository.js';
 import { MAX_FORENSIC_ROWS } from '../../../infrastructure/database/queryLimits.js';
 import { forensicTelemetryRepository } from '../../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
@@ -111,6 +112,17 @@ const MAX_NETWORK_REWARDS_PER_ACTION = 3;
 const ACTED_HISTORY_CAP = 32;
 // Buffered forensic errors flush once this many accumulate (mirrors the log-batch path).
 const FORENSIC_FLUSH_THRESHOLD = 50;
+// Cadence of the mid-run finding checkpoint. The write is dirty-gated and replaces one
+// bounded array, so it costs a single updateOne only when findings actually changed.
+const FINDING_CHECKPOINT_MS = readEnvInt(process.env.BUGSAFARI_FINDING_CHECKPOINT_MS, 10_000);
+// Findings accrued since the last flush that force one early, so a burst is never left
+// exposed for a full interval.
+const FINDING_CHECKPOINT_THRESHOLD = readEnvInt(process.env.BUGSAFARI_FINDING_CHECKPOINT_THRESHOLD, 5);
+
+function readEnvInt(raw: string | undefined, fallback: number): number {
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
 // Per-attempt window and inter-attempt backoff for the initial target navigation.
 const INITIAL_NAV_TIMEOUT_MS = 20000;
 const NAV_RETRY_BACKOFF_MS = 1500;
@@ -278,6 +290,15 @@ export class ExplorationEngine {
   private forensicErrorBuffer: ForensicErrorParams[] = [];
   private forensicErrorsPersisted = 0;
   private forensicFlushChain: Promise<void> = Promise.resolve();
+
+  // Mid-run durability of the finding ledger. Before this existed, forensicTrace.caughtBugs
+  // was written only by the manual-save path — and in queue mode that path reads the
+  // BROWSER's buffer, because the API process's engine never ran. A refresh, a dropped
+  // socket, or a worker kill therefore erased findings the backend had already confirmed.
+  private findingsDirty = false;
+  private findingsSinceCheckpoint = 0;
+  private findingCheckpointTimer: ReturnType<typeof setInterval> | null = null;
+  private findingCheckpointChain: Promise<void> = Promise.resolve();
 
   // Serializes the one-row-per-run telemetry upsert. Both call sites are
   // fire-and-forget, and forensic_telemetry has no unique index on forensicRunId,
@@ -471,6 +492,10 @@ export class ExplorationEngine {
       message: scrubCredentials(incoming.message),
       payloadUsed: scrubCredentials(incoming.payloadUsed),
       advice: scrubCredentials(incoming.advice),
+      // Same expression streamBugToErrorsTab uses, so the checkpointed finding and the
+      // live card can never disagree on where the fault surfaced. A finder that knows the
+      // route at fault time (async faults outlive the page's current url) supplies its own.
+      url: incoming.url ?? this.activePage?.url() ?? this.targetUrl,
       // Every registration is at least one verified manifestation; finders refresh the
       // running total via recordFindingOccurrence as repeats accrue.
       occurrences: incoming.occurrences ?? 1,
@@ -537,6 +562,10 @@ export class ExplorationEngine {
       // ledger here, already carrying its minimized timeline and bug class.
       this.enqueueReproduction(bug);
     }
+
+    // Both branches mutate the ledger — a re-register sharpens an existing record's
+    // verdict/occurrences, which the durable copy must reflect too.
+    this.markFindingsDirty();
   }
 
   // Findings dropped by the ledger cap this run — surfaced so a truncated result
@@ -592,6 +621,7 @@ export class ExplorationEngine {
     const index = this.confirmedBugsMemory.findIndex((b) => b.bugId === bugId);
     if (index >= 0 && !this.confirmedBugsMemory[index].selector) {
       this.confirmedBugsMemory[index] = { ...this.confirmedBugsMemory[index], selector };
+      this.markFindingsDirty();
     }
   }
 
@@ -605,6 +635,7 @@ export class ExplorationEngine {
       const current = this.confirmedBugsMemory[index].occurrences ?? 1;
       if (occurrences <= current) return;
       this.confirmedBugsMemory[index] = { ...this.confirmedBugsMemory[index], occurrences };
+      this.markFindingsDirty();
     }
     this.activeGateway?.emitFindingOccurrence?.({ bugId, occurrences });
   }
@@ -648,6 +679,7 @@ export class ExplorationEngine {
     );
     const attribution = { ...existing.attribution, confidenceScore: score, verificationStatus: status };
     this.confirmedBugsMemory[index] = { ...existing, attribution };
+    this.markFindingsDirty();
 
     this.activeGateway?.emitReproductionVerdict?.({
       bugId: outcome.bugId,
@@ -1125,6 +1157,12 @@ export class ExplorationEngine {
     this.forensicErrorBuffer = [];
     this.forensicErrorsPersisted = 0;
     this.forensicFlushChain = Promise.resolve();
+
+    // Arm the durable finding checkpoint now that the session id (if any) is resolved.
+    this.findingsDirty = false;
+    this.findingsSinceCheckpoint = 0;
+    this.findingCheckpointChain = Promise.resolve();
+    this.startFindingCheckpoints();
 
     //  Start timing interval that accumulates active time (only when NOT paused)
     // This replaces the fixed timeout approach with accumulative time tracking
@@ -1644,6 +1682,13 @@ export class ExplorationEngine {
       // session id is cleared, so no forensic error is lost or mis-keyed.
       await this.forensicFlushChain.catch(() => undefined);
       await this.flushForensicErrors();
+      // Final checkpoint BEFORE completeSession, so the terminal document always carries
+      // the complete ledger — including late reproduction verdicts and occurrence
+      // refreshes that landed after the last timer tick.
+      this.stopFindingCheckpoints();
+      await this.findingCheckpointChain.catch(() => undefined);
+      this.findingsDirty = this.findingsDirty || this.confirmedBugsMemory.length > 0;
+      await this.flushFindingCheckpoint();
       await this.completeSession(runResult);
       this.sessionId = null;
       this.activePage = null;
@@ -1907,6 +1952,57 @@ export class ExplorationEngine {
     } catch (error) {
       obsLog.error('[ExplorationEngine] Failed to flush forensic errors:', error);
     }
+  }
+
+  // Mark the ledger changed and flush early once a burst accrues. Synchronous and
+  // allocation-free on the hot path — the write itself happens on the timer.
+  private markFindingsDirty(): void {
+    this.findingsDirty = true;
+    this.findingsSinceCheckpoint += 1;
+    if (this.findingsSinceCheckpoint >= FINDING_CHECKPOINT_THRESHOLD) this.scheduleFindingCheckpoint();
+  }
+
+  // Serialize checkpoints onto one chain so two flushes can never interleave and write
+  // the ledger out of order, and track it so the settlement barrier awaits the write.
+  // The burst counter resets HERE, not in the flush: a finder registering twenty
+  // findings in one synchronous sweep would otherwise re-trip the threshold on each one
+  // past the fifth and chain a dozen redundant writes for the same ledger.
+  private scheduleFindingCheckpoint(): void {
+    this.findingsSinceCheckpoint = 0;
+    this.findingCheckpointChain = this.findingCheckpointChain.then(() => this.flushFindingCheckpoint());
+    this.asyncTasks.track(this.findingCheckpointChain);
+  }
+
+  // Write the current ledger to the run's own session document. Never throws: losing a
+  // checkpoint must degrade durability, never end the run.
+  private async flushFindingCheckpoint(): Promise<void> {
+    if (!this.findingsDirty || !this.findingRepo || !this.sessionId || !this.userId) return;
+    // Clear before the await so findings registered during the write mark it dirty again
+    // and are picked up by the next flush rather than being silently swallowed.
+    this.findingsDirty = false;
+    this.findingsSinceCheckpoint = 0;
+    const bugs = this.confirmedBugsMemory.map(toSavedCaughtBug);
+    try {
+      await this.findingRepo.checkpointFindings(this.sessionId, this.userId, bugs);
+    } catch (error) {
+      // Re-arm so the next tick retries; a transient Atlas blip must not drop the run's
+      // only durable copy of its findings.
+      this.findingsDirty = true;
+      obsLog.error('[ExplorationEngine] Finding checkpoint failed:', error instanceof Error ? error.message : error);
+    }
+  }
+
+  // Guest runs (no session document) and unauthenticated runs never arm the timer.
+  private startFindingCheckpoints(): void {
+    if (this.findingCheckpointTimer || !this.findingRepo || !this.sessionId || !this.userId) return;
+    this.findingCheckpointTimer = setInterval(() => this.scheduleFindingCheckpoint(), FINDING_CHECKPOINT_MS);
+    this.findingCheckpointTimer.unref?.();
+  }
+
+  private stopFindingCheckpoints(): void {
+    if (!this.findingCheckpointTimer) return;
+    clearInterval(this.findingCheckpointTimer);
+    this.findingCheckpointTimer = null;
   }
 
   /**

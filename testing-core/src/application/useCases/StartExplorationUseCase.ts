@@ -4,7 +4,7 @@ import { defaultOptimizationSettings, describeTermination, isActionableNetworkSt
 import type { OptimizationSettings, RunTerminationOutcome, TargetAuthConfig, TestingTypeId } from '../../../../shared/types.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { sessionManager } from '../services/SessionManager.js';
-import type { ActionRecord, ConstraintBypassDetail, FindingAttribution, NetworkLogEntry, ConsoleLogEntry, StateFingerprint } from '../../../../shared/types.js';
+import type { ActionRecord, FindingAttribution, NetworkLogEntry, ConsoleLogEntry, StateFingerprint } from '../../../../shared/types.js';
 import { buildFaultSignature } from '../../../../shared/faultSignature.js';
 import { maskPayload, resolveControlName } from '../../../../shared/reproduction.js';
 import { randomUUID } from 'node:crypto';
@@ -12,8 +12,9 @@ import { Types, isValidObjectId } from 'mongoose';
 import { createWithRunCodeRetry, generateRunCode, isDuplicateRunIdError } from '../../infrastructure/database/runCodeGenerator.js';
 import { normalizeRunCode } from '../../../../shared/runCode.js';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
-import type { ActionStepTrace } from '../../infrastructure/database/models/SessionModel.js';
+import type { ActionStepTrace, ICaughtBug } from '../../infrastructure/database/models/SessionModel.js';
 import { buildActionSteps } from '../../domain/services/forensics/actionStepMapper.js';
+import { toSavedCaughtBug, unionFindingsByBugId } from '../../domain/services/forensics/findingProjection.js';
 import { SessionStatus } from '../../infrastructure/database/models/FindingType.js';
 import { withScenarioRandomScope } from '../../domain/scenarios/seededRandom.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
@@ -313,106 +314,6 @@ export class StartExplorationUseCase {
         const finalBreadcrumbSteps = this.buildBreadcrumbSteps(actionRecords);
         const actionSteps = capEmbedded(buildActionSteps(actionRecords), MAX_EMBEDDED_ACTION_STEPS, 'actionSteps');
 
-        // SINGLE SOURCE OF TRUTH: the engine's confirmed-bug memory is now a
-        // lossless superset of the live Errors Tab (every JS exception, console
-        // error, network failure and HTTP fault registers a distinct instance,
-        // and dedup is identity-only). Persist that ENTIRE array verbatim — no
-        // slice, no filter, no truncation. The client-transferred findings are
-        // only a fallback for API-only saves where the engine memory is empty.
-        const clientFindings = options?.clientFindings ?? [];
-        const engineBugs = this.browserEngine.getConfirmedBugsFromMemory?.() ?? [];
-
-        const rawCaughtBugs = engineBugs.length > 0
-            ? engineBugs.map((bug: {
-                bugId: string;
-                type: string;
-                message: string;
-                selector: string;
-                elementLabel?: string;
-                payloadUsed: string;
-                advice: string;
-                timestamp: Date;
-                stackTrace?: string;
-                reproductionSteps?: string[];
-                reproductionActions?: ActionRecord[];
-                attribution?: FindingAttribution;
-                stateFingerprint?: StateFingerprint;
-                bypass?: ConstraintBypassDetail;
-                severity?: string;
-                resolvedStackTrace?: string;
-                occurrences?: number;
-            }) => ({
-                bugId: bug.bugId,
-                type: bug.type,
-                message: bug.message,
-                selector: bug.selector,
-                elementLabel: bug.elementLabel ?? '',
-                payloadUsed: bug.payloadUsed,
-                advice: bug.advice,
-                stackTrace: bug.stackTrace ?? '',
-                resolvedStackTrace: bug.resolvedStackTrace ?? '',
-                // Authoritative per-finding manifestation count from the ledger — summed by
-                // dedupeCaughtBugs so the saved ×N equals what the operator watched live.
-                occurrences: bug.occurrences ?? 1,
-                reproductionSteps: Array.isArray(bug.reproductionSteps) ? bug.reproductionSteps : [],
-                // Per-finding minimized, replayable timeline (empty ⇒ verifier falls
-                // back to the session-global actionSteps below).
-                actionSteps: buildActionSteps(Array.isArray(bug.reproductionActions) ? bug.reproductionActions : []),
-                timestamp: bug.timestamp,
-                attribution: bug.attribution,
-                stateFingerprint: bug.stateFingerprint,
-                bypass: bug.bypass,
-                severity: resolveSeverity({
-                    severity: bug.severity,
-                    bugClass: bug.attribution?.bugClass,
-                    confidence: bug.attribution?.confidence,
-                    verificationStatus: bug.attribution?.verificationStatus,
-                }),
-            }))
-            : clientFindings.map((finding, index) => ({
-                bugId: finding.bugId && finding.bugId.trim() ? finding.bugId : `finding-${index + 1}`,
-                type: finding.type ?? 'EXCEPTION',
-                message: finding.message ?? '',
-                selector: finding.selector ?? '',
-                elementLabel: finding.culpritLabel ?? '',
-                payloadUsed: finding.payloadUsed ?? '',
-                advice: finding.advice ?? '',
-                stackTrace: finding.stackTrace ?? '',
-                occurrences: finding.occurrences ?? 1,
-                reproductionSteps: Array.isArray(finding.reproductionSteps) ? finding.reproductionSteps : [],
-                actionSteps: buildActionSteps(Array.isArray(finding.reproductionActions) ? finding.reproductionActions : []),
-                timestamp: finding.timestamp ? new Date(finding.timestamp) : new Date(),
-                attribution: finding.attribution,
-                stateFingerprint: finding.stateFingerprint,
-                severity: resolveSeverity({
-                    severity: finding.severity,
-                    bugClass: finding.attribution?.bugClass,
-                    confidence: finding.attribution?.confidence,
-                    verificationStatus: finding.attribution?.verificationStatus,
-                }),
-            }));
-
-        // Collapse duplicate findings (same fault repeated across the run) into one
-        // representative carrying an occurrence count, so the persisted findingCount
-        // matches what the report renders and the history list reports.
-        // Cap embedded arrays (SEC-27) so a finding-rich run cannot approach the 16MB
-        // BSON limit and fail the ENTIRE save. Generous — only a pathological run trips it.
-        const caughtBugs = capEmbedded(this.dedupeCaughtBugs(rawCaughtBugs), MAX_EMBEDDED_CAUGHT_BUGS, 'caughtBugs');
-
-        // Derive the category breakdown dynamically from the *actual* persisted
-        // findings so no category (known or novel) is ever silently zeroed out.
-        const breakdownCategories: Record<string, number> = {};
-        caughtBugs.forEach((bug) => {
-            // Prefer the deterministic knowledge-base bug class; fall back to the
-            // raw fault type so older/unclassified findings are never zeroed out.
-            const category = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
-            breakdownCategories[category] = (breakdownCategories[category] ?? 0) + 1;
-        });
-
-        // The persisted count is exactly the number of findings stored — the same
-        // count the operator saw live.
-        const findingsTotal = caughtBugs.length;
-
         // Ownership guard: a session document must belong to a real authenticated
         // user. The route already enforces requireAuth, so this is defense-in-depth.
         if (!isValidObjectId(userId)) {
@@ -442,7 +343,6 @@ export class StartExplorationUseCase {
         // routes come from the engine; WCAG findings are ephemeral (never persisted),
         // so every caught bug here is a runtime fault matching the live Errors tab.
         const visitedRoutes = (this.browserEngine.getVisitedRoutes?.() ?? []).slice(0, 500);
-        const errorsEncountered = caughtBugs.length;
 
         // Identity of the run being saved, most trustworthy first. The client's public
         // RUN- code is the only id that survives queue mode, a process restart, or a
@@ -461,13 +361,81 @@ export class StartExplorationUseCase {
         // targetUrl is included so the save preserves the authoritative URL the
         // worker recorded at run start (createSessionDoc) rather than overwriting
         // it with a possibly-stale client value from a remounted dashboard.
-        const terminalFields = 'status outcome endedReason finishedAt targetUrl stats';
+        // forensicTrace.caughtBugs rides along because the engine now checkpoints its
+        // ledger there mid-run: that copy is the server's own record of what it observed,
+        // and the save merges onto it instead of letting the client body replace it.
+        const terminalFields = 'status outcome endedReason finishedAt targetUrl stats forensicTrace.caughtBugs';
         const existing = (requestedCode
             ? await SessionModel.findOne({ runId: requestedCode, ...ownedBy }).select(terminalFields).lean()
             : null)
             ?? (originalSessionId
                 ? await SessionModel.findOne({ _id: originalSessionId, ...ownedBy }).select(terminalFields).lean()
                 : null);
+
+        // FINDING SOURCES, most authoritative first.
+        //  1. The live engine ledger — present only for a same-process (sync) save.
+        //  2. The mid-run checkpoint on this run's own document — the queue-mode
+        //     equivalent, written by the worker that actually observed the faults.
+        //  3. The client's transferred buffer.
+        // (1)/(2) are the server's truth and win per bugId; (3) is unioned in rather than
+        // discarded, because the ledger evicts under its own cap and a client can hold a
+        // finding the checkpoint no longer carries. Before the checkpoint existed, a
+        // queue-mode save had only (3) — so any gap in the browser's buffer became
+        // permanent report loss.
+        const clientFindings = options?.clientFindings ?? [];
+        const engineBugs = this.browserEngine.getConfirmedBugsFromMemory?.() ?? [];
+        const checkpointedBugs = existing?.forensicTrace?.caughtBugs ?? [];
+
+        const serverBugs = engineBugs.length > 0
+            ? engineBugs.map(toSavedCaughtBug)
+            : checkpointedBugs;
+
+        const clientBugs: ICaughtBug[] = clientFindings.map((finding, index) => ({
+            bugId: finding.bugId && finding.bugId.trim() ? finding.bugId : `finding-${index + 1}`,
+            type: finding.type ?? 'EXCEPTION',
+            message: finding.message ?? '',
+            selector: finding.selector ?? '',
+            elementLabel: finding.culpritLabel ?? '',
+            payloadUsed: finding.payloadUsed ?? '',
+            advice: finding.advice ?? '',
+            stackTrace: finding.stackTrace ?? '',
+            occurrences: finding.occurrences ?? 1,
+            reproductionSteps: Array.isArray(finding.reproductionSteps) ? finding.reproductionSteps : [],
+            actionSteps: buildActionSteps(Array.isArray(finding.reproductionActions) ? finding.reproductionActions : []),
+            timestamp: finding.timestamp ? new Date(finding.timestamp) : new Date(),
+            attribution: finding.attribution,
+            stateFingerprint: finding.stateFingerprint,
+            severity: resolveSeverity({
+                severity: finding.severity,
+                bugClass: finding.attribution?.bugClass,
+                confidence: finding.attribution?.confidence,
+                verificationStatus: finding.attribution?.verificationStatus,
+            }),
+        }));
+
+        const rawCaughtBugs = unionFindingsByBugId(serverBugs, clientBugs);
+
+        // Collapse duplicate findings (same fault repeated across the run) into one
+        // representative carrying an occurrence count, so the persisted findingCount
+        // matches what the report renders and the history list reports.
+        // Cap embedded arrays (SEC-27) so a finding-rich run cannot approach the 16MB
+        // BSON limit and fail the ENTIRE save. Generous — only a pathological run trips it.
+        const caughtBugs = capEmbedded(this.dedupeCaughtBugs(rawCaughtBugs), MAX_EMBEDDED_CAUGHT_BUGS, 'caughtBugs');
+
+        // Derive the category breakdown dynamically from the *actual* persisted
+        // findings so no category (known or novel) is ever silently zeroed out.
+        const breakdownCategories: Record<string, number> = {};
+        caughtBugs.forEach((bug) => {
+            // Prefer the deterministic knowledge-base bug class; fall back to the
+            // raw fault type so older/unclassified findings are never zeroed out.
+            const category = bug.attribution?.bugClass || bug.type || 'UNKNOWN';
+            breakdownCategories[category] = (breakdownCategories[category] ?? 0) + 1;
+        });
+
+        // The persisted count is exactly the number of findings stored — the same
+        // count the operator saw live.
+        const findingsTotal = caughtBugs.length;
+        const errorsEncountered = caughtBugs.length;
 
         // The reproduction buffer (actionRecords) is a capped ≤60 rolling window and is
         // empty for a cross-process (queue) save, so it under-counts steps. Prefer the

@@ -14,6 +14,7 @@ import { registerSupportRoutes } from './presentation/api/supportController.js';
 import { verifyEmailTransport } from './presentation/authentication/emailTransport.js';
 import { registerSocketHandlers } from './presentation/socket/registerSocketHandlers.js';
 import { sessionManager } from './application/services/SessionManager.js';
+import { EngineHealthMonitor } from './application/services/engineHealthMonitor.js';
 import { connectDatabase, disconnectDatabase } from './infrastructure/database/mongooseClient.js';
 import { reapExpiredSessionChildren, purgeExpiredTrash, TRASH_RETENTION_DAYS } from './infrastructure/database/retentionReaper.js';
 import { syncAllIndexes } from './infrastructure/database/indexSync.js';
@@ -190,6 +191,13 @@ if (taskQueue) {
   runReconciler();
 }
 
+// Engine liveness watcher. Runs in BOTH topologies: it sweeps the in-process run's own
+// emit clock and, in queue mode, each active worker's Redis heartbeat — so a wedged
+// engine surfaces as Stalled instead of leaving the dashboard on a live status with a
+// dead stream. It never terminates a run; the timebox stays the only auto-terminator.
+const engineHealthMonitor = new EngineHealthMonitor(io, runRegistry, taskQueue);
+engineHealthMonitor.start();
+
 // Register socket handlers now that optional queue support is resolved.
 registerSocketHandlers(io, queueStatusBroadcaster && controlPublisher && runRegistry ? { broadcaster: queueStatusBroadcaster, controlPublisher, runRegistry } : undefined);
 
@@ -269,6 +277,7 @@ const shutdown = async (signal: string): Promise<void> => {
   try {
     if (reaperTimer) clearInterval(reaperTimer);
     if (reconcilerTimer) clearInterval(reconcilerTimer);
+    engineHealthMonitor.stop();
     await disconnectDatabase();
     log.info('[BugSafari] Database disconnected');
     await queueStatusBroadcaster?.close();

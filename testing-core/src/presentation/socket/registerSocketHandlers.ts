@@ -9,6 +9,7 @@ import {
   type QueueUpdate,
   type SessionAttachRequest,
   type SessionAttachAck,
+  type RunControlAck,
   type VerifyFixRequest,
   type VerifyFixResult,
   type VerifyFixProgress,
@@ -19,6 +20,7 @@ import { verifyTokenSync } from '../authentication/authConfig.js';
 import { RegressionPlaybookVerifier } from '../../domain/services/regression/RegressionPlaybookVerifier.js';
 import { withReplaySlot, isReplayBusyError } from '../../domain/services/regression/replayAdmission.js';
 import { sessionManager } from '../../application/services/SessionManager.js';
+import { hydrateSnapshotFromDb } from '../../application/services/snapshotHydration.js';
 import { queueRoom, type QueueStatusBroadcaster } from '../../infrastructure/queue/QueueStatusBroadcaster.js';
 import type { ControlBridgePublisher } from '../../infrastructure/queue/controlBridge.js';
 import type { RunRegistry } from '../../infrastructure/queue/RunRegistry.js';
@@ -224,13 +226,24 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
       // the client hydrates its snapshot over HTTP as it already does.
       if (queueSupport && result.reason === 'no-active-session' && attachToken) {
         void (async () => {
-          if (await ownsQueuedRun(attachToken)) {
-            joinLimited(socket, `run:${attachToken}`);
-            obsLog.info(`[Socket] ${socket.id} re-joined worker run room ${attachToken}.`);
-            respond({ attached: true });
-          } else {
+          if (!(await ownsQueuedRun(attachToken))) {
             respond(result);
+            return;
           }
+          joinLimited(socket, `run:${attachToken}`);
+          obsLog.info(`[Socket] ${socket.id} re-joined worker run room ${attachToken}.`);
+          // Replay the gap, exactly as the in-process path does. Re-joining the room only
+          // resumes the stream from NOW: everything the worker emitted while the socket
+          // was down stayed unrecoverable, because the client hydrates over HTTP at boot
+          // and never on reconnect. A mid-run drop therefore punched a permanent hole in
+          // the dashboard's buffers — which the save path then wrote to history.
+          const replay = await queueSupport.runRegistry.readSnapshot(attachToken).catch(() => null);
+          if (!replay) {
+            respond({ attached: true });
+            return;
+          }
+          const snapshot = await hydrateSnapshotFromDb(replay).catch(() => replay);
+          respond({ attached: true, snapshot });
         })();
         return;
       }
@@ -253,33 +266,72 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
     const ownsActiveRun = (): boolean =>
       sessionManager.ownsActiveRun(socketUserId(socket), socketRunToken() ?? undefined);
 
-    const applyControl = async (label: string, command: 'pause' | 'resume' | 'stop', run: () => void, reason?: StopReason): Promise<void> => {
-      if (!withinEventBudget(socket)) return;
+    /**
+     * Apply an operator control and TELL THE CLIENT what happened.
+     *
+     * These three used to be pure fire-and-forget: an ownership rejection or an
+     * exhausted event budget returned silently, so the dashboard latched its optimistic
+     * PAUSING/STOPPING and never learned the command had been refused. The ack mirrors
+     * what `session-attach` and `verify-fix` in this same file already do.
+     *
+     * `accepted` means "applied locally, or durably recorded and handed to the bridge" —
+     * not "the engine has finished transitioning". The engine's own telemetry still
+     * settles the final state.
+     */
+    const applyControl = async (
+      label: string,
+      command: 'pause' | 'resume' | 'stop',
+      run: () => void,
+      respond: (ack: RunControlAck) => void,
+      reason?: StopReason,
+    ): Promise<void> => {
+      if (!withinEventBudget(socket)) {
+        respond({ accepted: false, reason: 'rate-limited' });
+        return;
+      }
       if (controlPublisher) {
         const runToken = socketRunToken();
         if (!(await ownsQueuedRun(runToken))) {
           obsLog.warn(`[Socket]  ${label} rejected: ${socket.id} does not own run ${runToken ?? '(none)'}`);
+          respond({ accepted: false, reason: runToken ? 'not-owner' : 'no-active-session' });
           return;
         }
+        // Record the durable intent BEFORE publishing, so a command is never lost to a
+        // pub/sub drop: the worker's poll picks up whatever the bridge failed to deliver.
+        if (runToken) {
+          await (command === 'stop'
+            // Same guard as POST /api/safari/stop: mark the run stop-requested so a launch
+            // during the worker's teardown starts fresh instead of resuming the stopped run.
+            ? queueSupport?.runRegistry.markStopRequested(runToken)
+            : queueSupport?.runRegistry.markControlRequested(runToken, command)
+          )?.catch(() => undefined);
+        }
         controlPublisher.publish(command, runToken, reason);
-        // Same guard as POST /api/safari/stop: mark the run stop-requested so a launch
-        // during the worker's teardown starts fresh instead of resuming the stopped run.
-        if (command === 'stop' && runToken) void queueSupport?.runRegistry.markStopRequested(runToken).catch(() => undefined);
+        respond({ accepted: true });
         return;
       }
       if (!ownsActiveRun()) {
         obsLog.warn(`[Socket]  ${label} rejected: ${socket.id} does not own the active run`);
+        respond({ accepted: false, reason: sessionManager.getActiveRunId() ? 'not-owner' : 'no-active-session' });
         return;
       }
       obsLog.info(`[Socket] Session ${label} manually`);
       run();
+      respond({ accepted: true });
     };
 
-    socket.on('pause-test', () => void applyControl('PAUSED', 'pause', () => void sessionManager.pauseByOperator()));
-    socket.on('resume-test', () => void applyControl('RESUMED', 'resume', () => sessionManager.resumeByOperator()));
-    socket.on('stop-test', (payload?: { reason?: unknown }) => {
+    // The ack callback is optional so an older dashboard build keeps working unchanged.
+    const ackOf = (cb: unknown): ((ack: RunControlAck) => void) =>
+      typeof cb === 'function' ? (cb as (ack: RunControlAck) => void) : (): void => undefined;
+
+    socket.on('pause-test', (...args: unknown[]) =>
+      void applyControl('PAUSED', 'pause', () => void sessionManager.pauseByOperator(), ackOf(args[args.length - 1])));
+    socket.on('resume-test', (...args: unknown[]) =>
+      void applyControl('RESUMED', 'resume', () => sessionManager.resumeByOperator(), ackOf(args[args.length - 1])));
+    socket.on('stop-test', (...args: unknown[]) => {
+      const payload = args[0] as { reason?: unknown } | undefined;
       const reason = coerceClientStopReason(payload?.reason);
-      void applyControl('STOPPED', 'stop', () => void sessionManager.stopByOperator(reason), reason);
+      void applyControl('STOPPED', 'stop', () => void sessionManager.stopByOperator(reason), ackOf(args[args.length - 1]), reason);
     });
 
     // Automated Regression Verification: replay a saved finding's recorded timeline

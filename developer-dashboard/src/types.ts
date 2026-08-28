@@ -60,6 +60,10 @@ export type {
   SessionAttachAck,
   RunLifecycleStatus,
   SessionOwnerType,
+  // Engine liveness + control acknowledgement (orthogonal to RunLifecycleStatus)
+  EngineHealthPhase,
+  RunHealthPayload,
+  RunControlAck,
   // Saved-history lifecycle bucket (Active/Archived/Trash)
   SessionHistoryState,
   // How and why a run ended
@@ -90,6 +94,7 @@ export {
   SESSION_ATTACH_EVENT,
   SESSION_SNAPSHOT_EVENT,
   TIME_SYNC_EVENT,
+  RUN_HEALTH_EVENT,
   ACCESSIBILITY_EVENT,
   ACCESSIBILITY_BANNER_THRESHOLD,
   REPRODUCTION_VERDICT_EVENT,

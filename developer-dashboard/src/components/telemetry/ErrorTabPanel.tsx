@@ -66,7 +66,7 @@ export default function ErrorTabPanel({
   ];
 
   return (
-    <div className="p-2">
+    <div >
       <FindingsPanel
         entries={entries}
         live

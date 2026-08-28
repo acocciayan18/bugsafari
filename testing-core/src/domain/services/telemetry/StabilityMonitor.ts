@@ -986,6 +986,7 @@ export class StabilityMonitor {
       message: finding.message,
       selector: culpritSelector ?? '',
       elementLabel: culpritLabel,
+      url: routeUrl,
       payloadUsed: source,
       advice: remediation,
       stackTrace,

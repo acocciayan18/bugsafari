@@ -1,5 +1,5 @@
-import type { BrowserConsoleMessage, EngineGateway, StartTestResult, StopRunResult } from '../../application/ports/EngineGateway';
-import type { AccessibilityFinding, ActiveSessionSnapshot, FindingOccurrencePatch, FindingUpgrade, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, ReproductionVerdict, SessionHistoryEntry, StopReason, TargetAuthConfig, TelemetryEvent, TimeSyncPayload, ExplorationRunConfig } from '../../types';
+import type { BrowserConsoleMessage, EngineGateway, RunControlOutcome, StartTestResult, StopRunResult } from '../../application/ports/EngineGateway';
+import type { AccessibilityFinding, ActiveSessionSnapshot, FindingOccurrencePatch, FindingUpgrade, ForensicCrashReport, IncidentReport, OptimizationSettings, QueueUpdate, ReproductionVerdict, RunHealthPayload, SessionHistoryEntry, StopReason, TargetAuthConfig, TelemetryEvent, TimeSyncPayload, ExplorationRunConfig } from '../../types';
 import { EngineHttpClient } from './gateway/EngineHttpClient';
 import { SocketConnectionManager } from './gateway/SocketConnectionManager';
 
@@ -103,34 +103,51 @@ export class SocketHttpEngineGateway implements EngineGateway {
     return this.http.fetchSessionHistory(limit);
   }
 
-  // ── Run controls (socket emits) ───────────────────────────────
-  public pauseTest(): void {
-    this.connection.pauseTest();
+  // ── Run controls (socket ack, HTTP fallback) ──────────────────
+  //
+  // Every control now reports its real outcome. They used to be fire-and-forget socket
+  // emits with no ack and, for pause/resume, no HTTP path at all — so a degraded socket
+  // silently swallowed the command while the dashboard held an optimistic PAUSING or
+  // STOPPING it could never leave. The socket is tried first (lowest latency, and it
+  // carries the ownership context the backend already has); HTTP takes over whenever the
+  // socket is not connected or the ack never lands.
+  public pauseTest(): Promise<RunControlOutcome> {
+    return this.sendControl('pause');
   }
 
-  public resumeTest(): void {
-    this.connection.resumeTest();
+  public resumeTest(): Promise<RunControlOutcome> {
+    return this.sendControl('resume');
   }
 
-  public stopTest(): void {
-    this.connection.stopTest();
+  public async stopTest(reason: StopReason = 'operator'): Promise<RunControlOutcome> {
+    if (this.connection.connectionState === 'connected') {
+      const ack = await this.connection.stopTest(reason);
+      // An explicit refusal is authoritative — the server saw it and said no, so HTTP
+      // would only be refused identically. A missing ack proves nothing, so fall through.
+      if (ack?.accepted) return { ok: true, via: 'socket' };
+      if (ack && !ack.accepted) return { ok: false, via: 'socket', reason: ack.reason };
+    }
+    const result = await this.http.stopRun(this.runId, reason);
+    return { ok: result.ok, via: 'http', error: result.error };
+  }
+
+  private async sendControl(command: 'pause' | 'resume'): Promise<RunControlOutcome> {
+    if (this.connection.connectionState === 'connected') {
+      const ack = command === 'pause' ? await this.connection.pauseTest() : await this.connection.resumeTest();
+      if (ack?.accepted) return { ok: true, via: 'socket' };
+      if (ack && !ack.accepted) return { ok: false, via: 'socket', reason: ack.reason };
+    }
+    const result = await this.http.controlRun(command, this.runId);
+    return { ok: result.ok, via: 'http', error: result.error };
   }
 
   /**
-   * Force stop - sends stop command via socket with HTTP fallback.
-   * Used for timeout cleanup to ensure backend terminates orphaned processes.
+   * Force stop — used by the transition re-delivery loop. Same path as stopTest; kept as
+   * a distinct name because callers use it to mean "make this stop land by any route".
    */
   public async forceStop(reason: StopReason = 'operator'): Promise<void> {
     console.log(`[Gateway]  forceStop called (reason=${reason}) - attempting cleanup`);
-
-    // First, try socket emit (most reliable when connected)
-    if (this.connection.connectionState === 'connected') {
-      return this.connection.stopViaSocket(reason);
-    }
-
-    // Fallback to HTTP POST if socket not connected. Best-effort by design: the
-    // backend may already be stopped, so the outcome is logged, not thrown.
-    await this.http.stopRun(this.runId, reason);
+    await this.stopTest(reason);
   }
 
   /**
@@ -194,6 +211,12 @@ export class SocketHttpEngineGateway implements EngineGateway {
   }
   public onTimeSync(handler: (payload: TimeSyncPayload) => void): void {
     this.connection.onTimeSync(handler);
+  }
+  public onRunHealth(handler: (payload: RunHealthPayload) => void): void {
+    this.connection.onRunHealth(handler);
+  }
+  public retryConnection(): void {
+    this.connection.retryNow();
   }
   public removeAllListeners(): void {
     this.connection.removeAllListeners();

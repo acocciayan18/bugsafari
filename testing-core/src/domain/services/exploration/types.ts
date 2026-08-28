@@ -74,6 +74,9 @@ export interface ConfirmedBug {
   selector: string;
   /** Human name of the culprit control, rendered wherever the selector used to be. */
   elementLabel?: string;
+  /** Route the fault surfaced on. Persisted so a rehydrated finding can be rendered
+   *  back onto the live Errors tab, which requires a url. */
+  url?: string;
   payloadUsed: string;
   advice: string;
   timestamp: Date;

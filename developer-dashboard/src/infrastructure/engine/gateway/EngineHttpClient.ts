@@ -156,7 +156,10 @@ export class EngineHttpClient {
       const data = (await response.json()) as { sessions?: SessionHistoryEntry[] };
       return Array.isArray(data.sessions) ? data.sessions : [];
     } catch (error) {
-      console.log("[Gateway] Backend is hot-reloading. Suppressing transient ERR_EMPTY_RESPONSE.");
+      // Any failure yields an empty page so the dashboard still loads, but say what
+      // actually happened — the old blanket "backend is hot-reloading" line reported a
+      // dev-only cause for every fault, including a real outage in production.
+      console.warn('[Gateway] Session history unavailable:', error instanceof Error ? error.message : String(error));
       return [];
     }
   }
@@ -185,6 +188,29 @@ export class EngineHttpClient {
    * The backend reports the real outcome, so the result is surfaced verbatim
    * instead of being assumed successful.
    */
+  /**
+   * POST /api/safari/{pause,resume} — the socket-less path for the two controls that
+   * had none. When the socket is degraded a pause emit went nowhere and the dashboard
+   * latched PAUSING with no way to recover; this is the same fallback stop always had.
+   */
+  public async controlRun(command: 'pause' | 'resume', runId?: string | null): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const response = await this.fetchWithAuthRetry(`${this.apiBaseUrl}/api/safari/${command}`, {
+        method: 'POST',
+        headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ runToken: runId ?? null }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!response.ok || data.ok !== true) {
+        return { ok: false, error: data.error ?? `We couldn't ${command} the session. Please try again.` };
+      }
+      return { ok: true };
+    } catch (error) {
+      console.error(`[Gateway] HTTP ${command} failed:`, error instanceof Error ? error.message : String(error));
+      return { ok: false, error: `We couldn't ${command} the session. Please try again.` };
+    }
+  }
+
   public async stopRun(runId?: string | null, reason: StopReason = 'operator'): Promise<StopRunResult> {
     try {
       // The run token proves ownership server-side — required for guest runs,
