@@ -176,10 +176,11 @@ export interface StabilityMonitorDeps {
   breadcrumbsToActionRecords(breadcrumbs: ActionBreadcrumb[]): ActionRecord[];
   persistForensicError(params: ForensicErrorParams): void;
   registerConfirmedBug(bug: ConfirmedBug): void;
-  /** Upgrade an already-registered finding's culprit selector when a later, better-attributed
-   *  sighting arrives (the first sighting was off-target collateral with no selector). No-op
-   *  unless the stored finding currently has an empty selector. */
-  upgradeFindingCulprit(bugId: string, selector: string): void;
+  /** Upgrade an already-registered finding's culprit selector (and optional control label)
+   *  when a later, better-attributed sighting arrives (the first sighting was off-target
+   *  collateral with no culprit). Fills only the selector/label the stored finding currently
+   *  leaves blank, then patches the live card so its Element matches the saved report. */
+  upgradeFindingCulprit(bugId: string, selector: string, label?: string): void;
   /** Refresh an already-registered finding's authoritative occurrence count when a finder
    *  verifies the same signature genuinely recurred. Updates the ledger entry by bugId and
    *  pushes a FindingOccurrencePatch to the live dashboard. `occurrences` is the running total. */

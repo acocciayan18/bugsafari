@@ -29,6 +29,33 @@ export function faultStackTop(stackTrace: string | undefined): string {
   return '';
 }
 
+// A path segment that is an opaque id, not a route name: a pure number, a long hex
+// hash/ObjectId, or a mixed hex/uuid token. Alphabetic route names (even all a-f) are
+// never masked, so distinct routes stay distinct.
+function isVolatileSegment(seg: string): boolean {
+  if (/^\d+$/.test(seg)) return true;                             // numeric id
+  if (/^[0-9a-f]{12,}$/.test(seg)) return true;                   // hex hash / ObjectId
+  if (/^[0-9a-f-]{8,}$/.test(seg) && /\d/.test(seg)) return true; // mixed hex / uuid id
+  return false;
+}
+
+// Reduce a fault URL to a stable route key: pathname only (scheme/host/query/hash
+// dropped), with opaque id segments masked to #id so the same fault across id/query
+// variants (/orders/1?t=a vs /orders/2?t=b) collapses to one family. Textual segments
+// and the path shape are preserved so distinct routes never merge. Non-URL input falls
+// back to its pre-query substring.
+export function normalizeFaultUrl(url: string | undefined): string {
+  const raw = (url ?? '').trim().toLowerCase();
+  if (!raw) return '';
+  let path: string;
+  try {
+    path = new URL(raw).pathname;
+  } catch {
+    path = raw.split(/[?#]/)[0];
+  }
+  return path.split('/').map((seg) => (isVolatileSegment(seg) ? '#id' : seg)).join('/');
+}
+
 export interface FaultSignatureInput {
   reason?: string;
   url?: string;
@@ -41,7 +68,7 @@ export interface FaultSignatureInput {
 export function buildFaultSignature(fault: FaultSignatureInput): string {
   return [
     normalizeFaultText(fault.reason),
-    (fault.url ?? '').trim().toLowerCase(),
+    normalizeFaultUrl(fault.url),
     faultStackTop(fault.stackTrace),
     fault.statusCode ?? '',
   ].join('|');

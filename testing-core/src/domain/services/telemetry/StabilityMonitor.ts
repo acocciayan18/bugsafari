@@ -853,7 +853,7 @@ export class StabilityMonitor {
       // attributed recurrence name the culprit the dedup would otherwise keep blank — but never
       // during a burst, where naming one sibling would backfill a wrong culprit.
       const culprit = burstAmbiguous ? undefined : this.culpritSelectorAt(faultAtMs);
-      if (culprit) this.deps.upgradeFindingCulprit(finding.bugId, culprit);
+      if (culprit) this.deps.upgradeFindingCulprit(finding.bugId, culprit, this.culpritLabelAt(faultAtMs));
       // A verified recurrence of an already-reported signature — push the authoritative
       // running total so the live ×N advances by a real manifestation, not by telemetry.
       this.deps.recordFindingOccurrence(finding.bugId, finding.occurrence);

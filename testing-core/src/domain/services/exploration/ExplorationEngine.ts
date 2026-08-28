@@ -36,7 +36,7 @@ import type { BrowserInfo } from '../../../infrastructure/playwright/PlaywrightB
 import { ReproductionPlaybookStore } from '../../../infrastructure/monitoring/reproductionPlaybookStore.js';
 import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
 import { describeRedirectLoopObservation, narrateActionRecords, resolveElementLabel } from '../forensics/narration.js';
-import { toSavedCaughtBug } from '../forensics/findingProjection.js';
+import { projectFindingsForPersistence, toSavedCaughtBug } from '../forensics/findingProjection.js';
 import { forensicErrorRepository, type CreateForensicErrorParams } from '../../../infrastructure/database/repositories/ForensicErrorRepository.js';
 import { MAX_FORENSIC_ROWS } from '../../../infrastructure/database/queryLimits.js';
 import { forensicTelemetryRepository } from '../../../infrastructure/database/repositories/ForensicTelemetryRepository.js';
@@ -616,34 +616,39 @@ export class ExplorationEngine {
    * otherwise locks in the empty selector forever — this lets a correctly-attributed
    * recurrence fill it, without disturbing a selector that is already set.
    */
-  public upgradeFindingCulprit(bugId: string, selector: string): void {
-    if (!selector) return;
+  public upgradeFindingCulprit(bugId: string, selector: string, label?: string): void {
+    if (!selector && !label) return;
     const index = this.confirmedBugsMemory.findIndex((b) => b.bugId === bugId);
-    if (index >= 0 && !this.confirmedBugsMemory[index].selector) {
-      const entry = { ...this.confirmedBugsMemory[index], selector };
-      this.confirmedBugsMemory[index] = entry;
-      this.markFindingsDirty();
-      // The live card was streamed before the culprit correlated, so it holds an empty
-      // Element while the ledger (and thus the saved report) now names one. Push the
-      // culprit onto the existing card by bugId so both surfaces match. liveFaultSignature
-      // excludes selector, so this patches in place and never spawns a second card.
-      this.activeGateway?.emitFindingUpgrade?.({
-        bugId,
-        severity: resolveSeverity({
-          severity: entry.severity,
-          bugClass: entry.attribution?.bugClass,
-          confidence: entry.attribution?.confidence,
-          verificationStatus: entry.attribution?.verificationStatus,
-          statusCode: entry.statusCode,
-        }),
-        message: entry.message,
+    if (index < 0) return;
+    const prior = this.confirmedBugsMemory[index];
+    // Fill only what the first (off-target collateral) sighting left blank — never disturb
+    // a selector or label already set. Fills the Element the saved report will show too.
+    const nextSelector = prior.selector || selector;
+    const nextLabel = prior.elementLabel || label || '';
+    if (nextSelector === prior.selector && nextLabel === prior.elementLabel) return;
+    const entry = { ...prior, selector: nextSelector, elementLabel: nextLabel };
+    this.confirmedBugsMemory[index] = entry;
+    this.markFindingsDirty();
+    // The live card was streamed before the culprit correlated, so it holds a blank
+    // Element while the ledger (and thus the saved report) now names one. Push the culprit
+    // onto the existing card by bugId so both surfaces match. liveFaultSignature excludes
+    // selector, so this patches in place and never spawns a second card.
+    this.activeGateway?.emitFindingUpgrade?.({
+      bugId,
+      severity: resolveSeverity({
+        severity: entry.severity,
+        bugClass: entry.attribution?.bugClass,
         confidence: entry.attribution?.confidence,
-        confidenceScore: entry.attribution?.confidenceScore,
         verificationStatus: entry.attribution?.verificationStatus,
-        culpritSelector: selector,
-        culpritLabel: entry.elementLabel || undefined,
-      });
-    }
+        statusCode: entry.statusCode,
+      }),
+      message: entry.message,
+      confidence: entry.attribution?.confidence,
+      confidenceScore: entry.attribution?.confidenceScore,
+      verificationStatus: entry.attribution?.verificationStatus,
+      culpritSelector: entry.selector || undefined,
+      culpritLabel: entry.elementLabel || undefined,
+    });
   }
 
   // Authoritative occurrence-count refresh: a finder verified the same signature recurred.
@@ -1114,7 +1119,7 @@ export class ExplorationEngine {
       breadcrumbsToActionRecords: (b) => this.breadcrumbsToActionRecords(b),
       persistForensicError: (params) => this.bufferForensicError(params),
       registerConfirmedBug: (bug) => this.registerConfirmedBug(bug),
-      upgradeFindingCulprit: (bugId, selector) => this.upgradeFindingCulprit(bugId, selector),
+      upgradeFindingCulprit: (bugId, selector, label) => this.upgradeFindingCulprit(bugId, selector, label),
       recordFindingOccurrence: (bugId, occurrences) => this.recordFindingOccurrence(bugId, occurrences),
       setFreeze: () => this.freezeRecording(),
       getLastKnownUrl: () => lastKnownUrl,
@@ -2002,7 +2007,10 @@ export class ExplorationEngine {
     // and are picked up by the next flush rather than being silently swallowed.
     this.findingsDirty = false;
     this.findingsSinceCheckpoint = 0;
-    const bugs = this.confirmedBugsMemory.map(toSavedCaughtBug);
+    // Collapse + reportability-filter to the SAME canonical set the manual save persists,
+    // so findingCount (which checkpointFindings writes and History reads directly) equals
+    // the live badge for a run that ends without a manual save.
+    const bugs = projectFindingsForPersistence(this.confirmedBugsMemory);
     try {
       await this.findingRepo.checkpointFindings(this.sessionId, this.userId, bugs);
     } catch (error) {

@@ -1,5 +1,7 @@
 import { resolveSeverity } from '../../../../../shared/types.js';
 import { buildFaultSignature } from '../../../../../shared/faultSignature.js';
+import { collapseFindings, type CollapseAdapter, type FindingOrigin } from '../../../../../shared/findingCollapse.js';
+import { isReportableFinding } from '../../../../../shared/findingRouting.js';
 import type { ConfirmedBug } from '../exploration/types.js';
 import type { ICaughtBug } from '../../../infrastructure/database/models/SessionModel.js';
 import { buildActionSteps } from './actionStepMapper.js';
@@ -124,20 +126,61 @@ export function canonicalFindingSignature(bug: Pick<ICaughtBug, 'message' | 'url
   });
 }
 
+// One wrapper carrying each finding's provenance so the shared collapse applies the
+// occurrence contract "sum within origin, max across origins" — a fault's server ledger
+// entries and its client twin describe the SAME events, so summing both is the ×2
+// doubling; the max keeps distinct within-origin manifestations (15 identical 500s ⇒ ×15).
+interface OriginBug {
+  bug: ICaughtBug;
+  origin: FindingOrigin;
+}
+
+const caughtBugCollapseAdapter: CollapseAdapter<OriginBug> = {
+  signatureInput: (t) => ({ reason: t.bug.message, url: t.bug.url, stackTrace: t.bug.stackTrace, statusCode: t.bug.statusCode }),
+  representative: (t) => ({ reproductionSteps: t.bug.reproductionSteps, timestamp: t.bug.timestamp }),
+  origin: (t) => t.origin,
+  occurrences: (t) => t.bug.occurrences ?? 1,
+  withOccurrences: (t, occurrences) => ({ bug: { ...t.bug, occurrences }, origin: t.origin }),
+};
+
+// Reportability of a persisted finding, mapped onto the shared predicate the live tab
+// uses — so infra/harness noise is filtered identically on both surfaces.
+export function isBugReportable(bug: ICaughtBug): boolean {
+  return isReportableFinding({ reason: bug.message, statusCode: bug.statusCode, url: bug.url, attribution: bug.attribution, stackTrace: bug.stackTrace });
+}
+
+// Reconcile server ledger + optional client findings into one representative per fault
+// family by SIGNATURE (not bugId), so their disjoint id namespaces can never double-count
+// one fault. Reportability is the caller's choice (kept out so the bare family collapse
+// stays a pure grouping).
+function collapseCaughtBugs(server: ICaughtBug[], client: ICaughtBug[] = []): ICaughtBug[] {
+  const tagged: OriginBug[] = [
+    ...server.map((bug) => ({ bug, origin: 'server' as const })),
+    ...client.map((bug) => ({ bug, origin: 'client' as const })),
+  ];
+  return collapseFindings(tagged, caughtBugCollapseAdapter).map((t) => t.bug);
+}
+
 /**
- * Collapse duplicate findings into one representative per fault family, SUMMING each
- * instance's authoritative manifestation count (never a raw +1), so the saved ×N equals
- * the live one. The engine ledger still retains every instance for telemetry; only the
- * persisted, operator-facing set is collapsed. First entry wins as the representative.
+ * Collapse duplicate findings into one representative per fault family, keyed on the
+ * canonical signature, occurrences summed within origin. The engine ledger still retains
+ * every instance for telemetry; only the persisted, operator-facing set is collapsed.
  */
 export function dedupeCaughtBugsBySignature(bugs: ICaughtBug[]): ICaughtBug[] {
-  const groups = new Map<string, ICaughtBug>();
-  for (const bug of bugs) {
-    const key = canonicalFindingSignature(bug);
-    const existing = groups.get(key);
-    const count = bug.occurrences ?? 1;
-    if (existing) existing.occurrences = (existing.occurrences ?? 1) + count;
-    else groups.set(key, { ...bug, occurrences: count });
-  }
-  return [...groups.values()];
+  return collapseCaughtBugs(bugs);
+}
+
+// Persisted-finding pipeline shared by the mid-run checkpoint and the manual save:
+// project the ledger onto the saved shape, drop infra/harness noise, collapse to one
+// representative per family. `findingCount` is then just this array's length, so the
+// count History reads matches the live badge whether or not the run was manually saved.
+export function projectFindingsForPersistence(bugs: ConfirmedBug[]): ICaughtBug[] {
+  return collapseCaughtBugs(bugs.map(toSavedCaughtBug).filter(isBugReportable));
+}
+
+// Manual-save variant: server truth (already projected) reconciled with the client's
+// transferred findings by signature. Both sides are reportability-filtered so History
+// never exceeds the live count.
+export function reconcileFindingsForPersistence(server: ICaughtBug[], client: ICaughtBug[]): ICaughtBug[] {
+  return collapseCaughtBugs(server.filter(isBugReportable), client.filter(isBugReportable));
 }

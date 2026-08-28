@@ -202,4 +202,19 @@ check('total displayed ×N conserves the distinct authoritative counts (Live == 
   assert.equal(totalDisplayed, 7, 'twin never adds; the patch sets the authoritative total; distinct bugs sum');
 });
 
+// The live buffer must pick the SAME representative the saved collapse does — the
+// content-richest sighting, deterministically — so the live card's reproduction steps
+// match the saved report regardless of which sighting streamed first. Occurrence
+// accounting is keyed by bugId, independent of which object represents the family.
+check('collapseFaultIntoBuffer keeps the content-richest representative, order-independent', () => {
+  const thin = incident({ bugId: 'x', reproductionPlaybook: ['Step 1'], occurrences: 1 });
+  const rich = incident({ bugId: 'x', reproductionPlaybook: ['Step 1', 'Step 2', 'Step 3'], occurrences: 1 });
+  const forward = collapseFaultIntoBuffer(collapseFaultIntoBuffer<IncidentReport>([], thin), rich);
+  const reverse = collapseFaultIntoBuffer(collapseFaultIntoBuffer<IncidentReport>([], rich), thin);
+  assert.deepEqual(forward[0].reproductionPlaybook, ['Step 1', 'Step 2', 'Step 3']);
+  assert.deepEqual(reverse[0].reproductionPlaybook, ['Step 1', 'Step 2', 'Step 3'], 'the pick never depends on arrival order');
+  assert.equal(forward[0].occurrences, 1, 'same bugId ⇒ monotonic max, still ×1');
+  assert.equal(reverse[0].occurrences, 1);
+});
+
 console.log(`\n${passed} errorDeduplication assertion group(s) passed.`);

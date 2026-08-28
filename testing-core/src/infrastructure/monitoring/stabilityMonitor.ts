@@ -4,6 +4,8 @@ import type { ActionRecord, FindingAttribution, StateFingerprint } from '../../.
 import { stripContradictoryFreezeObservations } from '../../../../shared/reproduction.js';
 import { classifyFault, type FaultType } from '../../bugs/knowledgeBase/index.js';
 import { BUG_CATALOG } from '../../bugs/knowledgeBase/bugCatalog.js';
+import { deriveStableBugId } from '../../domain/services/exploration/bugIdentity.js';
+import { normalizeRoutePath } from '../../ml/domHasher.js';
 import { ActiveScenarioTracker } from './activeScenarioTracker.js';
 import { captureStateFingerprint } from './stateFingerprint.js';
 
@@ -152,6 +154,11 @@ export function setupStabilityMonitoring(
 
     const timestamp = new Date().toISOString();
     const url = page.url();
+    // One deterministic id shared by the incident, its forensic twin, and the ledger entry,
+    // keyed on the route (throttled by FREEZE_DEDUP_MS). A per-emission Date.now() id left
+    // the live card unmatchable by the occurrence/culprit patches, so its Element stayed
+    // blank while the saved report named one.
+    const bugId = deriveStableBugId('client-render-freeze', [normalizeRoutePath(url)]);
     const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs });
     // A freeze means the page could not respond; a burst that registered fast clicks
     // contradicts it, so drop those responsive-burst observations from the freeze evidence.
@@ -189,6 +196,7 @@ export function setupStabilityMonitoring(
     });
     telemetry.emitIncidentReport({
       timestamp,
+      bugId,
       // Same canonical reason as the forensic emission below so the incident +
       // forensic + synthesized-incident collapse to one Errors-tab card.
       reason,
@@ -203,6 +211,7 @@ export function setupStabilityMonitoring(
     });
     telemetry.emitForensicReport({
       timestamp,
+      bugId,
       reason,
       url,
       stackTrace,
@@ -214,7 +223,7 @@ export function setupStabilityMonitoring(
 
     if (onBugRegistered) {
       onBugRegistered({
-        bugId: `main-thread-lockup-${Date.now()}`,
+        bugId,
         type: 'RUNTIME_UI_FREEZE',
         // Same canonical text as the live incident/forensic reason so the saved
         // finding message matches the Errors-tab card (banner stays terminal-only).

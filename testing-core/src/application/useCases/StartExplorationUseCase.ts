@@ -13,7 +13,7 @@ import { normalizeRunCode } from '../../../../shared/runCode.js';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import type { ActionStepTrace, ICaughtBug } from '../../infrastructure/database/models/SessionModel.js';
 import { buildActionSteps } from '../../domain/services/forensics/actionStepMapper.js';
-import { dedupeCaughtBugsBySignature, toSavedCaughtBug, unionFindingsByBugId } from '../../domain/services/forensics/findingProjection.js';
+import { reconcileFindingsForPersistence, toSavedCaughtBug } from '../../domain/services/forensics/findingProjection.js';
 import { SessionStatus } from '../../infrastructure/database/models/FindingType.js';
 import { withScenarioRandomScope } from '../../domain/scenarios/seededRandom.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
@@ -392,14 +392,15 @@ export class StartExplorationUseCase {
             }),
         }));
 
-        const rawCaughtBugs = unionFindingsByBugId(serverBugs, clientBugs);
-
-        // Collapse duplicate findings (same fault repeated across the run) into one
-        // representative carrying an occurrence count, so the persisted findingCount
-        // matches what the report renders and the history list reports.
-        // Cap embedded arrays (SEC-27) so a finding-rich run cannot approach the 16MB
-        // BSON limit and fail the ENTIRE save. Generous — only a pathological run trips it.
-        const caughtBugs = capEmbedded(dedupeCaughtBugsBySignature(rawCaughtBugs), MAX_EMBEDDED_CAUGHT_BUGS, 'caughtBugs');
+        // Reconcile server truth with the client's transferred findings by canonical
+        // SIGNATURE (not bugId): the two carry disjoint id namespaces, so a bugId union
+        // never merged a fault's server + client twin and the later sum double-counted it.
+        // Collapsing by signature yields one representative per family (occurrences summed
+        // within origin, max across origins) so the persisted findingCount matches the live
+        // badge and the report. Both sides are reportability-filtered so History never
+        // exceeds Live. Cap embedded arrays (SEC-27) so a finding-rich run cannot approach
+        // the 16MB BSON limit and fail the ENTIRE save.
+        const caughtBugs = capEmbedded(reconcileFindingsForPersistence(serverBugs, clientBugs), MAX_EMBEDDED_CAUGHT_BUGS, 'caughtBugs');
 
         // Derive the category breakdown dynamically from the *actual* persisted
         // findings so no category (known or novel) is ever silently zeroed out.

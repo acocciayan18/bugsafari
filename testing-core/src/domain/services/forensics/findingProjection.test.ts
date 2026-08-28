@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import type { ICaughtBug } from '../../../infrastructure/database/models/SessionModel.js';
 import type { ConfirmedBug } from '../exploration/types.js';
-import { MAX_MERGED_FINDINGS, canonicalFindingSignature, dedupeCaughtBugsBySignature, toSavedCaughtBug, unionFindingsByBugId } from './findingProjection.js';
+import { MAX_MERGED_FINDINGS, canonicalFindingSignature, dedupeCaughtBugsBySignature, projectFindingsForPersistence, reconcileFindingsForPersistence, toSavedCaughtBug, unionFindingsByBugId } from './findingProjection.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -180,6 +180,40 @@ check('toSavedCaughtBug carries statusCode through for network faults', () => {
     timestamp: new Date(0), url: 'https://api/x', statusCode: 500,
   });
   assert.strictEqual(saved.statusCode, 500);
+});
+
+// ── persistence pipeline (checkpoint ≡ save ≡ live) ──────────────────────────
+
+check('projectFindingsForPersistence collapses an over-specified family and drops infra noise', () => {
+  const cb = (id: string, over: Partial<ConfirmedBug> = {}): ConfirmedBug => ({
+    bugId: id, type: 'EXCEPTION', message: 'TypeError: cannot read x', selector: '#a', payloadUsed: '', advice: '',
+    timestamp: new Date(0), url: 'https://app/checkout', stackTrace: 'at f (a.js:1:1)', occurrences: 1, ...over,
+  });
+  const out = projectFindingsForPersistence([
+    cb('finder-1', { selector: '#a' }),
+    cb('finder-2', { selector: '#b' }), // same fault, different control ⇒ over-specified bugId
+    cb('finder-3', { selector: '#c' }),
+    cb('pw-1', { message: 'page.goto: Timeout 20000ms exceeded.' }), // engine artifact ⇒ never a finding
+  ]);
+  assert.strictEqual(out.length, 1, 'one family survives, the infra artifact is filtered out');
+  assert.strictEqual(out[0].occurrences, 3, 'the three distinct manifestations sum');
+});
+
+check('reconcileFindingsForPersistence does not double-count a server+client twin', () => {
+  const server = [bug('finder-9', { message: 'boom', url: 'https://app/p', stackTrace: 'at f (a.js:1:1)', occurrences: 2 })];
+  const client = [bug('incident-1', { message: 'boom', url: 'https://app/p', stackTrace: 'at f (a.js:1:1)', occurrences: 2 })];
+  const out = reconcileFindingsForPersistence(server, client);
+  assert.strictEqual(out.length, 1, 'the disjoint-id twin collapses by signature, not by bugId');
+  assert.strictEqual(out[0].occurrences, 2, 'max across origins — never the ×2 sum (4)');
+});
+
+check('the collapse representative carries the content-richest repro steps, order-independent', () => {
+  const rich = bug('b1', { message: 'boom', url: 'https://app/p', reproductionSteps: ['s1', 's2', 's3'] });
+  const thin = bug('b2', { message: 'boom', url: 'https://app/p', reproductionSteps: ['s1'] });
+  const forward = dedupeCaughtBugsBySignature([thin, rich]);
+  const reverse = dedupeCaughtBugsBySignature([rich, thin]);
+  assert.deepStrictEqual(forward[0].reproductionSteps, ['s1', 's2', 's3']);
+  assert.deepStrictEqual(reverse[0].reproductionSteps, ['s1', 's2', 's3']);
 });
 
 console.log(`findingProjection.test.ts: ${passed} checks passed`);

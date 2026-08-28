@@ -11,6 +11,14 @@
 
 import type { IncidentReport, ForensicCrashReport } from '../types';
 import { buildFaultSignature } from '../../../shared/faultSignature.js';
+import { compareFaultRepresentatives, type RepresentativeFault } from '../../../shared/faultRepresentative.js';
+
+// Project a live fault onto the shared representative shape (the human playbook is the
+// live equivalent of a saved finding's reproductionSteps), so the buffer picks the same
+// representative the backend save collapse does — matching repro steps on both surfaces.
+function representativeOf(fault: IncidentReport | ForensicCrashReport): RepresentativeFault {
+  return { reproductionSteps: fault.reproductionPlaybook, timestamp: fault.timestamp };
+}
 
 /**
  * Stable fault identity: message signature + URL + originating stack frame +
@@ -105,7 +113,14 @@ export function collapseFaultIntoBuffer<T extends IncidentReport | ForensicCrash
   // carries 1. max() keeps the higher and makes redelivery idempotent.
   byBug[key] = Math.max(byBug[key] ?? 0, incomingCount);
 
-  const merged = { ...incoming, occurrences: sumOcc(byBug), [OCC_BY_BUG]: byBug } as T & Counted;
+  // Deterministic, content-derived representative — the SAME choice the saved-history
+  // collapse makes (shared comparator), instead of blindly taking the latest sighting.
+  // Occurrence accounting is keyed by bugId in byBug, independent of which object
+  // represents the family, so the count is unaffected by the pick.
+  const base = existing && compareFaultRepresentatives(representativeOf(existing), representativeOf(incoming)) <= 0
+    ? (existing as T)
+    : incoming;
+  const merged = { ...base, occurrences: sumOcc(byBug), [OCC_BY_BUG]: byBug } as T & Counted;
   const next = existing
     ? prev.map((f) => (liveFaultSignature(f) === sig ? (merged as T) : f))
     : [...prev, merged as T];
