@@ -278,15 +278,6 @@ function ClinicalForensicsDashboard({
   // window — a fast transition finishes with no flash.
   const transitionLabel = useTransitionLabel(testStatus);
 
-  // Status-pill text, held to the pre-transition steady state until the label
-  // surfaces — so the pill never flashes PAUSING/STOPPING for a sub-1s settle.
-  const steadyStatusRef = useRef<TestSessionStatus>(testStatus);
-  if (testStatus !== 'PAUSING' && testStatus !== 'STOPPING') steadyStatusRef.current = testStatus;
-  const displayStatus =
-    !transitionLabel && (testStatus === 'PAUSING' || testStatus === 'STOPPING')
-      ? steadyStatusRef.current
-      : testStatus;
-
   // Falls back to the default profile's own label rather than a hardcoded string,
   // so renaming a profile in the shared catalog can never leave a stale name here.
   const currentProfileName =
@@ -540,26 +531,10 @@ function ClinicalForensicsDashboard({
             </div>
           </div>
           
-          {/* Internal Telemetry System Action Status Notification Strip */}
-          <div className="mx-2 mb-1 mt-1 flex shrink-0 items-center justify-between rounded-lg  bg-(--surface-panel) px-3 py-2 sm:mx-3 sm:mb-1 sm:px-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="text-[13px] font-semibold text-(--text-secondary)">Status:</span>
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold border ${displayStatus === 'ACTIVE'
-                ? 'border-(--status-stable-border) bg-(--status-stable-bg) text-(--status-stable-fg)'
-                : displayStatus === 'PAUSED'
-                  ? 'border-(--status-warning-border) bg-(--status-warning-bg) text-(--status-warning-fg)'
-                  : isQueued || transitionLabel
-                    ? 'border-(--status-neutral-border) bg-(--status-neutral-bg) text-(--status-neutral-fg)'
-                    : 'border-(--status-neutral-border) bg-(--status-neutral-bg) text-(--status-neutral-fg)'
-                }`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${displayStatus === 'ACTIVE' ? 'bg-(--status-stable-fg) animate-pulse'
-                  : displayStatus === 'PAUSED' ? 'bg-(--status-warning-fg)'
-                    : isQueued || transitionLabel ? 'bg-(--status-neutral-fg) animate-pulse'
-                    : 'bg-(--status-neutral-fg)'
-                  }`} />
-                {displayStatus}
-              </span>
-            </div>
+          {/* Scope notice: only the sanctioned demo target may be explored. */}
+          <div className="mx-2 mb-1 mt-1 flex shrink-0 items-center justify-center gap-1.5 px-3 py-1.5 text-center sm:mx-3">
+            <Globe className="h-3 w-3 shrink-0 text-(--text-tertiary)" aria-hidden="true" />
+            <span className="text-xs text-(--text-tertiary)">Only the approved test website is permitted for exploration.</span>
           </div>
         </div>
 

@@ -137,7 +137,6 @@ export default function ConnectionStatusChip() {
       data-connection-phase={view.phase}
       className={`fixed bottom-3 left-3 z-9999 flex items-center gap-2 rounded-full border py-1.5 pl-2.5 pr-3 text-[13px] font-semibold shadow-md backdrop-blur transition-all duration-300 ${SEVERITY_CLASS[view.severity]} ${visible ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-2 opacity-0'}`}
     >
-      <span className={`h-2 w-2 shrink-0 rounded-full ${DOT_CLASS[view.severity]}`} />
       {view.label}
       {reconnectGaveUp && (
         <button
