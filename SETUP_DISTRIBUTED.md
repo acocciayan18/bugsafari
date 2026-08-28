@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "suppress-graphql-cwe-754-false-positive"
+git commit -m "fix-findings-card-defects"
 git push origin HEAD:dev --force
 
 

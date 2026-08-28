@@ -11,6 +11,7 @@ export type RuntimeSubtype =
   | 'API_CONTRACT_VIOLATION'
   | 'SYNTAX_ERROR'
   | 'CHUNK_LOAD_FAILURE'
+  | 'MEDIA_PLAYBACK'
   | 'UNHANDLED_REJECTION'
   | 'RENDERER_CRASH'
   | 'GENERIC_EXCEPTION';
@@ -76,6 +77,9 @@ const SUBTYPE_PATTERNS: ReadonlyArray<[RuntimeSubtype, RegExp]> = [
   ['API_CONTRACT_VIOLATION', /unexpected token '?<'?|is not valid json|unexpected end of json input|unexpected token \S+.*in json|json\.parse/i],
   ['SYNTAX_ERROR', /\bsyntaxerror\b|unexpected token|unexpected end of/i],
   ['CHUNK_LOAD_FAILURE', /chunkloaderror|loading chunk .* failed|chunk.*not found/i],
+  // A media element failed to play: no decodable source, or a play() promise rejected. Matched
+  // before the source fallback so a play() rejection reads as a media fault, not a bare rejection.
+  ['MEDIA_PLAYBACK', /no supported sources?|has no supported source|notsupportederror|the play\(\) request was interrupted|play\(\)\s*(?:request\s*)?(?:was\s*)?(?:interrupted|failed)|media (?:decode|source) (?:error|failed)/i],
 ];
 
 // Subtypes assigned only when no message pattern matched — they differ purely by source
@@ -95,6 +99,7 @@ const SUBTYPE_LABEL: Record<RuntimeSubtype, string> = {
   API_CONTRACT_VIOLATION: 'Server reply was not the JSON the app expected',
   SYNTAX_ERROR: 'Script could not be parsed (syntax error)',
   CHUNK_LOAD_FAILURE: 'A page bundle failed to load',
+  MEDIA_PLAYBACK: 'Media could not play (no usable source)',
   UNHANDLED_REJECTION: 'A promise failed with nothing to catch it',
   RENDERER_CRASH: 'The browser tab crashed',
   GENERIC_EXCEPTION: 'Unhandled error on the page',
@@ -122,6 +127,8 @@ const STUDENT_GUIDANCE: Record<RuntimeSubtype, string> = {
     "The browser could not parse the script: malformed JSON, a broken template, or a build problem. Confirm the failing reply or source is valid JS or JSON.",
   CHUNK_LOAD_FAILURE:
     "A page bundle failed to download, often after a new deploy or a network hiccup. Add a retry or refresh fallback around the dynamic import.",
+  MEDIA_PLAYBACK:
+    "An `<audio>` or `<video>` could not play: its `src`/`<source>` is missing, points at a file the browser cannot decode, or `play()` was blocked by the autoplay policy. Confirm the source URL resolves and its type is supported, and always attach a `.catch` to the `play()` promise so a blocked or missing source shows a fallback instead of rejecting unhandled.",
   UNHANDLED_REJECTION:
     "A promise failed and nothing caught it: a failed `await` or `.then` with no `.catch`. Wrap the async call in try/catch and show the error to the user.",
   RENDERER_CRASH:

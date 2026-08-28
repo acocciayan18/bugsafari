@@ -1,6 +1,7 @@
 import type { Page } from 'playwright';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import type { ActionRecord, FindingAttribution, StateFingerprint } from '../../../../shared/types.js';
+import { stripContradictoryFreezeObservations } from '../../../../shared/reproduction.js';
 import { classifyFault, type FaultType } from '../../bugs/knowledgeBase/index.js';
 import { BUG_CATALOG } from '../../bugs/knowledgeBase/bugCatalog.js';
 import { ActiveScenarioTracker } from './activeScenarioTracker.js';
@@ -36,6 +37,21 @@ const FREEZE_BLOCK_THRESHOLD_MS = HEARTBEAT_TIMEOUT_MS;
 // Collapse the outside-in heartbeat and the in-page watchdog (which can both fire for
 // one freeze) into a single finding within this window.
 const FREEZE_DEDUP_MS = 10_000;
+// Full stall + recovery window. A heartbeat timeout landing within this of a main-frame
+// navigation is the renderer swapping documents, not a wedged thread.
+const NAV_SETTLE_MS = HEARTBEAT_TIMEOUT_MS + (RECOVERY_SETTLE_MS + RECOVERY_PROBE_TIMEOUT_MS) * STABILITY_RETRIES;
+
+// A main-thread probe that fails because the renderer swapped documents mid-navigation
+// (execution context destroyed / frame detached) is navigation, not a freeze. The withTimeout
+// "Operation timed out" string is the genuine-wedge signal and must NOT match here.
+const NAV_PROBE_ERROR_RE =
+  /execution context was destroyed|execution context is not available|context is not available|navigating and changing|frame was detached|frame got detached/i;
+
+// True when a probe error was caused by an in-flight navigation, not an unresponsive thread.
+export function isNavigationProbeError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+  return NAV_PROBE_ERROR_RE.test(msg);
+}
 
 type Cleanup = () => void;
 
@@ -114,6 +130,13 @@ export function setupStabilityMonitoring(
   let heartbeatInterval: NodeJS.Timeout | null = null;
   let heartbeatInFlight = false;
   let lastHeartbeatAlertAt = 0;
+  // Wall-clock of the last main-frame navigation — a probe timeout near one is a document
+  // swap, not a freeze.
+  let lastMainFrameNavAt = 0;
+  const onMainFrameNavigated = (frame: import('playwright').Frame): void => {
+    if (frame === page.mainFrame()) lastMainFrameNavAt = Date.now();
+  };
+  page.on('framenavigated', onMainFrameNavigated);
   // Single chokepoint so the outside-in heartbeat and the in-page watchdog never
   // double-report one freeze.
   let lastFreezeFindingAt = 0;
@@ -130,7 +153,9 @@ export function setupStabilityMonitoring(
     const timestamp = new Date().toISOString();
     const url = page.url();
     const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs });
-    const reproductionPlaybook = reproduction.narrative;
+    // A freeze means the page could not respond; a burst that registered fast clicks
+    // contradicts it, so drop those responsive-burst observations from the freeze evidence.
+    const reproductionPlaybook = stripContradictoryFreezeObservations(reproduction.narrative);
     // Renderer is unresponsive during a freeze — capture cookies only (no storage evaluate).
     const stateFingerprint = await captureStateFingerprint(page, { cookiesOnly: true });
 
@@ -220,14 +245,17 @@ export function setupStabilityMonitoring(
     ]);
   };
 
-  // Probe the main thread once; true if it answered within the timeout.
-  const threadResponsive = async (timeoutMs: number = HEARTBEAT_TIMEOUT_MS): Promise<boolean> => {
-    if (disposed || page.isClosed()) return false;
+  // Probe the main thread once. 'responsive' if it answered; 'context-lost' when the probe
+  // failed because the renderer was navigating (execution context destroyed / frame detached) —
+  // a document swap, not a freeze; 'timeout' for any other failure (a genuine wedge).
+  type ProbeResult = 'responsive' | 'timeout' | 'context-lost';
+  const probeMainThread = async (timeoutMs: number = HEARTBEAT_TIMEOUT_MS): Promise<ProbeResult> => {
+    if (disposed || page.isClosed()) return 'context-lost';
     try {
       await withTimeout(page.evaluate(() => true), timeoutMs);
-      return true;
-    } catch {
-      return false;
+      return 'responsive';
+    } catch (err) {
+      return isNavigationProbeError(err) ? 'context-lost' : 'timeout';
     }
   };
 
@@ -240,7 +268,8 @@ export function setupStabilityMonitoring(
     for (let attempt = 0; attempt < STABILITY_RETRIES; attempt += 1) {
       if (disposed || page.isClosed()) return false;
       await sleep(RECOVERY_SETTLE_MS);
-      if (await threadResponsive(RECOVERY_PROBE_TIMEOUT_MS)) return true;
+      // Responsive OR a navigation swap both mean the thread was not wedged — recovered.
+      if ((await probeMainThread(RECOVERY_PROBE_TIMEOUT_MS)) !== 'timeout') return true;
     }
     return false;
   };
@@ -259,7 +288,22 @@ export function setupStabilityMonitoring(
     // Re-check after the recovery window: a stop/close that landed mid-probe makes the
     // stall an expected shutdown artifact, so suppress the finding entirely.
     if (isTeardown()) return;
-    if (!recovered) await emitFreezeFinding(faultAtMs);
+    if (recovered) return;
+    // A timeout landing within the stall+recovery window of a main-frame navigation is the
+    // renderer swapping documents (evaluate can hang, not only throw), not a wedge. Suppress
+    // and note it for observability rather than reporting a false freeze.
+    if (Date.now() - lastMainFrameNavAt < NAV_SETTLE_MS) {
+      telemetry.emitTelemetry({
+        timestamp: new Date().toISOString(),
+        type: 'ACTION',
+        meta: {
+          actionExecuted: 'freeze-suppressed-navigation',
+          message: 'Heartbeat timeout coincided with a page navigation; suppressed as a document swap, not a freeze.',
+        },
+      });
+      return;
+    }
+    await emitFreezeFinding(faultAtMs);
   };
 
   const runHeartbeat = async (): Promise<void> => {
@@ -272,7 +316,10 @@ export function setupStabilityMonitoring(
       // The freeze onset is when this probe was sent, not when we later escalate —
       // anchoring the fault here trims the ~5s stall + recovery window from repro steps.
       const probeStartedAt = Date.now();
-      if (await threadResponsive()) return;
+      // Responsive → healthy. A navigation swap (context-lost) is not a freeze either — the
+      // renderer is busy loading a new document, so never escalate on it.
+      const probe = await probeMainThread();
+      if (probe === 'responsive' || probe === 'context-lost') return;
       // The probe can fail simply because the engine closed the browser out from under it
       // (operator stop / cancel / pause) — that is teardown, not an application lock-up.
       if (isTeardown()) return;
@@ -339,6 +386,8 @@ export function setupStabilityMonitoring(
 
   return (): void => {
     disposed = true;
+
+    page.off('framenavigated', onMainFrameNavigated);
 
     if (heartbeatInterval) {
       clearInterval(heartbeatInterval);

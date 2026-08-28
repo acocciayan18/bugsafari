@@ -31,8 +31,11 @@ import {
   endpointLabel,
   describeNetworkFault,
   mapReproductionActionType,
+  isResponsiveBurstObservation,
+  stripContradictoryFreezeObservations,
 } from './reproduction.js';
 import type { ActionRecord } from './types/bug.js';
+import { OBSERVATION_PREFIX } from './types/telemetry.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -235,6 +238,28 @@ check('inert burst (0 clicks registered) is flagged invalid, not dressed up as N
   assert.ok(out.startsWith('Invalid:'), out);
   assert.ok(out.includes('0 of 15 clicks registered'), out);
   assert.ok(!out.includes('as fast as possible'), out);
+});
+
+check('responsive burst observation is detected; inert and plain lines are not', () => {
+  assert.equal(isResponsiveBurstObservation(`${OBSERVATION_PREFIX}5 of 5 clicks registered in 218ms`), true);
+  assert.equal(isResponsiveBurstObservation(`${OBSERVATION_PREFIX}Invalid: 0 of 5 clicks registered`), false);
+  assert.equal(isResponsiveBurstObservation('Step 1. Navigate to /'), false);
+  // The counts must ride an OBSERVED line, not any prose that mentions clicks.
+  assert.equal(isResponsiveBurstObservation('5 of 5 clicks registered in 218ms'), false);
+});
+
+check('freeze repro strips a responsive burst but keeps steps and inert bursts', () => {
+  const narrative = [
+    'Step 1. Navigate to /',
+    `${OBSERVATION_PREFIX}5 of 5 clicks registered in 218ms`,
+    `${OBSERVATION_PREFIX}Invalid: 0 of 5 clicks registered`,
+    'Step 2. Click the "Play Hymn" button',
+  ];
+  assert.deepEqual(stripContradictoryFreezeObservations(narrative), [
+    'Step 1. Navigate to /',
+    `${OBSERVATION_PREFIX}Invalid: 0 of 5 clicks registered`,
+    'Step 2. Click the "Play Hymn" button',
+  ]);
 });
 
 check('route + container framing helpers read as human location, not selectors', () => {

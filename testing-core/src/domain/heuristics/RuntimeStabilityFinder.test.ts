@@ -42,6 +42,8 @@ check('JSON-parse of HTML with NO correlated response → SYNTAX_ERROR (local pa
 check('JSON-parse of HTML WITH a correlated response → API_CONTRACT_VIOLATION', () => detects(`SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON`, 'API_CONTRACT_VIOLATION', 'EXCEPTION', true));
 check('JSON.parse stack frame with a correlated response → API_CONTRACT_VIOLATION', () => detects('SyntaxError at JSON.parse (<anonymous>)', 'API_CONTRACT_VIOLATION', 'EXCEPTION', true));
 check('chunk load failure', () => detects('Loading chunk 42 failed', 'CHUNK_LOAD_FAILURE'));
+check('media play() rejection classifies as MEDIA_PLAYBACK, not UNHANDLED_REJECTION', () => detects('The element has no supported sources.', 'MEDIA_PLAYBACK', 'REJECTION'));
+check('interrupted play() request classifies as MEDIA_PLAYBACK', () => detects('The play() request was interrupted by a call to pause().', 'MEDIA_PLAYBACK', 'REJECTION'));
 check('rejection falls back to UNHANDLED_REJECTION when message is generic', () => detects('request failed', 'UNHANDLED_REJECTION', 'REJECTION'));
 check('crash source always classifies as RENDERER_CRASH', () => detects('anything', 'RENDERER_CRASH', 'CRASH'));
 check('unknown message falls back to GENERIC_EXCEPTION', () => detects('something odd happened', 'GENERIC_EXCEPTION'));
@@ -135,6 +137,13 @@ check('API contract violation advice is also one consolidated Suggested Fix', ()
   assert.equal(fixBlocks, 1, 'exactly one Suggested fix block');
   assert.ok(finding.studentAdvice.includes('Apply that guard at the failing line'));
   assert.ok(finding.message.startsWith('[Server reply was not the JSON the app expected]'));
+});
+
+check('media fault advice names a media/source concept, not a bare promise catch', () => {
+  const f = new RuntimeStabilityFinder();
+  const { finding } = f.classify(obs({ message: 'The element has no supported sources.', source: 'REJECTION' }));
+  assert.ok(finding.message.startsWith('[Media could not play (no usable source)]'), finding.message);
+  assert.ok(/source|audio|video|decode/i.test(finding.studentAdvice), finding.studentAdvice);
 });
 
 check('empty / whitespace / missing message never throws', () => {

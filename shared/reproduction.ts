@@ -4,6 +4,7 @@
 // voice. No runtime deps: types only.
 
 import type { ActionRecord, ActionType, ActionOutcome, ReplayMacro, StepTarget } from './types/bug.js';
+import { OBSERVATION_PREFIX } from './types/telemetry.js';
 
 const MAX_LABEL_LENGTH = 60;
 const MAX_PAYLOAD_LENGTH = 2048;
@@ -450,6 +451,29 @@ export function describeConcurrentBurst(outcome: BurstSummary, label: string, ki
 /** Multi-sibling zero-wait concurrent burst (InteractionSimulator.concurrentClicker) — intent + outcome. */
 export function describeConcurrentBurstSiblings(outcome: BurstSummary, targets?: StepTarget[]): string {
   return `${describeConcurrentBurstSiblingsIntent(targets ?? [], outcome.attempted)} (${describeBurstOutcome(outcome)})`;
+}
+
+// Matches a burst-outcome observation line and captures completed/attempted counts.
+const BURST_OUTCOME_RE = /(\d+) of (\d+) clicks registered in \d+ms/;
+
+/**
+ * True when a narrative line is a burst observation whose clicks actually landed
+ * (completed > 0) — proof the main thread was responsive. Inert bursts ("Invalid: 0 of N…")
+ * have completed 0 and are not flagged.
+ */
+export function isResponsiveBurstObservation(line: string): boolean {
+  if (!line.includes(OBSERVATION_PREFIX)) return false;
+  const m = line.match(BURST_OUTCOME_RE);
+  return m ? Number(m[1]) > 0 : false;
+}
+
+/**
+ * Drop responsive-burst observations from a freeze reproduction. A freeze means the page
+ * could not respond to input, so a burst that registered fast clicks contradicts it and must
+ * not ride along as the freeze's evidence.
+ */
+export function stripContradictoryFreezeObservations(narrative: string[]): string[] {
+  return narrative.filter((line) => !isResponsiveBurstObservation(line));
 }
 
 /**
