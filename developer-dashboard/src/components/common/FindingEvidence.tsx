@@ -201,7 +201,7 @@ export default function FindingEvidence({ view, showBypass = true, aiFix = false
       )}
 
       {/* Suggested fix — bound to this finding's remediation (heading + copy live in the block) */}
-      <div className="px-4 pt-3">
+      <div className="px-4 pt-3 pb-3">
         <SuggestedFixBlock advice={view.advice} savedAiAdvice={view.aiAdvice} context={aiFix ? toSuggestFixContext(view, sessionId) : undefined} />
       </div>
 

@@ -4,7 +4,6 @@ import { User, Lock, Eye, EyeOff, MailCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { AUTH_SUCCESS, authSuccessToast, authEventToast } from '../../infrastructure/notifications/authToasts';
 import { postAuth } from '../../utils/authFeedback';
-import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import AuthShell from './AuthShell';
 import AuthAlert from './AuthAlert';
@@ -64,6 +63,14 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
   const credentialsRejected = authError?.code === 'INVALID_CREDENTIALS';
   const emailUnverified = authError?.code === 'EMAIL_UNVERIFIED';
 
+  const emailInvalid = !!emailError || credentialsRejected || authError?.field === 'email';
+  const passwordInvalid = !!passwordError || credentialsRejected || authError?.field === 'password';
+
+  // One field skin shared by both inputs so email + password stay pixel-identical.
+  const fieldBase = 'peer w-full h-11 rounded-(--radius-sm) border bg-(--surface-panel) pl-10 pr-11 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-[color,border-color,box-shadow] duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-1 focus:ring-(--border-focus)';
+  const fieldBorder = (invalid: boolean) => (invalid ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)');
+  const iconClass = 'absolute inset-y-0 left-3 flex items-center text-(--text-tertiary) peer-focus:text-(--text-primary) transition-colors pointer-events-none';
+
   const handleResendVerification = async () => {
     if (!email.trim()) return;
     setResending(true);
@@ -103,13 +110,13 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
 
       footer={
         <>
-          <div className="mt-8 text-center text-sm text-(--text-primary)">
+          <div className="mt-6 pt-5 border-t border-(--border-hairline) text-center text-sm text-(--text-primary)">
             Don't have an account?{' '}
             <Link to="/signup" className="text-(--text-primary) font-medium hover:underline underline-offset-2">Sign Up</Link>
           </div>
 
-          <div className="mt-3 text-center">
-            <button type="button" onClick={() => setIsGuestModalOpen(true)} className="text-sm text-(--text-tertiary) cursor-pointer hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1">
+          <div className="mt-4 text-center">
+            <button type="button" onClick={() => setIsGuestModalOpen(true)} className="inline-flex items-center justify-center gap-1.5 text-[13px] font-medium text-(--text-tertiary) cursor-pointer hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-2 py-1">
               Continue As Guest
             </button>
           </div>
@@ -126,34 +133,36 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
         </>
       }
     >
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-            <div className="relative">
-              <span className="absolute left-3 top-[38px] text-(--text-tertiary) pointer-events-none"><User className="w-4 h-4 shrink-0" /></span>
-              <Input
-                ref={emailRef}
-                id="email"
-                label="Email"
-                type="email"
-                value={email}
-                onChange={(e) => { setEmail(e.target.value); if (authError) clearAuthError(); }}
-                onBlur={() => setTouchedEmail(true)}
-                placeholder="example@email.com"
-                className="pl-10 w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) pl-10 pr-10 text-base  text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0"
-                error={emailError || undefined}
-                invalid={credentialsRejected || authError?.field === 'email'}
-                maxLength={EMAIL_MAX_LENGTH}
-                autoComplete="email"
-                required
-              />
+          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+            <div>
+              <label htmlFor="email" className="block mb-1.5 text-sm font-medium text-(--text-primary)">Email</label>
+              <div className="relative">
+                <input
+                  ref={emailRef}
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); if (authError) clearAuthError(); }}
+                  onBlur={() => setTouchedEmail(true)}
+                  placeholder="example@email.com"
+                  aria-invalid={emailInvalid}
+                  aria-describedby={emailError ? 'email-error' : undefined}
+                  maxLength={EMAIL_MAX_LENGTH}
+                  autoComplete="email"
+                  className={`${fieldBase} ${fieldBorder(emailInvalid)}`}
+                  required
+                />
+                <span className={iconClass}><User className="w-4 h-4 shrink-0" /></span>
+              </div>
+              {emailError && <p id="email-error" className="mt-1.5 text-sm text-(--status-critical-fg)">{emailError}</p>}
             </div>
 
-            <div className="relative">
+            <div>
               <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1.5">
                 <label htmlFor="password" className="text-sm font-medium text-(--text-primary)">Password</label>
-                <Link to="/forgot-password" className="text-sm font-normal text-(--text-tertiary) hover:text-(--text-primary)">Forgot password?</Link>
+                <Link to="/forgot-password" className="text-[13px] font-medium text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1">Forgot password?</Link>
               </div>
               <div className="relative">
-                <span className="absolute inset-y-0 left-3 flex items-center text-(--text-tertiary) pointer-events-none"><Lock className="w-4 h-4 shrink-0" /></span>
                 <input
                   ref={passwordRef}
                   id="password"
@@ -162,18 +171,19 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
                   onChange={(e) => { setPassword(e.target.value); if (authError) clearAuthError(); }}
                   onBlur={() => setTouchedPassword(true)}
                   placeholder="••••••••"
-                  aria-invalid={!!passwordError || credentialsRejected || authError?.field === 'password'}
+                  aria-invalid={passwordInvalid}
                   aria-describedby={passwordError ? 'password-error' : undefined}
                   maxLength={PASSWORD_MAX_LENGTH}
                   autoComplete="current-password"
-                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${passwordError || credentialsRejected || authError?.field === 'password' ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
+                  className={`${fieldBase} ${fieldBorder(passwordInvalid)}`}
                   required
                 />
+                <span className={iconClass}><Lock className="w-4 h-4 shrink-0" /></span>
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-(--text-tertiary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)"
+                  className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-(--text-tertiary) hover:text-(--text-primary) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -181,12 +191,10 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
               {passwordError && <p id="password-error" className="mt-1.5 text-sm text-(--status-critical-fg)">{passwordError}</p>}
             </div>
 
-           
-
             <AuthAlert feedback={authError} />
 
             {emailUnverified && (
-              <Button type="button" variant="secondary" size="md" className="w-full" isLoading={resending} disabled={resending} onClick={handleResendVerification}>
+              <Button type="button" variant="secondary" size="lg" className="w-full" isLoading={resending} disabled={resending} onClick={handleResendVerification}>
                 <span className="inline-flex items-center gap-2">
                   <MailCheck className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
                   {resending ? 'Sending…' : 'Resend verification email'}
@@ -194,7 +202,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
               </Button>
             )}
 
-            <Button type="submit" variant="primary" size="md" className="w-full" isLoading={isLoading} disabled={isLoading}>
+            <Button type="submit" variant="primary" size="lg" className="w-full" isLoading={isLoading} disabled={isLoading}>
               {isLoading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>

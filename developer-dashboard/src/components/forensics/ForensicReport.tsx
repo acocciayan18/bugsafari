@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, TriangleAlert, CircleHelp, CircleX, CircleSlash, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, CircleCheckBig, Calendar, Clock, Hash, Sparkles, Network, Terminal } from 'lucide-react';
+import { Check, TriangleAlert, CircleHelp, CircleX, CircleSlash, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, ArrowRight, CircleCheckBig, Calendar, ChevronDown, Hash, Clock, Sparkles, Network, Terminal } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useHistoryStore } from '../../stores/history/historyStore';
@@ -102,8 +102,8 @@ function riskTheme(score: number): string {
 function StatBlock({ label, value, valueClassName = 'text-(--text-primary)' }: { label: string; value: ReactNode; valueClassName?: string }) {
   return (
     <div className="min-w-0">
-      <div className="text-[13px] font-medium  text-(--text-secondary)">{label}</div>
-      <div className={`mt-0.5 text-sm font-medium tabular-nums ${valueClassName}`}>{value}</div>
+      <div className="text-[13px] font-medium capitalize tracking-wide text-(--text-tertiary)">{label}</div>
+      <div className={`mt-1 text-sm font-medium tabular-nums ${valueClassName}`}>{value}</div>
     </div>
   );
 }
@@ -122,7 +122,7 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
   const routes = report.visitedRoutes ?? [];
 
   return (
-    <section className={`rounded-xl border ${theme.border} ${theme.bg} p-5`}>
+    <section className={`rounded-xl border ${theme.border} ${theme.bg} p-5 sm:p-6`}>
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -169,7 +169,7 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
         </div>
       </div>
 
-      <div className="mt-5 grid grid-flow-col auto-cols-max gap-6 border-t border-(--border-hairline) pt-4 justify-start">
+      <div className="mt-5 flex flex-wrap gap-x-10 gap-y-4 border-t border-(--border-hairline) pt-4">
   {/* Which profile produced these findings — absent on reports predating the field. */}
   {reportProfileLabel(report.infiltrationProfile) && (
     <StatBlock label="Profile" value={reportProfileLabel(report.infiltrationProfile)} />
@@ -196,9 +196,10 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
           <button
             type="button"
             onClick={() => setShowRoutes((prev) => !prev)}
-            className="flex items-center gap-1.5 text-caption font-semibold uppercase text-(--text-secondary) transition-colors hover:text-(--text-primary)"
+            aria-expanded={showRoutes}
+            className="flex cursor-pointer items-center gap-1.5 text-caption font-semibold uppercase text-(--text-secondary) transition-colors hover:text-(--text-primary)"
           >
-            <span>{showRoutes ? '▼' : ''}</span>
+            <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${showRoutes ? '' : '-rotate-90'}`} aria-hidden="true" />
             <span>Visited Routes ({routes.length})</span>
           </button>
           {showRoutes && (
@@ -275,16 +276,18 @@ function AiInsightsPanel({
   if (!aiAnalysis || (!rootCause && !recommendations.length && !canGenerate)) return null;
 
   return (
-    <section className="rounded-lg border border-(--status-neutral-border) bg-(--status-neutral-bg) p-5">
-      <div className="flex flex-wrap items-center gap-2 text-[13px] font-bold uppercase text-(--status-neutral-fg)">
-        <Lightbulb className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-        <span>Insights</span>
+    <section className="overflow-hidden rounded-2xl border border-(--status-neutral-border) bg-(--surface-panel) shadow-sm">
+      <div className="flex flex-wrap items-center gap-2 border-b border-(--status-neutral-border) bg-(--status-neutral-bg) px-4 py-2.5">
+        <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-(--surface-raised) text-(--status-neutral-fg) ring-1 ring-(--status-neutral-border)">
+          <Lightbulb className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+        </span>
+        <span className="text-[13px] font-bold uppercase tracking-wide text-(--text-primary)">Insights</span>
         {aiAnalysis.riskLevel && (
-          <span className="rounded-full bg-(--surface-raised) px-2 py-0.5 text-xs font-semibold uppercase text-(--status-neutral-fg)">
+          <span className="rounded-full border border-(--status-neutral-border) bg-(--surface-raised) px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-(--status-neutral-fg)">
             {aiAnalysis.riskLevel} risk
           </span>
         )}
-        
+
         {/* Generate once per run: hidden once AI insights exist (fresh or persisted),
             so a successful result is shown directly and never regenerated. It returns
             only when generation failed or fell back to the deterministic analysis. */}
@@ -293,7 +296,7 @@ function AiInsightsPanel({
             type="button"
             onClick={generate}
             disabled={status === 'loading'}
-            className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded border border-(--border-hairline) bg-(--surface-raised) px-2 py-1 text-xs font-semibold normal-case text-(--text-secondary) hover:text-(--text-primary) disabled:opacity-60"
+            className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-(--border-hairline) bg-(--surface-raised) px-2 py-1 text-xs font-semibold normal-case text-(--text-secondary) transition-colors hover:bg-(--surface-hover) hover:text-(--text-primary) disabled:opacity-60"
           >
             {status === 'loading'
               ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Generating…</>
@@ -301,22 +304,33 @@ function AiInsightsPanel({
           </button>
         )}
       </div>
-      {status === 'error' && (
-        <p className="mt-2 text-xs font-medium text-(--status-critical-fg)">{fallbackReasonText(reason)} Showing the built-in analysis instead.</p>
-      )}
-      {rootCause && (
-        <p className="mt-3 text-[13px] leading-relaxed text-(--text-primary)">{rootCause}</p>
-      )}
-      {recommendations.length > 0 && (
-        <ul className="mt-3 space-y-1.5">
-          {recommendations.map((recommendation, idx) => (
-            <li key={idx} className="flex gap-2 text-[13px] text-(--text-secondary)">
-              <span className="text-(--status-neutral-fg)">→</span>
-              <span>{recommendation}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+
+      <div className="px-4 py-3">
+        {status === 'error' && (
+          <p className="mb-2.5 rounded-md border border-(--status-critical-border) bg-(--status-critical-bg) px-2.5 py-1.5 text-xs font-medium text-(--status-critical-fg)">{fallbackReasonText(reason)} Showing the built-in analysis instead.</p>
+        )}
+        {rootCause && (
+          <div>
+            <span className="text-[11px] font-semibold uppercase text-(--text-tertiary)">Root cause</span>
+            <p className="mt-1 text-[13px] leading-relaxed text-(--text-primary)">{rootCause}</p>
+          </div>
+        )}
+        {recommendations.length > 0 && (
+          <div className={rootCause ? 'mt-3 border-t border-(--border-hairline) pt-2.5' : ''}>
+            <span className="text-[11px] font-semibold uppercase text-(--text-tertiary)">Recommendations</span>
+            <ul className="mt-1.5 space-y-1.5">
+              {recommendations.map((recommendation, idx) => (
+                <li key={idx} className="flex gap-2 text-[13px] leading-relaxed text-(--text-secondary)">
+                  <span className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-(--status-neutral-bg) text-(--status-neutral-fg)">
+                    <ArrowRight className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+                  </span>
+                  <span>{recommendation}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
     </section>
   );
 }
@@ -586,18 +600,18 @@ function VerifyFixControl({
 
 function ResultStat({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
-    <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) px-3 py-2">
-      <div className="text-[13px] font-semibold uppercase text-(--text-tertiary)">{label}</div>
-      <div className="mt-0.5 truncate text-[13px] font-bold text-(--text-primary)" title={title ?? value}>{value}</div>
+    <div className="rounded-lg border border-(--border-hairline) bg-(--surface-inset) px-3 py-2.5">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-(--text-tertiary)">{label}</div>
+      <div className="mt-1 truncate text-sm font-bold text-(--text-primary)" title={title ?? value}>{value}</div>
     </div>
   );
 }
 
 function ReproducedSignal({ signal }: { signal: RegressionSignal }) {
   return (
-    <li className="rounded-md border border-(--status-critical-border) bg-(--status-critical-bg) p-3">
+    <li className="rounded-lg border border-(--status-critical-border) bg-(--status-critical-bg) p-3.5">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded bg-(--status-critical-fg) px-1.5 py-0.5 text-[13px] font-bold uppercase text-(--text-oninvert)">
+        <span className="rounded-md bg-(--status-critical-fg) px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-(--text-oninvert)">
           {signal.faultType}
         </span>
         {typeof signal.statusCode === 'number' && (
@@ -627,15 +641,17 @@ function VerificationResultModal({
   return (
     <Modal isOpen onClose={onClose} titleId={titleId} maxWidthClassName="max-w-2xl">
       {/* Accent header keyed to the verdict tone */}
-      <div className={`flex items-center gap-3 rounded-t-lg px-4 py-4 text-(--text-oninvert) sm:px-5 ${meta.modalBar}`}>
-        {meta.icon('h-6 w-6 shrink-0')}
+      <div className={`flex items-center gap-3.5 rounded-t-(--radius-lg) px-5 py-5 text-(--text-oninvert) sm:px-6 ${meta.modalBar}`}>
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15">
+          {meta.icon('h-6 w-6')}
+        </span>
         <div className="min-w-0">
-          <div className="text-xs font-semibold uppercase opacity-90">Verification Result</div>
+          <div className="text-[11px] font-semibold uppercase tracking-wide opacity-90">Verification Result</div>
           <h2 id={titleId} className="text-lg font-bold leading-tight">{meta.label}</h2>
         </div>
       </div>
 
-      <div className="bg-(--surface-panel) px-4 py-4 sm:px-5">
+      <div className="bg-(--surface-panel) px-5 py-5 sm:px-6">
         <p className="text-[13px] leading-relaxed text-(--text-primary)">{result.summary}</p>
 
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -663,19 +679,19 @@ function VerificationResultModal({
         )}
 
         {result.verdict === 'RESOLVED' && (
-          <div className="mt-4 rounded-md border border-(--status-stable-border) bg-(--status-stable-bg) p-3 text-[13px] text-(--status-stable-fg)">
+          <div className="mt-4 rounded-lg border border-(--status-stable-border) bg-(--status-stable-bg) p-3.5 text-[13px] leading-relaxed text-(--status-stable-fg)">
             {REASON_TEXT.CLEAN_REPLAY}
           </div>
         )}
 
         {result.verdict === 'INCONCLUSIVE' && (
-          <div className="mt-4 rounded-md border border-(--status-warning-border) bg-(--status-warning-bg) p-3 text-[13px] text-(--status-warning-fg)">
+          <div className="mt-4 rounded-lg border border-(--status-warning-border) bg-(--status-warning-bg) p-3.5 text-[13px] leading-relaxed text-(--status-warning-fg)">
             {REASON_TEXT[result.reason] ?? 'The replay could not finish. Try again.'}
           </div>
         )}
 
         {result.verdict === 'VERIFICATION_FAILED' && (
-          <div className="mt-4 rounded-md border border-(--status-warning-border) bg-(--status-warning-bg) p-3 text-[13px] text-(--status-warning-fg)">
+          <div className="mt-4 rounded-lg border border-(--status-warning-border) bg-(--status-warning-bg) p-3.5 text-[13px] leading-relaxed text-(--status-warning-fg)">
             {REASON_TEXT[result.reason] ?? REASON_TEXT.REPLAY_ERROR}
           </div>
         )}
@@ -695,20 +711,19 @@ function VerificationResultModal({
       </div>
 
       {/* Footer actions */}
-      <div className="flex flex-wrap items-center justify-end gap-2 rounded-b-lg border-t border-(--border-hairline) bg-(--surface-panel) px-4 py-3 sm:px-5">
+      <div className="flex flex-wrap items-center justify-end gap-2.5 rounded-b-(--radius-lg) border-t border-(--border-hairline) bg-(--surface-panel) px-5 py-3.5 sm:px-6">
         <button
           type="button"
           onClick={onReverify}
-          className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-(--border-strong) bg-(--surface-panel) px-3 py-1.5 text-[13px] font-semibold text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
+          className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-(--border-strong) bg-(--surface-panel) px-3.5 py-2 text-[13px] font-semibold text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
         >
-          
           <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
           Re-verify
         </button>
         <button
           type="button"
           onClick={onClose}
-          className="rounded-md cursor-pointer bg-(--surface-invert) px-3 py-1.5 text-[13px] font-semibold text-(--text-oninvert) transition-colors hover:bg-(--surface-invert-hover)"
+          className="cursor-pointer rounded-lg bg-(--surface-invert) px-4 py-2 text-[13px] font-semibold text-(--text-oninvert) transition-colors hover:bg-(--surface-invert-hover)"
         >
           Close
         </button>
@@ -900,15 +915,19 @@ function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
   const timelineText = actionStepsToMarkdown(steps);
 
   return (
-    <section className="rounded-lg border border-(--border-hairline) bg-(--surface-panel)">
+    <section className="overflow-hidden rounded-xl border border-(--border-hairline) bg-(--surface-panel)">
       <button
         onClick={() => setIsOpen((prev) => !prev)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-(--surface-hover)"
+        aria-expanded={isOpen}
+        className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-(--surface-hover)"
       >
         <span className="text-[13px] font-semibold uppercase text-(--text-secondary)">
           Full Action Timeline ({steps.length} steps), for reference
         </span>
-        <span className="text-[13px] text-(--text-tertiary)">{isOpen ? '▼ Collapse' : ' Expand'}</span>
+        <span className="flex shrink-0 items-center gap-1.5 text-[13px] font-medium text-(--text-tertiary)">
+          {isOpen ? 'Collapse' : 'Expand'}
+          <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isOpen ? '' : '-rotate-90'}`} aria-hidden="true" />
+        </span>
       </button>
       {isOpen && (
         <div className="border-t border-(--border-hairline) px-4 py-4">

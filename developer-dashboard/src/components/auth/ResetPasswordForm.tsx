@@ -41,19 +41,21 @@ export default function ResetPasswordForm() {
         title="Invalid reset link"
       >
         <div className="text-center">
-          <div className="w-14 h-14 sm:w-16 sm:h-16 shrink-0 bg-(--status-critical-bg) border border-(--status-critical-border) rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-(--status-critical-fg)"><CircleX className="w-7 h-7 sm:w-8 sm:h-8" strokeWidth={1.75} aria-hidden="true" /></span>
+          <div className="w-16 h-16 sm:w-[72px] sm:h-[72px] shrink-0 bg-(--status-critical-bg) ring-1 ring-(--status-critical-border) rounded-full flex items-center justify-center mx-auto mb-5 shadow-(--shadow-sm)">
+            <span className="text-(--status-critical-fg)"><CircleX className="w-8 h-8 sm:w-9 sm:h-9" strokeWidth={1.75} aria-hidden="true" /></span>
           </div>
-          <p className="text-(--text-primary) mb-5 sm:mb-6">
+          <p className="text-base leading-relaxed text-(--text-primary) mb-6 max-w-[38ch] mx-auto">
             This password reset link is invalid or has expired.
           </p>
-          <Link
-            to="/forgot-password"
-            className="inline-flex items-center text-[13px] text-(--text-primary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
-          >
-            <ArrowLeft className="w-5 h-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-            <span className="ml-2">Request a new reset link</span>
-          </Link>
+          <div className="pt-5 border-t border-(--border-hairline)">
+            <Link
+              to="/forgot-password"
+              className="inline-flex items-center gap-2 text-[13px] font-medium text-(--text-primary) hover:opacity-80 transition-opacity duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1 py-0.5"
+            >
+              <ArrowLeft className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+              Request a new reset link
+            </Link>
+          </div>
         </div>
       </AuthShell>
     );
@@ -73,6 +75,12 @@ export default function ResetPasswordForm() {
     : (touchedConfirm || submitted) && confirmPassword.length === 0
     ? 'Please confirm your password.'
     : '';
+
+  // Shared field skin so every input stays pixel-identical with the other auth screens.
+  const fieldBase = 'peer w-full h-11 rounded-(--radius-sm) border bg-(--surface-panel) pl-10 pr-11 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-[color,border-color,box-shadow] duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-1 focus:ring-(--border-focus)';
+  const fieldBorder = (invalid: boolean) => (invalid ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)');
+  const iconClass = 'absolute inset-y-0 left-3 flex items-center text-(--text-tertiary) peer-focus:text-(--text-primary) transition-colors pointer-events-none';
+  const eyeClass = 'absolute inset-y-0 right-0 flex w-11 items-center justify-center text-(--text-tertiary) hover:text-(--text-primary) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)';
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -123,13 +131,10 @@ export default function ResetPasswordForm() {
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             {/* Password Field */}
             <div>
-              <label htmlFor="password" className="block text-[13px] font-medium text-(--text-primary) mb-1.5">
+              <label htmlFor="password" className="block text-sm font-medium text-(--text-primary) mb-1.5">
                 New Password
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-(--text-tertiary) pointer-events-none">
-                  <Lock className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-                </div>
                 <input
                   ref={passwordRef}
                   id="password"
@@ -141,17 +146,18 @@ export default function ResetPasswordForm() {
                   aria-describedby={passwordError ? 'password-error' : undefined}
                   maxLength={PASSWORD_MAX_LENGTH}
                   autoComplete="new-password"
-                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) px-4 pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${passwordError || feedback?.field === 'password' ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
+                  className={`${fieldBase} ${fieldBorder(!!passwordError || feedback?.field === 'password')}`}
                   placeholder="••••••••"
                   required
                 />
+                <span className={iconClass}><Lock className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" /></span>
                 <button
                   type="button"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-(--text-tertiary) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)"
+                  className={eyeClass}
                   onClick={() => setShowPassword(!showPassword)}
                 >
-                  {showPassword ? <EyeOff className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /> : <Eye className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />}
+                  {showPassword ? <EyeOff className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" /> : <Eye className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />}
                 </button>
               </div>
               {passwordError && <p id="password-error" className="mt-1.5 text-[13px] text-(--status-critical-fg)">{passwordError}</p>}
@@ -159,13 +165,10 @@ export default function ResetPasswordForm() {
 
             {/* Confirm Password Field */}
             <div>
-              <label htmlFor="confirmPassword" className="block text-[13px] font-medium text-(--text-primary) mb-1.5">
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-(--text-primary) mb-1.5">
                 Confirm New Password
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center text-(--text-tertiary) pointer-events-none">
-                  <Lock className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-                </div>
                 <input
                   ref={confirmPasswordRef}
                   id="confirmPassword"
@@ -177,17 +180,18 @@ export default function ResetPasswordForm() {
                   aria-describedby={confirmError ? 'confirmPassword-error' : undefined}
                   maxLength={PASSWORD_MAX_LENGTH}
                   autoComplete="new-password"
-                  className={`w-full h-10 rounded-(--radius-sm) border bg-(--surface-panel) px-4 pl-10 pr-10 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 ${confirmError ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
+                  className={`${fieldBase} ${fieldBorder(!!confirmError)}`}
                   placeholder="••••••••"
                   required
                 />
+                <span className={iconClass}><Lock className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" /></span>
                 <button
                   type="button"
                   aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-(--text-tertiary) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)"
+                  className={eyeClass}
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 >
-                  {showConfirmPassword ? <EyeOff className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /> : <Eye className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />}
+                  {showConfirmPassword ? <EyeOff className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" /> : <Eye className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />}
                 </button>
               </div>
               {confirmError && <p id="confirmPassword-error" className="mt-1.5 text-[13px] text-(--status-critical-fg)">{confirmError}</p>}
@@ -199,12 +203,21 @@ export default function ResetPasswordForm() {
             <AuthAlert feedback={feedback} />
 
             {/* Submit Button */}
-            <Button type="submit" variant="primary" size="md" className="w-full" isLoading={isLoading} disabled={isLoading}>
+            <Button type="submit" variant="primary" size="lg" className="w-full" isLoading={isLoading} disabled={isLoading}>
               {isLoading ? 'Resetting...' : 'Reset Password'}
             </Button>
           </form>
 
-          
+          {/* Back to Login */}
+          <div className="mt-6 pt-5 border-t border-(--border-hairline) flex justify-center">
+            <Link
+              to="/login"
+              className="inline-flex items-center gap-2 text-[13px] font-medium text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1 py-0.5"
+            >
+              <ArrowLeft className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+              Back to sign in
+            </Link>
+          </div>
     </AuthShell>
   );
 }

@@ -88,14 +88,14 @@ export const ExpandableCodeBlock = ({
     <div>
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-2 px-4 py-3 cursor-pointer text-(--text-secondary) hover:bg-(--surface-hover) transition-colors text-[13px] font-semibold"
+        className="w-full flex items-center gap-2 px-4 py-3 pt-0 cursor-pointer text-(--text-secondary)  transition-colors text-[13px] font-semibold"
       >
         <span className="shrink-0 text-[13px]">{isExpanded ? '▼' : ''}</span>
         <span className="min-w-0 text-left">{title}</span>
         <span className="ml-auto hidden shrink-0 text-xs opacity-60 sm:inline">Click to {isExpanded ? 'collapse' : 'expand'}</span>
       </button>
       {isExpanded && (
-        <div className={`custom-scrollbar px-4 py-3 bg-(--surface-raised) max-h-96 overflow-y-auto border border-(--border-hairline) border-t-0 ${className}`}>
+        <div className={`custom-scrollbar px-4 py-3 pt-0 bg-(--surface-raised) max-h-96 overflow-y-auto border border-(--border-hairline) border-t-0 ${className}`}>
           <pre className="text-[13px] font-mono whitespace-pre-wrap wrap-break-word text-(--text-secondary) leading-relaxed p-3 bg-(--surface-panel) rounded border border-(--border-hairline) overflow-x-auto">
             {content}
           </pre>

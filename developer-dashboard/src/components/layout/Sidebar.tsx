@@ -144,33 +144,7 @@ export default function Sidebar({
         </ul>
       </nav>
 
-      <div
-  className={`shrink-0 border-t border-(--border-hairline) pb-safe transition-[padding] duration-200 ${
-    isRail ? 'p-2 mb-2' : 'p-3 mb-2'
-  }`}
->
-  <div
-    className={`flex items-center transition-all duration-200 ${
-      isRail ? 'justify-center' : 'gap-3'
-    }`}
-  >
-    {isLoggedIn && user && (
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-(--surface-invert) text-sm font-semibold text-(--text-oninvert)">
-        {(displayName || user.email).charAt(0).toUpperCase()}
-      </div>
-    )}
-
-    <div
-      className={`overflow-hidden transition-all duration-200 ${
-        isRail ? 'w-0' : 'min-w-0 flex-1'
-      }`}
-    >
-      <div className="truncate text-sm font-medium text-(--text-primary)">
-        {isLoggedIn && user ? displayName || 'User' : 'Guest User'}
-      </div>
-    </div>
-  </div>
-</div>
+      
     </section>
   );
 }

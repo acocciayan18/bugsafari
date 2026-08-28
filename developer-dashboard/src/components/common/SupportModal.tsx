@@ -87,21 +87,21 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={resetAndClose} titleId="support-modal-title">
       {/* Modal Header */}
-      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-(--border-hairline) bg-(--surface-panel) px-3 py-3 sm:px-4">
-        <h3 id="support-modal-title" className="min-w-0 text-[13px] font-semibold text-(--text-primary)">
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-(--border-hairline) bg-(--surface-panel) px-4 py-3.5 sm:px-5">
+        <h3 id="support-modal-title" className="min-w-0 truncate text-sm sm:text-base font-semibold text-(--text-primary)">
           {TITLES[mode]}
         </h3>
         <button
           onClick={resetAndClose}
-          className="touch-target flex h-8 w-8 shrink-0 items-center cursor-pointer  justify-center rounded-md text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+          className="touch-target -mr-1 flex h-9 w-9 shrink-0 items-center cursor-pointer justify-center rounded-(--radius-sm) text-(--text-tertiary) hover:bg-(--surface-hover) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
           aria-label="Close"
         >
-          <X className="h-5 w-5 shrink-0" aria-hidden="true" />
+          <X className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
         </button>
       </div>
 
       {/* Modal Body */}
-      <div className="space-y-4 p-3 sm:p-4">
+      <div className="space-y-5 p-4 sm:p-5">
         {needsEmail && (
           <Input
             label="Your email"
@@ -110,6 +110,7 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="example@email.com"
+            hint="We'll reply to this address."
           />
         )}
 
@@ -122,7 +123,7 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
         />
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="support-description" className="text-[13px] font-medium text-(--text-secondary)">
+          <label htmlFor="support-description" className="text-[13px] font-medium text-(--text-primary)">
             Description
           </label>
           <textarea
@@ -130,14 +131,14 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder={DESCRIPTION_PLACEHOLDERS[mode]}
-            rows={4}
-            className="w-full rounded-md border border-(--border-strong) px-3 py-2.5 sm:px-4 sm:py-3 text-base sm:text-[13px] text-(--text-primary) bg-(--surface-panel) placeholder:text-(--text-tertiary) transition-colors duration-200 ease-in-out focus:outline-none focus:border-(--border-focus) focus:ring-2 focus:ring-(--border-focus) resize-y"
+            rows={5}
+            className="w-full min-h-[120px] rounded-(--radius-sm) border border-(--border-hairline) px-4 py-3 text-base leading-relaxed text-(--text-primary) bg-(--surface-panel) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 resize-y"
           />
         </div>
       </div>
 
       {/* Modal Footer */}
-      <div className="sticky bottom-0 flex flex-col-reverse gap-2 border-t border-(--border-hairline) bg-(--surface-panel) px-3 py-3 sm:flex-row sm:justify-end sm:px-4">
+      <div className="sticky bottom-0 flex flex-col-reverse gap-2.5 border-t border-(--border-hairline) bg-(--surface-panel) px-4 py-3.5 sm:flex-row sm:justify-end sm:px-5">
         <Button variant="ghost" size="sm" className="w-full sm:w-auto" onClick={resetAndClose} disabled={isSubmitting}>
           Cancel
         </Button>
