@@ -19,23 +19,42 @@ export interface TaggedOption {
   total: number;
 }
 
-// Committed-value snapshot of a combobox trigger: visible label + active option +
-// any inner input value. Compared before/after a pick to confirm the value changed.
+// Committed-value snapshot of a combobox trigger: visible label + active option id
+// AND its resolved text + any inner input value + the selected option's text in the
+// owned listbox + the expanded flag. The extra fields close false-negatives where a
+// widget commits into a hidden input, an aria-selected option, or an activedescendant
+// the bare label never reflected. Compared before/after a pick to confirm a change.
+// An empty string means the trigger detached (navigation) — never a commit.
 export async function readComboState(page: Page, triggerSelector: string): Promise<string> {
   return page
     .evaluate(
       `(() => {
         const t = document.querySelector(${JSON.stringify(triggerSelector)});
         if (!t) return '';
+        const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
         const active = t.getAttribute('aria-activedescendant') || '';
+        const activeText = active ? norm((document.getElementById(active) || {}).textContent) : '';
         const inner = t.querySelector('input');
         const val = inner ? (inner.value || '') : '';
-        const text = (t.textContent || '').replace(/\\s+/g, ' ').trim();
-        return text + '|' + active + '|' + val;
+        const text = norm(t.textContent);
+        const ownedId = (t.getAttribute('aria-controls') || t.getAttribute('aria-owns') || '').split(' ')[0];
+        const owned = ownedId ? document.getElementById(ownedId) : null;
+        const sel = (owned || document).querySelector('[aria-selected="true"]');
+        const selText = sel ? norm(sel.textContent) : '';
+        const expanded = t.getAttribute('aria-expanded') || '';
+        return [text, active, activeText, val, selText, expanded].join('|');
       })()`,
     )
     .then((v) => (typeof v === 'string' ? v : ''))
     .catch(() => '');
+}
+
+// Selection oracle: a committed pick is a NON-EMPTY committed-value signature that
+// differs from the pre-open one. An empty `after` means the trigger detached
+// (navigation), not a value change — the joined-pipe signature is otherwise always
+// non-empty, so the emptiness check must stay independent of the difference check.
+export function comboSelectionChanged(before: string, after: string): boolean {
+  return after.length > 0 && after !== before;
 }
 
 // Poll the opened popup for enabled options, pick one deterministically by `index`

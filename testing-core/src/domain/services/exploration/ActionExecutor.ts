@@ -23,7 +23,7 @@ import { triggerFormSubmission, type SubmissionResult } from './formSubmitter.js
 import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
 import { classifyInteractionScope, type InteractionScope } from './interactionScope.js';
 import { trustedClick, type ClickOutcome } from './trustedClick.js';
-import { readComboState, pickAndTagOption, clearOptionTag, TAGGED_OPTION_SELECTOR } from './customDropdown.js';
+import { readComboState, comboSelectionChanged, pickAndTagOption, clearOptionTag, TAGGED_OPTION_SELECTOR } from './customDropdown.js';
 import {
   setFieldValue,
   setSelectValue,
@@ -83,6 +83,12 @@ interface FormSibling {
 // (and "country") never masquerade as commit controls.
 const COMMIT_CONTROL =
   /\b(submit|log[\s_-]?in|sign[\s_-]?in|sign[\s_-]?up|register|pay|checkout|order|purchase|save|send|confirm|apply|transfer|delete|remove|update|increment|decrement|upvote|downvote|vote\b|like\b)/i;
+
+// Hold a beat on a committed <select> value so the fps-paced, ack-gated live feed
+// reliably captures the changed control. A native select has no capturable open-list
+// (Chromium renders it in an OS layer the CDP screencast never sees), so the collapsed
+// value repaint is the ONLY visible cue — without a dwell the next step can race it away.
+const SELECT_COMMIT_DWELL_MS = 200;
 
 // Interaction scope → active-indicator color group.
 const HIGHLIGHT_ACTION: Record<InteractionScope, HighlightAction> = {
@@ -379,6 +385,14 @@ export class ActionExecutor {
     const value = await resolveSampledOption(page, target.selector, idx);
     const selected = value !== null && (await setSelectValue(page, target.selector, value));
 
+    // Re-home the indicator onto the committed control (amber = value entered) and hold
+    // a beat so the collapsed value repaint lands in a live-feed frame — the native
+    // popup itself is uncapturable, so this is the operator's only visible confirmation.
+    if (selected) {
+      await this.deps.highlighter.moveHighlight(page, target.selector, 'input');
+      await page.waitForTimeout(SELECT_COMMIT_DWELL_MS);
+    }
+
     this.deps.recordActionTrace(
       {
         timestamp: new Date().toISOString(),
@@ -444,9 +458,10 @@ export class ActionExecutor {
       await clearOptionTag(page);
       if (click.actuated) {
         // Value-change is the oracle: a committed selection moves the trigger's label /
-        // active option / inner value. A widget whose click didn't commit reports false.
+        // active option / inner value / owned aria-selected option. A widget whose click
+        // didn't commit reports false; a detached (navigated) trigger reports false too.
         const after = await readComboState(page, target.selector);
-        selected = after !== before && after.length > 0;
+        selected = comboSelectionChanged(before, after);
       }
     }
 

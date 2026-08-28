@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "ConnectionStatusChip visibility and redesign"
+git commit -m " BugSafari dropdown interaction audi"
 git push origin HEAD:dev --force
 
 

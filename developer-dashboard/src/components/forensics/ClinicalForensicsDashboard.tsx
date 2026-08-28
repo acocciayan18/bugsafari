@@ -533,8 +533,8 @@ function ClinicalForensicsDashboard({
           
           {/* Scope notice: only the sanctioned demo target may be explored. */}
           <div className="mx-2 mb-1 mt-1 flex shrink-0 items-center justify-center gap-1.5 px-3 py-1.5 text-center sm:mx-3">
-            <Globe className="h-3 w-3 shrink-0 text-(--text-tertiary)" aria-hidden="true" />
-            <span className="text-xs text-(--text-tertiary)">Only the approved test website is permitted for exploration.</span>
+            
+            <span className="text-xs text-(--text-tertiary)">Only test websites you own or are authorized to test.</span>
           </div>
         </div>
 
