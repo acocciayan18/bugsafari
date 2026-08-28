@@ -23,6 +23,7 @@ import { readLaunchConfigDraft, writeLaunchConfigDraft } from '../../stores/laun
 import { useStickyScroll } from '../../hooks/useStickyScroll';
 import { useDashboardTour } from '../../tour/useDashboardTour';
 import { ErrorTabPanel, AccessibilityWarningBanner, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard, TelemetryHelpModal } from '../telemetry';
+import EmptyState from '../common/EmptyState';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
 import { buildSavedNetworkRows } from '../../utils/networkLogBuilder';
 import { presentTelemetry, telemetryToneStyle } from '../../utils/telemetryPresentation';
@@ -326,7 +327,7 @@ function ClinicalForensicsDashboard({
           ═══════════════════════════════════════════════════════════════ */}
       <div className="w-full bg-(--surface-panel) border-b border-(--border-hairline) p-3 sm:p-4 lg:p-5 shrink-0 space-y-3 sm:space-y-4">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-4">
-          <h2 className="text-sm font-bold text-(--text-primary)  uppercase">
+          <h2 className="text-sm font-semibold text-(--text-primary)  uppercase">
             DASHBOARD
           </h2>
 
@@ -372,7 +373,7 @@ function ClinicalForensicsDashboard({
                 <button
                   disabled
                   title={transitionLabel}
-                  className="flex items-center gap-2 rounded-lg bg-(--surface-inset) text-(--text-secondary) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase  cursor-not-allowed opacity-70"
+                  className="flex items-center gap-2 rounded-lg bg-(--surface-inset) text-(--text-secondary) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  cursor-not-allowed opacity-70"
                 >
                   <LoaderCircle className="h-5 w-5 animate-spin" strokeWidth={1.75} aria-hidden="true" />
                   {transitionLabel}
@@ -381,7 +382,7 @@ function ClinicalForensicsDashboard({
               {testStatus === 'ACTIVE' && onPause && (
                 <button
                   onClick={onPause}
-                  className="flex items-center cursor-pointer gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase  transition-colors"
+                  className="flex items-center cursor-pointer gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
                 >
                   <Pause className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Pause
@@ -390,7 +391,7 @@ function ClinicalForensicsDashboard({
               {testStatus === 'PAUSED' && onResume && (
                 <button
                   onClick={onResume}
-                  className="flex items-center cursor-pointer gap-2 rounded-lg bg-(--status-stable-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase  transition-colors"
+                  className="flex items-center cursor-pointer gap-2 rounded-lg bg-(--status-stable-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
                 >
                   <Play className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Resume
@@ -401,7 +402,7 @@ function ClinicalForensicsDashboard({
               {isQueued && !transitionLabel && onStop && (
                 <button
                   onClick={onStop}
-                  className="flex items-center cursor-pointer gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase  transition-colors"
+                  className="flex items-center cursor-pointer gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
                 >
                   <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Cancel Queued Run
@@ -410,7 +411,7 @@ function ClinicalForensicsDashboard({
               {isActiveSession && !transitionLabel && !isQueued && onStop && (
                 <button
                   onClick={onStop}
-                  className="flex items-center cursor-pointer  gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-bold uppercase  transition-colors"
+                  className="flex items-center cursor-pointer  gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
                 >
                   <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Stop
@@ -423,7 +424,7 @@ function ClinicalForensicsDashboard({
   onClick={onSaveSessionToHistory}
   disabled={isSessionSaved}
   title={isSessionSaved ? 'Session already saved' : 'Save session to history'}
-  className={`flex items-center gap-2 rounded-lg border px-3 sm:px-4 py-2 text-[13px] font-bold uppercase  transition-colors ${
+  className={`flex items-center gap-2 rounded-lg border px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors ${
     isSessionSaved
       ? 'border-(--border-default) text-(--text-primary) hover:cursor-not-allowed opacity-80'
       : 'border-(--border-default) text-(--text-primary) hover:cursor-pointer hover:bg-(--surface-hover) hover:text-(--text-primary)'
@@ -491,7 +492,7 @@ function ClinicalForensicsDashboard({
                     ? 'Enter a username and password, or turn off target authentication'
                     : undefined
             }
-            className="flex h-11 w-full sm:w-auto hover:cursor-pointer items-center justify-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) text-(--text-oninvert) px-5 text-[13px] font-bold uppercase  font-sans shrink-0 transition-all duration-100 disabled:opacity-50 disabled:hover:bg-(--surface-invert) disabled:cursor-not-allowed"
+            className="flex h-11 w-full sm:w-auto hover:cursor-pointer items-center justify-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) text-(--text-oninvert) px-5 text-[13px] font-semibold uppercase  font-sans shrink-0 transition-all duration-100 disabled:opacity-50 disabled:hover:bg-(--surface-invert) disabled:cursor-not-allowed"
           >
             <BugPlay className="h-5 w-5 shrink-0" />
             <span>Start Testing</span>
@@ -543,7 +544,7 @@ function ClinicalForensicsDashboard({
           <div className="mx-2 mb-1 mt-1 flex shrink-0 items-center justify-between rounded-lg  bg-(--surface-panel) px-3 py-2 sm:mx-3 sm:mb-1 sm:px-3">
             <div className="flex min-w-0 items-center gap-3">
               <span className="text-[13px] font-semibold text-(--text-secondary)">Status:</span>
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold border ${displayStatus === 'ACTIVE'
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold border ${displayStatus === 'ACTIVE'
                 ? 'border-(--status-stable-border) bg-(--status-stable-bg) text-(--status-stable-fg)'
                 : displayStatus === 'PAUSED'
                   ? 'border-(--status-warning-border) bg-(--status-warning-bg) text-(--status-warning-fg)'
@@ -653,9 +654,12 @@ function ClinicalForensicsDashboard({
                       )}
                     </>
                   ) : formattedTelemetry.length === 0 ? (
-                    <div className="text-(--text-secondary) py-4">
-                    Ready for telemetry...
-                    </div>
+                    <EmptyState
+                      Icon={Activity}
+                      tone="ready"
+                      title="Ready for telemetry"
+                      description="Waiting for the engine to start streaming exploration events."
+                    />
                   ) : (
                     <>
                       {formattedTelemetry.map((logObj) => {

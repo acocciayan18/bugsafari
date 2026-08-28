@@ -7,7 +7,8 @@ import type {
   SessionHistoryRecord,
   SessionTerminalStats,
 } from "../../../domain/repositories/FindingRepository.js";
-import type { PaginationParams, RunTerminationOutcome, SessionHistoryState } from "../../../../../shared/types.js";
+import type { PaginationParams, RunTerminationOutcome, SessionHistoryState, SeverityCounts } from "../../../../../shared/types.js";
+import { resolveSeverity } from "../../../../../shared/types.js";
 import { BrainConfigModel } from "../models/BrainConfigModel.js";
 import { SessionStatus } from "../models/FindingType.js";
 import { SessionModel } from "../models/SessionModel.js";
@@ -294,6 +295,33 @@ public async listSessionHistory(
         obsLog.error('[Repository] Brain snapshot count aggregation failed:', countError);
       }
 
+      // Real per-severity tally per row. The main projection drops caughtBugs (stack
+      // traces dominate memory), so pull ONLY the severity-relevant sub-fields for the
+      // page's ids and resolve each through the shared policy — the badge shows the
+      // worst tier actually present, never a count-derived guess.
+      const severityBySession = new Map<string, SeverityCounts>();
+      try {
+        const withBugs = await SessionModel.find({ _id: { $in: sessions.map((session) => session._id) } })
+          .select('_id forensicTrace.caughtBugs.type forensicTrace.caughtBugs.severity forensicTrace.caughtBugs.attribution')
+          .lean();
+        for (const doc of withBugs) {
+          const counts: SeverityCounts = {};
+          for (const bug of doc.forensicTrace?.caughtBugs ?? []) {
+            if (bug.type === 'ACCESSIBILITY') continue; // ephemeral; never in the report's finding list
+            const sev = resolveSeverity({
+              severity: bug.severity,
+              bugClass: bug.attribution?.bugClass,
+              confidence: bug.attribution?.confidence,
+              verificationStatus: bug.attribution?.verificationStatus,
+            });
+            counts[sev] = (counts[sev] ?? 0) + 1;
+          }
+          severityBySession.set(doc._id.toString(), counts);
+        }
+      } catch (severityError) {
+        obsLog.error('[Repository] Severity tally failed:', severityError);
+      }
+
       const items: SessionHistoryRecord[] = sessions.map((session) => {
         const id = session._id?.toString() ?? '';
         return {
@@ -309,6 +337,7 @@ public async listSessionHistory(
           savedManually: Boolean(session.savedManually),
           state: sessionHistoryState(session),
           findingCount: session.findingCount ?? 0,
+          severityCounts: severityBySession.get(id) ?? {},
           actionTraceCount: session.actionTraceCount ?? 0,
           brainSnapshots: brainSnapshotCounts.get(id) ?? 0,
           runtimeMs: session.stats?.runtimeMs,

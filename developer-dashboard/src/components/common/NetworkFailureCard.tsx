@@ -3,8 +3,10 @@
 // (fed from ForensicNetworkLog). Both map their source rows into NetworkFailureRow,
 // so the live and forensic Network tabs cannot drift in layout, tone or spacing.
 
+import { Network } from 'lucide-react';
 import { routeNetworkEvent } from '../../../../shared/types.js';
 import { routePath } from '../../../../shared/reproduction.js';
+import EmptyState from './EmptyState';
 
 // Normalized, source-agnostic shape both callers adapt into. Only the fields worth
 // showing an operator: method, status/error code, endpoint, error text, count, time.
@@ -85,11 +87,7 @@ export default function NetworkFailureList({
   emptyMessage?: string;
 }) {
   if (rows.length === 0) {
-    return (
-      <div className="text-(--text-secondary) py-4">
-        <div className="text-(--text-secondary)  text-[13px] leading-relaxed">{emptyMessage}</div>
-      </div>
-    );
+    return <EmptyState Icon={Network} tone="clean" title="No network failures" description={emptyMessage} />;
   }
 
   return (

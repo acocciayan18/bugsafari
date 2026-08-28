@@ -1,7 +1,22 @@
 import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useHistoryStore } from './historyStore';
-import { ITEMS_PER_PAGE, SEVERITY_ORDER, STATUS_ORDER, type EvaluationSafari, type SortConfig } from './types';
+import { ITEMS_PER_PAGE, SEVERITY_ORDER, STATUS_ORDER, type EvaluationSafari, type SeverityFilter, type SortConfig } from './types';
+
+// Match a row against the severity control by its real worst tier. Each tab is an
+// exact tier match; the rare INFO tier folds into Low, so every row is still reachable
+// from exactly one non-ALL tab (full partition).
+function matchesSeverity(item: EvaluationSafari, filter: SeverityFilter): boolean {
+    switch (filter) {
+        case 'ALL': return true;
+        case 'CRITICAL': return item.severity === 'CRITICAL';
+        case 'HIGH': return item.severity === 'HIGH';
+        case 'MEDIUM': return item.severity === 'MEDIUM';
+        case 'LOW': return item.severity === 'LOW' || item.severity === 'INFO';
+        case 'CLEAR': return item.severity === 'CLEAR';
+        default: return true;
+    }
+}
 
 function compare(a: EvaluationSafari, b: EvaluationSafari, { field }: SortConfig): number {
     switch (field) {
@@ -47,7 +62,7 @@ export function useHistoryView(): HistoryView {
                 item.targetUrl.toLowerCase().includes(needle) ||
                 (item.runId?.toLowerCase().includes(needle) ?? false) ||
                 item.id.toLowerCase().includes(needle);
-            return matchesSearch && (activeFilter === 'ALL' || item.severity === activeFilter);
+            return matchesSearch && matchesSeverity(item, activeFilter);
         });
 
         const multiplier = sortConfig.direction === 'asc' ? 1 : -1;

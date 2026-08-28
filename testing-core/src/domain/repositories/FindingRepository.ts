@@ -3,6 +3,7 @@ import type {
   PaginationParams,
   RunTerminationOutcome,
   SessionHistoryState,
+  SeverityCounts,
   TestingTypeId,
 } from '../../../../shared/types.js';
 
@@ -64,6 +65,10 @@ export interface SessionHistoryRecord {
   /** History bucket this row belongs to — drives the operator's Active/Archived/Trash view. */
   state: SessionHistoryState;
   findingCount: number;
+  /** Real per-severity tally of this session's findings (ACCESSIBILITY excluded),
+   *  resolved through the shared severity policy. Drives the History badge/filter;
+   *  absent/empty when a legacy row stored no caughtBugs. */
+  severityCounts?: SeverityCounts;
   actionTraceCount: number;
   brainSnapshots: number;
   runtimeMs?: number;

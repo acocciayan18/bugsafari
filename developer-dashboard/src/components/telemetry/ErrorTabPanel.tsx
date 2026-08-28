@@ -7,9 +7,11 @@ import type { IncidentReport, ForensicCrashReport } from '../../types';
 import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } from '../../utils/errorDeduplication';
 import { reportableIncidents, reportableReports } from '../../utils/findingRouting';
 import { incidentToFindingView, reportToFindingView } from '../../utils/findingView';
+import { ShieldCheck } from 'lucide-react';
 import AiDiagnosticCard from './AiDiagnosticCard';
 import FindingCard from '../common/FindingCard';
 import FindingsPanel, { type FindingEntry } from '../common/FindingsPanel';
+import EmptyState from '../common/EmptyState';
 
 interface ErrorTabPanelProps {
   errors: {
@@ -69,7 +71,14 @@ export default function ErrorTabPanel({
         entries={entries}
         live
         bare
-        emptyState={<div className="text-(--text-secondary) py-2">No findings captured yet.</div>}
+        emptyState={
+          <EmptyState
+            Icon={ShieldCheck}
+            tone="clean"
+            title="No findings yet"
+            description="Faults the engine catches while exploring land here. A clean run means nothing broke."
+          />
+        }
       />
     </div>
   );

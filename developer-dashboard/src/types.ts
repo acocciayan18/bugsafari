@@ -116,6 +116,10 @@ export type { BrowserConsoleLevel, BrowserConsoleMessage } from '../../shared/ty
 export type { NetworkPhase } from '../../shared/types.js';
 export { NETWORK_ACTION, NETWORK_ACTION_MARKERS } from '../../shared/types.js';
 
+// Canonical severity policy — the History badge derives its worst tier from these.
+export type { FaultSeverity, SeverityCounts, SeveritySummary } from '../../shared/types.js';
+export { summarizeSeverity } from '../../shared/types.js';
+
 export interface SessionHistoryEntry {
   id: string;
   // Public human-readable run code (RUN-XXXXXX); absent on legacy rows saved before it existed.
@@ -133,6 +137,9 @@ export interface SessionHistoryEntry {
   /** History bucket this row belongs to (Active/Archived/Trash). Absent on old servers → active. */
   state?: SessionHistoryState;
   findingCount: number;
+  /** Real per-severity tally of the row's findings. Drives the severity badge; absent
+   *  on old servers, where the badge falls back to the findingCount tier. */
+  severityCounts?: import('../../shared/types.js').SeverityCounts;
   actionTraceCount: number;
   brainSnapshots: number;
   runtimeMs?: number;

@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
+import { Terminal } from 'lucide-react';
 import type { BrowserConsoleMessage } from '../../types';
 import ConsoleMessageList from '../common/ConsoleMessageCard';
+import EmptyState from '../common/EmptyState';
 
 const FILTERS = ['all', 'error', 'warning', 'info', 'debug', 'log'] as const;
 export type ConsoleFilter = (typeof FILTERS)[number];
@@ -63,11 +65,17 @@ export default function ConsoleTabPanel({ browserConsole = [], filter }: Console
   );
 
   if (visible.length === 0) {
-    return (
-      <div className="px-1 py-6 text-[13px] text-(--text-tertiary)">
-        {browserConsole.length === 0 ? 'No browser console logs captured yet.' : `No ${filter} logs in this session.`}
-      </div>
-    );
+    if (browserConsole.length === 0) {
+      return (
+        <EmptyState
+          Icon={Terminal}
+          tone="ready"
+          title="Console ready"
+          description="Listening for the target app's console output. Logs, warnings and errors stream in here."
+        />
+      );
+    }
+    return <div className="px-1 py-6 text-center text-[13px] text-(--text-tertiary)">{`No ${filter} logs in this session.`}</div>;
   }
 
   return <ConsoleMessageList logs={visible} />;

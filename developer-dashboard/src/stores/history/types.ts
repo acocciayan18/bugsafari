@@ -1,4 +1,5 @@
-import type { InfiltrationProfileId, RunTerminationOutcome, SessionHistoryEntry, SessionHistoryState } from '../../types';
+import type { FaultSeverity, InfiltrationProfileId, RunTerminationOutcome, SessionHistoryEntry, SessionHistoryState } from '../../types';
+import { summarizeSeverity } from '../../types';
 
 export interface CaughtBug {
     bugId: string;
@@ -28,8 +29,12 @@ export interface EvaluationSafari {
     steps: number;
     /** Active/Archived/Trash bucket, so the row menu can offer the right actions. */
     state: SessionHistoryState;
-    severity: 'CRITICAL' | 'HIGH' | 'CLEAR';
+    /** Worst real severity present among the findings; 'CLEAR' when there are none. */
+    severity: FaultSeverity | 'CLEAR';
+    /** Findings at {@link severity} (the worst tier) — what the badge counts. */
     severityCount: number;
+    /** Total findings across all severities — the importance/delete-gate input. */
+    findingCount: number;
     status: 'COMPLETED' | 'CRASHED' | 'HALTED' | 'STOPPED' | 'TIMEOUT' | 'ABANDONED' | 'ENGINE_ERROR';
     /** Precise termination taxonomy; drives the displayed reason when present. */
     outcome?: RunTerminationOutcome;
@@ -41,7 +46,7 @@ export interface EvaluationSafari {
     forensicTrace: ForensicTrace;
 }
 
-export type SeverityFilter = 'ALL' | 'CRITICAL' | 'HIGH' | 'CLEAR';
+export type SeverityFilter = 'ALL' | 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'CLEAR';
 export type SortField = 'date' | 'severity' | 'status';
 export type SortDirection = 'asc' | 'desc';
 
@@ -52,7 +57,8 @@ export interface SortConfig {
 
 export const ITEMS_PER_PAGE = 10;
 
-export const SEVERITY_ORDER: Record<string, number> = { CRITICAL: 3, HIGH: 2, CLEAR: 1 };
+// Full-tier ranking for the severity sort (worst → best); CLEAR sinks to the bottom.
+export const SEVERITY_ORDER: Record<string, number> = { CRITICAL: 5, HIGH: 4, MEDIUM: 3, LOW: 2, INFO: 1, CLEAR: 0 };
 
 // Clean endings sort above fault endings; unattended endings sit between them.
 export const STATUS_ORDER: Record<string, number> = {
@@ -76,10 +82,23 @@ const SESSION_STATUS_MAP: Record<SessionHistoryEntry['status'], EvaluationSafari
     Running: 'HALTED',
 };
 
-function determineSeverity(bugCount: number): EvaluationSafari['severity'] {
+// Legacy fallback ONLY: rows saved before severityCounts existed carry no per-finding
+// severity, so approximate the tier from the total count (the old behavior). Real rows
+// go through summarizeSeverity instead.
+function legacySeverityFromCount(bugCount: number): EvaluationSafari['severity'] {
     if (bugCount >= 3) return 'CRITICAL';
     if (bugCount >= 1) return 'HIGH';
     return 'CLEAR';
+}
+
+// Worst tier + its count from the authoritative per-severity tally, with a graceful
+// fallback for legacy rows that predate it.
+function resolveBadge(entry: SessionHistoryEntry): { severity: EvaluationSafari['severity']; severityCount: number } {
+    const summary = summarizeSeverity(entry.severityCounts);
+    if (summary.total > 0) return { severity: summary.severity, severityCount: summary.count };
+    // No real severity data: keep old rows truthful about having findings.
+    const findingCount = entry.findingCount ?? 0;
+    return { severity: legacySeverityFromCount(findingCount), severityCount: findingCount };
 }
 
 // Epoch ms for sorting; 0 for an absent/unparsable timestamp so it sinks to the end.
@@ -107,8 +126,8 @@ export function transformSessionsToEvaluations(sessions: SessionHistoryEntry[]):
         startedAtMs: toEpochMs(session.startedAt),
         steps: session.actionTraceCount,
         state: session.state ?? 'active',
-        severity: determineSeverity(session.findingCount),
-        severityCount: session.findingCount,
+        ...resolveBadge(session),
+        findingCount: session.findingCount,
         status: SESSION_STATUS_MAP[session.status] ?? 'HALTED',
         outcome: session.outcome,
         infiltrationProfile: session.infiltrationProfile,

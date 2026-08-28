@@ -2,7 +2,7 @@
 // resolveSeverity). Run with `npx tsx "shared/severity.test.ts"` or `npm test -w shared`.
 
 import assert from 'node:assert/strict';
-import { normalizeSeverity, resolveSeverity, capSeverity, DEFAULT_SEVERITY } from './severity.js';
+import { normalizeSeverity, resolveSeverity, capSeverity, DEFAULT_SEVERITY, summarizeSeverity } from './severity.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -64,6 +64,30 @@ check('resolveSeverity is idempotent', () => {
 
 check('resolveSeverity always returns a value even with no input', () => {
   assert.equal(resolveSeverity({}), DEFAULT_SEVERITY);
+});
+
+check('summarizeSeverity reports the worst tier present and its count', () => {
+  // The exact History-card bug: 2 CRITICAL + 1 MEDIUM must read "2 CRITICAL", never "3 CRITICAL".
+  const s = summarizeSeverity({ CRITICAL: 2, MEDIUM: 1 });
+  assert.equal(s.severity, 'CRITICAL');
+  assert.equal(s.count, 2);
+  assert.equal(s.total, 3);
+});
+
+check('summarizeSeverity picks HIGH when no critical is present', () => {
+  const s = summarizeSeverity({ HIGH: 1, MEDIUM: 4 });
+  assert.equal(s.severity, 'HIGH');
+  assert.equal(s.count, 1);
+  assert.equal(s.total, 5);
+});
+
+check('summarizeSeverity treats an empty/absent tally as CLEAR', () => {
+  for (const empty of [undefined, null, {}, { CRITICAL: 0 }]) {
+    const s = summarizeSeverity(empty);
+    assert.equal(s.severity, 'CLEAR');
+    assert.equal(s.count, 0);
+    assert.equal(s.total, 0);
+  }
 });
 
 console.log(`\nAll ${passed} assertions passed.`);

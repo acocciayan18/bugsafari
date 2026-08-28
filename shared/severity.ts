@@ -57,6 +57,32 @@ export function capSeverity(sev: FaultSeverity, max: FaultSeverity): FaultSeveri
   return SEVERITY_RANK[sev] > SEVERITY_RANK[max] ? max : sev;
 }
 
+// Per-session tally of findings by canonical severity — the History summary source.
+export type SeverityCounts = Partial<Record<FaultSeverity, number>>;
+
+// 'CLEAR' is a display-only tier meaning "no findings"; it is not a FaultSeverity.
+export interface SeveritySummary {
+  severity: FaultSeverity | 'CLEAR';
+  count: number;
+  total: number;
+}
+
+// Reduce a severity tally to the worst tier present + its count — the one policy the
+// History badge, filter, and sort read, so they never drift back to count-guessing.
+export function summarizeSeverity(counts?: SeverityCounts | null): SeveritySummary {
+  let worst: FaultSeverity | null = null;
+  let total = 0;
+  if (counts) {
+    for (const sev of SEVERITY_ORDER) {
+      const n = counts[sev] ?? 0;
+      if (n <= 0) continue;
+      total += n;
+      if (worst === null || SEVERITY_RANK[sev] > SEVERITY_RANK[worst]) worst = sev;
+    }
+  }
+  return worst ? { severity: worst, count: counts![worst] ?? 0, total } : { severity: 'CLEAR', count: 0, total: 0 };
+}
+
 export interface SeverityInput {
   severity?: string | null;
   bugClass?: string;

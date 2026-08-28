@@ -43,8 +43,22 @@ const SEVERITY_TABS: { value: SeverityFilter; label: string }[] = [
   { value: 'ALL', label: 'All' },
   { value: 'CRITICAL', label: 'Critical' },
   { value: 'HIGH', label: 'High' },
+  { value: 'MEDIUM', label: 'Medium' },
+  { value: 'LOW', label: 'Low' },
   { value: 'CLEAR', label: 'Clear' },
 ];
+
+// Severity badge palette — maps each real tier to a status token pair. CRITICAL/HIGH
+// share the critical accent, MEDIUM/LOW the amber warning, INFO the neutral, CLEAR the
+// stable green. Keeps the badge truthful about the worst finding present.
+const SEVERITY_BADGE_CLASS: Record<string, string> = {
+  CRITICAL: 'border-[var(--status-critical-border)] text-[var(--status-critical-fg)]',
+  HIGH: 'border-[var(--status-critical-border)] text-[var(--status-critical-fg)]',
+  MEDIUM: 'border-[var(--status-warning-border)] text-[var(--status-warning-fg)]',
+  LOW: 'border-[var(--status-warning-border)] text-[var(--status-warning-fg)]',
+  INFO: 'border-[var(--status-neutral-border)] text-[var(--status-neutral-fg)]',
+  CLEAR: 'border-[var(--status-stable-border)] text-[var(--status-stable-fg)]',
+};
 
 // Compact segmented control — one-click filter switch aligned to the 32px toolbar row.
 function SegmentedControl<T extends string>({ options, value, onChange, ariaLabel, dataTour }: {
@@ -230,7 +244,7 @@ export default function SavedEvaluationSafaris() {
     const record = purgeState.record;
     if (!record) return;
 
-    const important = isImportantSession(record.severityCount);
+    const important = isImportantSession(record.findingCount);
     setPurgeState((prev) => ({ ...prev, isDeleting: true }));
     try {
       // Important records echo their RUN- code as the server-side confirmation token.
@@ -487,10 +501,8 @@ export default function SavedEvaluationSafaris() {
                     </div>
                     <div className="flex shrink-0 items-center gap-3 sm:gap-4">
                       <div
-                        className={`flex h-6 items-center rounded border px-2 text-[13px] font-medium ${evalItem.severity === 'CRITICAL' || evalItem.severity === 'HIGH'
-                          ? 'border-[var(--status-critical-border)] text-[var(--status-critical-fg)]'
-                          : 'border-[var(--status-stable-border)] text-[var(--status-stable-fg)]'
-                          }`}
+                        title={`Worst finding: ${evalItem.severity} (${evalItem.findingCount} total)`}
+                        className={`flex h-6 items-center rounded border px-2 text-[13px] font-medium ${SEVERITY_BADGE_CLASS[evalItem.severity] ?? SEVERITY_BADGE_CLASS.CLEAR}`}
                       >
                         {evalItem.severityCount} {evalItem.severity}
                       </div>
@@ -579,7 +591,7 @@ export default function SavedEvaluationSafaris() {
         message={`This permanently removes the evaluation for ${purgeState.record?.targetUrl ?? 'this run'} and everything captured with it. This cannot be undone.`}
         confirmLabel="Delete forever"
         isLoading={purgeState.isDeleting}
-        confirmationPhrase={purgeState.record && isImportantSession(purgeState.record.severityCount) ? purgeState.record.id : undefined}
+        confirmationPhrase={purgeState.record && isImportantSession(purgeState.record.findingCount) ? purgeState.record.id : undefined}
       />
 
       {/* View-only share links — create with an expiry, then list, copy, and revoke. */}
