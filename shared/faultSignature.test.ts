@@ -41,4 +41,14 @@ check('stack top disambiguates two JS faults sharing a message', () => {
   assert.notEqual(one, two);
 });
 
+// The live grouping (errorDeduplication.liveFaultSignature) and the save-time collapse
+// (findingProjection.canonicalFindingSignature) both call this over the SAME four fields.
+// If a fault and its persisted twin carry equal reason/url/stack/status, the two surfaces
+// MUST land the same key — the invariant that keeps the live count equal to the saved count.
+check('a live fault and its saved twin over the same 4 fields share one signature', () => {
+  const live = buildFaultSignature({ reason: 'HTTP 500 on /api/x', url: 'https://api/x', stackTrace: 'at f (a.js:1:1)', statusCode: 500 });
+  const saved = buildFaultSignature({ reason: 'HTTP 500 on /api/x', url: 'https://api/x', stackTrace: 'at f (a.js:1:1)', statusCode: 500 });
+  assert.equal(live, saved);
+});
+
 console.log(`\n${passed} faultSignature assertion group(s) passed.`);

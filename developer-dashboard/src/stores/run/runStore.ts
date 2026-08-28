@@ -268,25 +268,31 @@ export const useRunStore = create<RunState>((set, get) => ({
     // A later, stronger verdict (e.g. a double-submit that rose SUSPECTED → CONFIRMED once
     // its control correlated) patches the existing card in place by bugId. Re-emitting the
     // incident would append a second card, since the live buffer keys on message content.
-    applyFindingUpgrade: (upgrade) => set((s) => ({
-        incidents: s.incidents.map((incident) =>
-            incident.bugId === upgrade.bugId
+    applyFindingUpgrade: (upgrade) => set((s) => {
+        // Patch severity/message/verdict AND a late-correlated culprit onto the existing
+        // card by bugId — reason the live buffer keys on message content, so re-emitting
+        // would spawn a second card. The culprit fills the Element the first sighting left
+        // blank, matching the saved report. Applied to both buffers (the forensic twin too).
+        const patch = <T extends IncidentReport | ForensicCrashReport>(entry: T): T =>
+            entry.bugId === upgrade.bugId
                 ? {
-                    ...incident,
+                    ...entry,
                     severity: upgrade.severity,
                     reason: upgrade.message,
-                    attribution: incident.attribution
+                    ...(upgrade.culpritSelector ? { culpritSelector: upgrade.culpritSelector } : {}),
+                    ...(upgrade.culpritLabel ? { culpritLabel: upgrade.culpritLabel } : {}),
+                    attribution: entry.attribution
                         ? {
-                            ...incident.attribution,
+                            ...entry.attribution,
                             ...(upgrade.confidence ? { confidence: upgrade.confidence } : {}),
                             ...(upgrade.confidenceScore !== undefined ? { confidenceScore: upgrade.confidenceScore } : {}),
                             ...(upgrade.verificationStatus ? { verificationStatus: upgrade.verificationStatus } : {}),
                         }
-                        : incident.attribution,
-                }
-                : incident,
-        ),
-    })),
+                        : entry.attribution,
+                } as T
+                : entry;
+        return { incidents: s.incidents.map(patch), reports: s.reports.map(patch) };
+    }),
     // Authoritative repeat-count update from the engine — patch the card's ×N by bugId in
     // both buffers. Idempotent and monotonic, so a reconnect replay never inflates it.
     applyFindingOccurrence: (patch) => set((s) => ({

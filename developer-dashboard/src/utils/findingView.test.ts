@@ -202,4 +202,43 @@ check('a finding with no recorded trace yields empty actionSteps and keeps the n
   assert.deepEqual(view.reproductionSteps, ['Step 1. Do the thing'], 'narrative fallback intact');
 });
 
+// ── Element parity: live card matches the saved report once the culprit correlates ──
+// A runtime fault is streamed before its culprit is known, so the first live card has an
+// empty Element. When the culprit later correlates, the engine patches the live card's
+// culpritSelector (via the finding-upgrade channel); the mapper must then resolve the SAME
+// Element the saved report shows. Guards the "live cards lack Element" divergence.
+
+check('a live card resolves no Element before the culprit correlates', () => {
+  const view = incidentToFindingView({
+    timestamp: '2026-08-17T00:00:00.000Z',
+    reason: 'TypeError: undefined is not a function',
+    url: 'http://app.test/checkout',
+    steps: [],
+  } as unknown as IncidentReport);
+  assert.equal(view.elementLabel, undefined);
+});
+
+check('once the culprit is patched in, live and saved resolve the IDENTICAL Element', () => {
+  const steps = [{ selector: '#place-order', elementLabel: 'Place Order' }] as unknown as ActionRecord[];
+  const live = incidentToFindingView({
+    timestamp: '2026-08-17T00:00:00.000Z',
+    reason: 'TypeError: undefined is not a function',
+    url: 'http://app.test/checkout',
+    culpritSelector: '#place-order',
+    steps,
+  } as unknown as IncidentReport);
+  const saved = caughtBugToFindingView({
+    bugId: 'b1',
+    type: 'EXCEPTION',
+    message: 'TypeError: undefined is not a function',
+    selector: '#place-order',
+    payloadUsed: '',
+    advice: '',
+    timestamp: '2026-08-17T00:00:00.000Z',
+    actionSteps: [{ selector: '#place-order', label: 'Place Order' }],
+  } as unknown as ForensicCaughtBug);
+  assert.equal(live.elementLabel, 'Place Order');
+  assert.equal(live.elementLabel, saved.elementLabel, 'live Element equals the saved report Element');
+});
+
 console.log(`\n${passed} assertions passed.`);

@@ -37,6 +37,9 @@ export function toIncidentReport(bug: ICaughtBug, fallbackUrl: string): Incident
     // Findings checkpointed before `url` existed carry none; the run's target is the
     // honest fallback rather than an empty card.
     url: bug.url || fallbackUrl,
+    // Carried so a rehydrated card keeps the same liveFaultSignature (reason+url+stack+status)
+    // it had live — otherwise a network fault would regroup on reload.
+    statusCode: bug.statusCode,
     stackTrace: bug.stackTrace,
     resolvedStackTrace: bug.resolvedStackTrace,
     // The per-finding replay timeline is stored as ActionStepTrace, which is a

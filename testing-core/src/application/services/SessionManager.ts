@@ -656,7 +656,7 @@ export class SessionManager implements TelemetryRecorder {
     if (report) report.occurrences = patch.occurrences;
   }
 
-  /** Fold a late severity/verdict upgrade into the buffered incident it belongs to. */
+  /** Fold a late severity/verdict/culprit upgrade into the buffered incident it belongs to. */
   private applyFindingUpgrade(upgrade: FindingUpgrade): void {
     const run = this.run;
     if (!run || !upgrade?.bugId) return;
@@ -664,6 +664,10 @@ export class SessionManager implements TelemetryRecorder {
     if (!incident) return;
     incident.severity = upgrade.severity;
     incident.reason = upgrade.message;
+    // A late culprit correlation fills the Element the first sighting left blank, so a
+    // reconnect replays a card that matches the saved report.
+    if (upgrade.culpritSelector) incident.culpritSelector = upgrade.culpritSelector;
+    if (upgrade.culpritLabel) incident.culpritLabel = upgrade.culpritLabel;
     if (incident.attribution) {
       incident.attribution = {
         ...incident.attribution,

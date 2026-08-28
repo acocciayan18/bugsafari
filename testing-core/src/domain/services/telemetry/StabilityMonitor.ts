@@ -1885,6 +1885,8 @@ export class StabilityMonitor {
       message: headline,
       selector: evidence.culpritSelector ?? '',
       elementLabel: culpritLabel,
+      url: reportUrl,
+      statusCode: evidence.statusCode,
       payloadUsed: evidence.method,
       advice: complete.advice,
       stackTrace: evidence.detail,

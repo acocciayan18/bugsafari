@@ -68,6 +68,10 @@ export interface FindingUpgrade {
   confidence?: FaultConfidence;
   confidenceScore?: number;
   verificationStatus?: VerificationStatus;
+  // A late culprit correlation the first sighting lacked — patches the already-streamed
+  // live card's Element so it matches the saved report (the ledger got the same upgrade).
+  culpritSelector?: string;
+  culpritLabel?: string;
 }
 
 /** Socket channel carrying an authoritative occurrence-count update for an already-reported finding. */

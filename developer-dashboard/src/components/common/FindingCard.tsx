@@ -140,12 +140,6 @@ export default function FindingCard({
               <div className="mt-0.5 truncate font-mono text-[13px] text-(--text-primary)" title={view.endpointLabel}>{view.endpointLabel}</div>
             </div>
           )}
-          {view.payloadUsed && (
-            <div className="min-w-0">
-              <div className="text-caption font-semibold uppercase text-(--text-secondary)">Payload Used</div>
-              <div className="mt-0.5 truncate font-mono text-[13px] text-(--text-secondary)" title={view.payloadUsed}>{view.payloadUsed}</div>
-            </div>
-          )}
         </div>
       </div>
 

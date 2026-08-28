@@ -114,7 +114,7 @@ function FilterDropdown<T extends string>({ options, value, onChange, ariaLabel,
             transition={{ duration: 0.14, ease: 'easeOut' }}
             role="listbox"
             aria-label={ariaLabel}
-            className="absolute left-0 top-full z-50 mt-1 min-w-[10rem] origin-top overflow-hidden rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-panel)] py-1 shadow-lg"
+            className="absolute left-0 top-full z-50 mt-2 min-w-[10rem] origin-top overflow-hidden rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-panel)] py-1 shadow-lg"
           >
             {options.map((opt) => (
               <li key={opt.value} role="option" aria-selected={opt.value === value}>

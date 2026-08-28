@@ -38,6 +38,9 @@ export interface ICaughtBug {
   /** Route the fault surfaced on. Carried so a checkpointed finding can be replayed
    *  back onto the live Errors tab (IncidentReport.url) after a refresh. */
   url?: string;
+  /** HTTP status for a network fault — part of the canonical save-dedup signature so the
+   *  persisted count matches the live grouping (undefined for JS/console faults). */
+  statusCode?: number;
   /** How many times this identical fault fired this session (dedup at save). */
   occurrences?: number;
   payloadUsed: string;
@@ -389,6 +392,8 @@ const sessionSchema = new Schema(
           elementLabel: { type: String, default: '' },
           // Route the fault surfaced on — restores IncidentReport.url on a rehydrate.
           url: { type: String, default: '' },
+          // HTTP status for a network fault — part of the canonical save-dedup signature.
+          statusCode: { type: Number, default: null },
           // How many times this identical fault fired this session (dedup at save).
           occurrences: { type: Number, default: 1 },
           payloadUsed: { type: String, default: '' },

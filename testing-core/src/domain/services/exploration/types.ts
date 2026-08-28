@@ -77,6 +77,9 @@ export interface ConfirmedBug {
   /** Route the fault surfaced on. Persisted so a rehydrated finding can be rendered
    *  back onto the live Errors tab, which requires a url. */
   url?: string;
+  /** HTTP status for a network fault — part of the canonical fault signature so the
+   *  saved dedup collapses exactly what the live view did (undefined for JS faults). */
+  statusCode?: number;
   payloadUsed: string;
   advice: string;
   timestamp: Date;

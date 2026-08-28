@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import type { TelemetryGateway } from '../../../application/ports/TelemetryGateway.js';
-import { STOP_REASON_DETAIL, STOP_REASON_OUTCOME, defaultOptimizationSettings, resolveProfileFromTestingTypes } from '../../../../../shared/types.js';
+import { STOP_REASON_DETAIL, STOP_REASON_OUTCOME, defaultOptimizationSettings, resolveProfileFromTestingTypes, resolveSeverity } from '../../../../../shared/types.js';
 import type { OptimizationSettings, TestingTypeId } from '../../../../../shared/types.js';
 import type { ActionBreadcrumb, ActionRecord, ActionType, FindingAttribution, IncidentReport } from '../../../../../shared/types.js';
 import { CircularBuffer } from '../../../lib/circularBuffer.js';
@@ -620,8 +620,29 @@ export class ExplorationEngine {
     if (!selector) return;
     const index = this.confirmedBugsMemory.findIndex((b) => b.bugId === bugId);
     if (index >= 0 && !this.confirmedBugsMemory[index].selector) {
-      this.confirmedBugsMemory[index] = { ...this.confirmedBugsMemory[index], selector };
+      const entry = { ...this.confirmedBugsMemory[index], selector };
+      this.confirmedBugsMemory[index] = entry;
       this.markFindingsDirty();
+      // The live card was streamed before the culprit correlated, so it holds an empty
+      // Element while the ledger (and thus the saved report) now names one. Push the
+      // culprit onto the existing card by bugId so both surfaces match. liveFaultSignature
+      // excludes selector, so this patches in place and never spawns a second card.
+      this.activeGateway?.emitFindingUpgrade?.({
+        bugId,
+        severity: resolveSeverity({
+          severity: entry.severity,
+          bugClass: entry.attribution?.bugClass,
+          confidence: entry.attribution?.confidence,
+          verificationStatus: entry.attribution?.verificationStatus,
+          statusCode: entry.statusCode,
+        }),
+        message: entry.message,
+        confidence: entry.attribution?.confidence,
+        confidenceScore: entry.attribution?.confidenceScore,
+        verificationStatus: entry.attribution?.verificationStatus,
+        culpritSelector: selector,
+        culpritLabel: entry.elementLabel || undefined,
+      });
     }
   }
 

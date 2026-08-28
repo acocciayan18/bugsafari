@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import type { ICaughtBug } from '../../../infrastructure/database/models/SessionModel.js';
 import type { ConfirmedBug } from '../exploration/types.js';
-import { MAX_MERGED_FINDINGS, toSavedCaughtBug, unionFindingsByBugId } from './findingProjection.js';
+import { MAX_MERGED_FINDINGS, canonicalFindingSignature, dedupeCaughtBugsBySignature, toSavedCaughtBug, unionFindingsByBugId } from './findingProjection.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -138,6 +138,48 @@ check('merging is idempotent — re-saving the same run does not duplicate findi
   const once = unionFindingsByBugId([bug('b1')], [bug('b2')]);
   const twice = unionFindingsByBugId(once, [bug('b2')]);
   assert.deepStrictEqual(twice.map((b) => b.bugId), ['b1', 'b2']);
+});
+
+// ── family collapse (live ≡ history count parity) ────────────────────────────
+// The live Errors tab groups by the canonical fault signature (reason+url+stack+status);
+// the save-time collapse MUST use the same key or History over-counts a fault family that
+// fired from several controls (the reported Live 8 / History 15 divergence).
+
+check('same fault family with different selectors collapses to ONE finding, occurrences summed', () => {
+  const family = [
+    bug('b1', { message: 'HTTP 500 on /api/checkout', url: 'https://api/x', statusCode: 500, selector: '#btn-a', occurrences: 3 }),
+    bug('b2', { message: 'HTTP 500 on /api/checkout', url: 'https://api/x', statusCode: 500, selector: '#btn-b', occurrences: 4 }),
+    bug('b3', { message: 'HTTP 500 on /api/checkout', url: 'https://api/x', statusCode: 500, selector: '#btn-c', occurrences: 1 }),
+  ];
+  const collapsed = dedupeCaughtBugsBySignature(family);
+  assert.strictEqual(collapsed.length, 1, 'one family = one finding, matching the live card count');
+  assert.strictEqual(collapsed[0].occurrences, 8, 'occurrences summed across the family');
+});
+
+check('different status codes on the same endpoint stay distinct', () => {
+  const collapsed = dedupeCaughtBugsBySignature([
+    bug('b1', { message: 'request failed', url: 'https://api/x', statusCode: 500 }),
+    bug('b2', { message: 'request failed', url: 'https://api/x', statusCode: 404 }),
+  ]);
+  assert.strictEqual(collapsed.length, 2, 'a 500 and a 404 on one endpoint are two findings');
+});
+
+check('the canonical signature keys on reason+url+stack+status, ignoring type and selector', () => {
+  const base = bug('b1', { message: 'boom', url: 'https://app/p', stackTrace: 'at f (a.js:1:1)' });
+  const a = canonicalFindingSignature(base);
+  // selector/type must NOT partition the family — the old key split on exactly these.
+  assert.strictEqual(a, canonicalFindingSignature(bug('b1', { message: 'boom', url: 'https://app/p', stackTrace: 'at f (a.js:1:1)', selector: '#zzz', type: 'OTHER' })));
+  // url and statusCode MUST change the identity.
+  assert.notStrictEqual(a, canonicalFindingSignature(bug('b1', { message: 'boom', url: 'https://app/q', stackTrace: 'at f (a.js:1:1)' })));
+  assert.notStrictEqual(a, canonicalFindingSignature(bug('b1', { message: 'boom', url: 'https://app/p', stackTrace: 'at f (a.js:1:1)', statusCode: 500 })));
+});
+
+check('toSavedCaughtBug carries statusCode through for network faults', () => {
+  const saved = toSavedCaughtBug({
+    bugId: 'n1', type: 'NETWORK', message: 'HTTP 500', selector: '', payloadUsed: 'GET', advice: '',
+    timestamp: new Date(0), url: 'https://api/x', statusCode: 500,
+  });
+  assert.strictEqual(saved.statusCode, 500);
 });
 
 console.log(`findingProjection.test.ts: ${passed} checks passed`);

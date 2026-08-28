@@ -64,6 +64,10 @@ export interface SaveFindingPayload {
   selector?: string;
   /** Human name of the culprit control, persisted so the report never derives it from the selector. */
   culpritLabel?: string;
+  /** Route the fault surfaced on — part of the canonical save-dedup signature. */
+  url?: string;
+  /** HTTP status for a network fault — kept so the save collapse matches the live grouping. */
+  statusCode?: number;
   payloadUsed?: string;
   advice?: string;
   stackTrace?: string;

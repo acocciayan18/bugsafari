@@ -5,7 +5,6 @@ import type { OptimizationSettings, RunTerminationOutcome, TargetAuthConfig, Tes
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { sessionManager } from '../services/SessionManager.js';
 import type { ActionRecord, FindingAttribution, NetworkLogEntry, ConsoleLogEntry, StateFingerprint } from '../../../../shared/types.js';
-import { buildFaultSignature } from '../../../../shared/faultSignature.js';
 import { maskPayload, resolveControlName } from '../../../../shared/reproduction.js';
 import { randomUUID } from 'node:crypto';
 import { Types, isValidObjectId } from 'mongoose';
@@ -14,7 +13,7 @@ import { normalizeRunCode } from '../../../../shared/runCode.js';
 import { SessionModel } from '../../infrastructure/database/models/SessionModel.js';
 import type { ActionStepTrace, ICaughtBug } from '../../infrastructure/database/models/SessionModel.js';
 import { buildActionSteps } from '../../domain/services/forensics/actionStepMapper.js';
-import { toSavedCaughtBug, unionFindingsByBugId } from '../../domain/services/forensics/findingProjection.js';
+import { dedupeCaughtBugsBySignature, toSavedCaughtBug, unionFindingsByBugId } from '../../domain/services/forensics/findingProjection.js';
 import { SessionStatus } from '../../infrastructure/database/models/FindingType.js';
 import { withScenarioRandomScope } from '../../domain/scenarios/seededRandom.js';
 import { ReproductionPlaybookStore } from '../../infrastructure/monitoring/reproductionPlaybookStore.js';
@@ -86,6 +85,10 @@ export interface ClientFinding {
     selector?: string;
     /** Human name of the culprit control, resolved client-side alongside the selector. */
     culpritLabel?: string;
+    /** Route the fault surfaced on — part of the canonical save-dedup signature. */
+    url?: string;
+    /** HTTP status for a network fault — kept so the save collapse matches the live grouping. */
+    statusCode?: number;
     payloadUsed?: string;
     advice?: string;
     stackTrace?: string;
@@ -246,32 +249,6 @@ export class StartExplorationUseCase {
     }
 
 
-    // Signature built on the SHARED normalization (shared/faultSignature) so the
-    // save-time dedup collapses exactly what the live dashboard collapsed — same
-    // volatile-token masking, same stack-frame disambiguation. `type` + `selector`
-    // stay in the key as the backend's coarse discriminators (network vs exception,
-    // element identity) since caught bugs carry no url/statusCode.
-    private normalizeFaultSignature(type: string, message: string, selector: string, stackTrace?: string): string {
-        return `${type}||${buildFaultSignature({ reason: message, stackTrace })}||${selector ?? ''}`;
-    }
-
-    // Collapse duplicate findings, keeping the first as representative and SUMMING each
-    // instance's authoritative manifestation count (the ledger's per-bug ×N), never a raw
-    // +1 per row — so a duplicate telemetry instance can't inflate the saved count.
-    private dedupeCaughtBugs<T extends { type: string; message: string; selector: string; stackTrace?: string; occurrences?: number }>(
-        bugs: T[],
-    ): Array<T & { occurrences: number }> {
-        const groups = new Map<string, T & { occurrences: number }>();
-        for (const bug of bugs) {
-            const key = this.normalizeFaultSignature(bug.type, bug.message, bug.selector, bug.stackTrace);
-            const count = bug.occurrences ?? 1;
-            const existing = groups.get(key);
-            if (existing) existing.occurrences += count;
-            else groups.set(key, { ...bug, occurrences: count });
-        }
-        return [...groups.values()];
-    }
-
 /**
      * Manual save triggered by user clicking "Save to History" button.
      * Called externally via the API endpoint /api/history/save-session.
@@ -396,6 +373,8 @@ export class StartExplorationUseCase {
             message: finding.message ?? '',
             selector: finding.selector ?? '',
             elementLabel: finding.culpritLabel ?? '',
+            url: finding.url ?? '',
+            statusCode: finding.statusCode,
             payloadUsed: finding.payloadUsed ?? '',
             advice: finding.advice ?? '',
             stackTrace: finding.stackTrace ?? '',
@@ -420,7 +399,7 @@ export class StartExplorationUseCase {
         // matches what the report renders and the history list reports.
         // Cap embedded arrays (SEC-27) so a finding-rich run cannot approach the 16MB
         // BSON limit and fail the ENTIRE save. Generous — only a pathological run trips it.
-        const caughtBugs = capEmbedded(this.dedupeCaughtBugs(rawCaughtBugs), MAX_EMBEDDED_CAUGHT_BUGS, 'caughtBugs');
+        const caughtBugs = capEmbedded(dedupeCaughtBugsBySignature(rawCaughtBugs), MAX_EMBEDDED_CAUGHT_BUGS, 'caughtBugs');
 
         // Derive the category breakdown dynamically from the *actual* persisted
         // findings so no category (known or novel) is ever silently zeroed out.

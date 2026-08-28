@@ -58,6 +58,9 @@ export function buildLiveFindings(incidents: IncidentReport[], reports: Forensic
       message: inc.reason,
       selector: resolveCulprit(inc.culpritSelector, inc.steps) ?? '',
       culpritLabel: resolveCulpritLabel(inc.culpritLabel, inc.culpritSelector, inc.steps),
+      // Carried so the save-time family collapse keys on the SAME signature the live view did.
+      url: inc.url,
+      statusCode: inc.statusCode,
       payloadUsed: '',
       stackTrace: inc.stackTrace ?? '',
       reproductionSteps: checklist,
@@ -88,6 +91,9 @@ export function buildLiveFindings(incidents: IncidentReport[], reports: Forensic
       message: rep.reason,
       selector: resolveCulprit(rep.culpritSelector, rep.breadcrumbs) ?? '',
       culpritLabel: resolveCulpritLabel(rep.culpritLabel, rep.culpritSelector, rep.breadcrumbs),
+      // Carried so the save-time family collapse keys on the SAME signature the live view did.
+      url: rep.url,
+      statusCode: rep.statusCode,
       payloadUsed: '',
       stackTrace: rep.stackTrace ?? '',
       reproductionSteps: checklist,

@@ -1,4 +1,5 @@
 import { resolveSeverity } from '../../../../../shared/types.js';
+import { buildFaultSignature } from '../../../../../shared/faultSignature.js';
 import type { ConfirmedBug } from '../exploration/types.js';
 import type { ICaughtBug } from '../../../infrastructure/database/models/SessionModel.js';
 import { buildActionSteps } from './actionStepMapper.js';
@@ -36,6 +37,7 @@ export function toSavedCaughtBug(bug: ConfirmedBug): ICaughtBug {
     selector: bug.selector,
     elementLabel: bug.elementLabel ?? '',
     url: bug.url ?? '',
+    statusCode: bug.statusCode,
     payloadUsed: bug.payloadUsed,
     advice: bug.advice,
     stackTrace: bug.stackTrace ?? '',
@@ -105,4 +107,37 @@ export function unionFindingsByBugId(server: ICaughtBug[], client: ICaughtBug[])
   }
 
   return [...merged.values(), ...unkeyed].slice(0, MAX_MERGED_FINDINGS);
+}
+
+/**
+ * Canonical fault identity — the SAME shared normalization + field set the live dashboard
+ * groups by (errorDeduplication.liveFaultSignature). Keying the save-time collapse on this
+ * makes the persisted findingCount equal the distinct-family count the operator watched live;
+ * the older type+selector key split one family across its culprit controls (History > Live).
+ */
+export function canonicalFindingSignature(bug: Pick<ICaughtBug, 'message' | 'url' | 'stackTrace' | 'statusCode'>): string {
+  return buildFaultSignature({
+    reason: bug.message,
+    url: bug.url,
+    stackTrace: bug.stackTrace,
+    statusCode: bug.statusCode,
+  });
+}
+
+/**
+ * Collapse duplicate findings into one representative per fault family, SUMMING each
+ * instance's authoritative manifestation count (never a raw +1), so the saved ×N equals
+ * the live one. The engine ledger still retains every instance for telemetry; only the
+ * persisted, operator-facing set is collapsed. First entry wins as the representative.
+ */
+export function dedupeCaughtBugsBySignature(bugs: ICaughtBug[]): ICaughtBug[] {
+  const groups = new Map<string, ICaughtBug>();
+  for (const bug of bugs) {
+    const key = canonicalFindingSignature(bug);
+    const existing = groups.get(key);
+    const count = bug.occurrences ?? 1;
+    if (existing) existing.occurrences = (existing.occurrences ?? 1) + count;
+    else groups.set(key, { ...bug, occurrences: count });
+  }
+  return [...groups.values()];
 }
