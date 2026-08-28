@@ -54,14 +54,13 @@ function navItemClass(isActive: boolean, isRail: boolean) {
 }
 
 export default function Sidebar({
-  user,
+  
   isLoggedIn,
   activeView = 'dashboard',
   isCollapsed = false,
   onToggleCollapse,
   isDrawer = false,
   onDismiss,
-  displayName,
 }: SidebarProps) {
   const navigate = useNavigate();
   const pinnedReportId = useHistoryStore((s) => s.pinnedReportId);

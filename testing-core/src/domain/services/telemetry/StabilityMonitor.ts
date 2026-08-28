@@ -44,10 +44,9 @@ import type { StabilityMonitorDeps } from '../exploration/types.js';
 import {
   NetworkFaultArbiter,
   VerificationPipeline,
-  detectSoftFailBody,
   isBodyReadableResourceType,
-  isExpectedRejectionEnvelope,
   isProxyGatewayArtifact,
+  resolveMaskedFailure,
   statusForScore,
   type VerificationCandidate,
 } from '../verification/index.js';
@@ -2006,23 +2005,23 @@ export class StabilityMonitor {
       // is read (a 4xx/5xx is classified by status alone, as before).
       let softFailBody = false;
       let softFailEvidence = '';
+      let graphqlErrorResponse = false;
       let bodyContent = '';
       // Only API traffic is body-scanned: reading every 2xx (bundles, documents,
       // media) cost a full buffer per response and risked matching source text.
       if (status < 400 && isBodyReadableResourceType(resourceType)) {
         try {
           bodyContent = await response.text().catch(() => '');
-          const verdict = detectSoftFailBody(bodyContent);
           // Also match server-error signatures (stack traces, "internal server
           // error", SQL/exception text) leaking into a 2xx body — folded in from
           // the former background monitor so that coverage isn't lost by dedup.
           const serverSignature = bodyContent.length <= MAX_SOFT_FAIL_BODY_BYTES && matchesCategory('SERVER_ERROR', bodyContent);
-          // A login denied or a form rejected is the server refusing correctly, not a
-          // masked fault — suppress it unless a declared error flag or server-error
-          // signature also present. Keeps a defended injection out of the findings.
-          const expectedRejection = verdict.softFail && !serverSignature && isExpectedRejectionEnvelope(url, bodyContent);
-          softFailBody = (verdict.softFail || serverSignature) && !expectedRejection;
-          softFailEvidence = softFailBody ? (verdict.matched ?? (serverSignature ? 'server-error signature in body' : '')) : '';
+          // Finalize: a masked failure minus expected rejections and normal GraphQL 200
+          // error responses; a server-error signature overrides both suppressions.
+          const masked = resolveMaskedFailure({ url, body: bodyContent, serverSignature });
+          softFailBody = masked.softFail;
+          softFailEvidence = masked.matched ?? '';
+          graphqlErrorResponse = masked.graphqlInformational;
           // A 2xx API body that is HTML/non-JSON is the classic contract-mismatch source: the
           // app's fetch().json() will throw on it. Park it so a later client JSON.parse fault
           // can name this endpoint as its route (see correlateContractResponse).
@@ -2042,6 +2041,18 @@ export class StabilityMonitor {
       // A clean success with no soft-fail body is not actionable — never emitted,
       // stored, or persisted. Only failures reach the Network tab (below).
       if (status < 400 && !softFailBody) {
+        // A valid HTTP 200 GraphQL response carrying field-level errors is normal
+        // GraphQL, not a masked failure — keep it visible as informational Network
+        // telemetry, never a finding.
+        if (graphqlErrorResponse) {
+          t.emit('NETWORK', {
+            statusCode: status,
+            url,
+            method,
+            durationMs: this.computeRequestDuration(response.request()),
+            message: `HTTP ${status} ${method} ${url} — GraphQL response with errors (normal GraphQL; informational)`,
+          });
+        }
         return;
       }
 

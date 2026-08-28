@@ -68,6 +68,55 @@ export function isExpectedRejectionEnvelope(url: string, body: string): boolean 
   return OUTCOME_FALSE.test(body) && VALIDATION_REJECTION.test(body);
 }
 
+// A GraphQL endpoint — the spec convention is a single /graphql route (POST, or GET
+// with ?query=). Subscriptions and versioned mounts (/api/graphql, /v1/graphql) included.
+const GRAPHQL_ENDPOINT = /\/graphql\b|graphql\?/i;
+// Canonical GraphQL error shape: an `errors` array whose entries are objects carrying a
+// `message`. Bounded gap so a large body cannot force a pathological scan.
+const GRAPHQL_ERRORS_SHAPE = /"errors"\s*:\s*\[\s*\{[\s\S]{0,2048}?"message"\s*:/i;
+// A top-level `data` key — present (often null) on every spec GraphQL response.
+const GRAPHQL_DATA_KEY = /"data"\s*:/i;
+
+// True when a <400 body is a valid GraphQL error response, not a masked backend failure.
+// Per the GraphQL spec a 200 carrying field/resolver errors in `errors` is normal. The
+// dual gate (spec error shape AND [a data sibling OR a /graphql route]) keeps a REST
+// string-array `{"errors":["x"]}` or a REST endpoint's own envelope still flagged.
+export function isGraphQLErrorResponse(url: string, body: string): boolean {
+  if (!body || !GRAPHQL_ERRORS_SHAPE.test(body)) return false;
+  return GRAPHQL_DATA_KEY.test(body) || GRAPHQL_ENDPOINT.test(url);
+}
+
+export interface MaskedFailureVerdict {
+  softFail: boolean;
+  // The fault was dropped only because it is a normal GraphQL error response.
+  graphqlInformational: boolean;
+  matched?: string;
+}
+
+// Finalizes the masked-failure decision for a <400 API body: the raw envelope match (a
+// declared error, or a server-error signature the caller detected), minus the two
+// suppressions (an expected auth/validation rejection, a normal GraphQL error response).
+// A server-error signature (leaked stack, raw SQL/Mongo error) overrides both suppressions
+// so a resolver leaking a fault in a 200 body always promotes. Pure, so the promote vs
+// suppress decision is unit-testable without a live response.
+export function resolveMaskedFailure(input: {
+  url: string;
+  body: string;
+  serverSignature: boolean;
+}): MaskedFailureVerdict {
+  const verdict = detectSoftFailBody(input.body);
+  const raw = verdict.softFail || input.serverSignature;
+  if (!raw) return { softFail: false, graphqlInformational: false };
+  const expectedRejection = verdict.softFail && !input.serverSignature && isExpectedRejectionEnvelope(input.url, input.body);
+  const graphqlNormal = verdict.softFail && !input.serverSignature && isGraphQLErrorResponse(input.url, input.body);
+  const softFail = !expectedRejection && !graphqlNormal;
+  return {
+    softFail,
+    graphqlInformational: !softFail && graphqlNormal,
+    matched: softFail ? (verdict.matched ?? (input.serverSignature ? 'server-error signature in body' : undefined)) : undefined,
+  };
+}
+
 // A reverse-proxy / tunnel EDGE emits 502/503/504 when it cannot complete with the
 // origin; Cloudflare's 520–527 range is emitted EXCLUSIVELY by its edge (origin dropped,
 // timed out, or unreachable) — an origin application never returns 520–527.

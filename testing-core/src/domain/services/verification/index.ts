@@ -5,7 +5,7 @@
 
 export { classifyFaultOrigin, type OriginInput, type OriginVerdict } from './faultOrigin.js';
 export { scoreFinding, statusForScore, type ScoreInput, type ScoreResult } from './confidenceScore.js';
-export { detectSoftFailBody, isBodyReadableResourceType, isExpectedRejectionEnvelope, isProxyGatewayArtifact, type SoftFailVerdict } from './softFailBody.js';
+export { detectSoftFailBody, isBodyReadableResourceType, isExpectedRejectionEnvelope, isProxyGatewayArtifact, isGraphQLErrorResponse, resolveMaskedFailure, type SoftFailVerdict, type MaskedFailureVerdict } from './softFailBody.js';
 export {
   VerificationPipeline,
   type VerificationCandidate,

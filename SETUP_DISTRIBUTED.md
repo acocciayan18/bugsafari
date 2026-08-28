@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Bugsafari-shop-fix workflow demonstration"
+git commit -m "suppress-graphql-cwe-754-false-positive"
 git push origin HEAD:dev --force
 
 
