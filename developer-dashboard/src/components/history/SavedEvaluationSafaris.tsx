@@ -3,7 +3,8 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
+import { useDismissableLayer } from '../../hooks/useDismissableLayer';
 import { useNavigate } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { useAuth } from '../../hooks/useAuth';
@@ -25,7 +26,7 @@ import { useTour } from '../../tour/useTour';
 import { buildHistoryTourSteps } from '../../tour/tourSteps';
 import { SORT_FIELD_LABELS, type SortField, type SeverityFilter, type EvaluationSafari } from '../../stores/history/types';
 import { INFILTRATION_PROFILE_CATALOG, isImportantSession, type InfiltrationProfileId, type SessionHistoryState } from '../../types';
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Calendar, ChevronLeft, ChevronRight, CircleQuestionMark, ClipboardCheck, Hash, Lock, RefreshCcw, Search, TriangleAlert, Undo2 } from 'lucide-react';
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, CircleQuestionMark, ClipboardCheck, Hash, Layers, Lock, RefreshCcw, Search, SignalHigh, TriangleAlert, Undo2 } from 'lucide-react';
 
 // Operator-facing profile label, or '' when the row predates profile recording.
 const profileLabel = (id?: InfiltrationProfileId): string =>
@@ -60,35 +61,77 @@ const SEVERITY_BADGE_CLASS: Record<string, string> = {
   CLEAR: 'border-[var(--status-stable-border)] text-[var(--status-stable-fg)]',
 };
 
-// Compact segmented control — one-click filter switch aligned to the 32px toolbar row.
-function SegmentedControl<T extends string>({ options, value, onChange, ariaLabel, dataTour }: {
+// Accent dot per severity tier — mirrors the badge palette so the menu reads at a glance.
+const SEVERITY_DOT_CLASS: Record<string, string> = {
+  ALL: 'bg-[var(--text-tertiary)]',
+  CRITICAL: 'bg-[var(--status-critical-fg)]',
+  HIGH: 'bg-[var(--status-critical-fg)]',
+  MEDIUM: 'bg-[var(--status-warning-fg)]',
+  LOW: 'bg-[var(--status-warning-fg)]',
+  CLEAR: 'bg-[var(--status-stable-fg)]',
+};
+
+// Compact filter dropdown — trigger shows the active choice, popover lists the rest.
+// Menu behavior (dismiss/keyboard) reuses the shared RowActionMenu pattern for consistency.
+function FilterDropdown<T extends string>({ options, value, onChange, ariaLabel, dataTour, icon, dots }: {
   options: readonly { value: T; label: string }[];
   value: T;
   onChange: (value: T) => void;
   ariaLabel: string;
   dataTour?: string;
+  icon: React.ReactNode;
+  dots?: Record<string, string>;
 }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const closeMenu = () => { setIsOpen(false); buttonRef.current?.focus(); };
+  const menuRef = useDismissableLayer<HTMLDivElement>({ isOpen, onDismiss: closeMenu });
+  const active = options.find((o) => o.value === value);
+
   return (
-    <div
-      data-tour={dataTour}
-      role="group"
-      aria-label={ariaLabel}
-      className="scroll-rail inline-flex h-8 shrink-0 items-center gap-0.5 rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] p-0.5"
-    >
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => onChange(opt.value)}
-          aria-pressed={value === opt.value}
-          className={`shrink-0 cursor-pointer rounded px-2.5 py-1 text-xs font-medium transition-colors ${value === opt.value
-            ? 'bg-[var(--surface-invert)] text-[var(--text-oninvert)]'
-            : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
-            }`}
-        >
-          {opt.label}
-        </button>
-      ))}
+    <div ref={menuRef} data-tour={dataTour} className="relative">
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setIsOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-label={ariaLabel}
+        className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] pl-2 pr-1.5 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-focus)]"
+      >
+        <span className="text-[var(--text-tertiary)]">{icon}</span>
+        {dots && <span className={`h-2 w-2 shrink-0 rounded-full ${dots[value] ?? dots.ALL}`} aria-hidden="true" />}
+        <span className="truncate">{active?.label ?? ''}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-[var(--text-tertiary)] transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+      </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.ul
+            initial={{ opacity: 0, scale: 0.96, y: -4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: -4 }}
+            transition={{ duration: 0.14, ease: 'easeOut' }}
+            role="listbox"
+            aria-label={ariaLabel}
+            className="absolute left-0 top-full z-50 mt-1 min-w-[10rem] origin-top overflow-hidden rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-panel)] py-1 shadow-lg"
+          >
+            {options.map((opt) => (
+              <li key={opt.value} role="option" aria-selected={opt.value === value}>
+                <button
+                  type="button"
+                  onClick={() => { onChange(opt.value); closeMenu(); }}
+                  className={`flex w-full cursor-pointer items-center gap-2.5 px-3 py-2 text-left text-[13px] transition-colors hover:bg-[var(--surface-hover)] ${opt.value === value ? 'font-semibold text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}
+                >
+                  {dots && <span className={`h-2 w-2 shrink-0 rounded-full ${dots[opt.value] ?? dots.ALL}`} aria-hidden="true" />}
+                  <span className="flex-1 truncate">{opt.label}</span>
+                  {opt.value === value && <Check className="h-4 w-4 shrink-0 text-[var(--text-primary)]" aria-hidden="true" />}
+                </button>
+              </li>
+            ))}
+          </motion.ul>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -359,18 +402,21 @@ export default function SavedEvaluationSafaris() {
                     : <ArrowDownWideNarrow className="h-4 w-4" />}
                 </button>
               </div>
-              {/* Lifecycle + severity filters — compact segmented controls, grouped so they stay paired on wrap. */}
+              {/* Lifecycle + severity filters — compact dropdowns, grouped so they stay paired on wrap. */}
               <div className="flex items-center gap-2">
-                <SegmentedControl
+                <FilterDropdown
                   dataTour="history-buckets"
                   ariaLabel="Filter by lifecycle state"
+                  icon={<Layers className="h-4 w-4" />}
                   options={STATE_TABS}
                   value={stateFilter}
                   onChange={setStateFilter}
                 />
-                <SegmentedControl
+                <FilterDropdown
                   dataTour="history-filters"
                   ariaLabel="Filter by severity"
+                  icon={<SignalHigh className="h-4 w-4" />}
+                  dots={SEVERITY_DOT_CLASS}
                   options={SEVERITY_TABS}
                   value={activeFilter}
                   onChange={setActiveFilter}
@@ -533,8 +579,8 @@ export default function SavedEvaluationSafaris() {
 
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-[var(--border-hairline)] px-4 py-3 sm:px-6">
           <span className="font-mono text-[13px] text-[var(--text-secondary)]">
-            SHOWING {view.showingStart}-{view.showingEnd} OF {view.matchedCount} SAFARIS
-            {view.isFiltered && ` (FILTERED FROM ${view.totalCount})`}
+            Showing {view.showingStart}-{view.showingEnd} of {view.matchedCount} Safaris
+            {view.isFiltered && ` (Filtered from ${view.totalCount})`}
           </span>
           <nav aria-label="History pagination" className="flex items-center gap-1">
             <button

@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, TriangleAlert, CircleHelp, CircleX, CircleSlash, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, ArrowRight, CircleCheckBig, Calendar, ChevronDown, Hash, Clock, Sparkles, Network, Terminal } from 'lucide-react';
+import { Check, TriangleAlert, CircleHelp, CircleX, CircleSlash, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, ArrowRight, CircleCheckBig, Calendar, ChevronDown, Hash, Clock, Sparkles, Network, Terminal, Link2Off, FileWarning } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useHistoryStore } from '../../stores/history/historyStore';
@@ -1106,11 +1106,42 @@ export default function ForensicReport({ shared = false }: { shared?: boolean } 
 
 
   if (error || !report) {
+    // Share viewers hit an expired/revoked link, not a system fault — softer amber
+    // framing + a way home. Owners get the critical load-failure state.
+    const ErrIcon = shared ? Link2Off : FileWarning;
+    const heading = shared ? "This share link isn't available" : "Couldn't load this report";
+    const detail = error || (shared
+      ? 'The link may be invalid, or the report was deleted or unshared by its owner.'
+      : "We couldn't find any data for this report.");
+    const badgeTone = shared
+      ? 'border-(--status-warning-border) bg-(--status-warning-bg) text-(--status-warning-fg)'
+      : 'border-(--border-hairline) bg-(--status-critical-bg) text-(--status-critical-fg)';
+
     return (
-      <div className="flex h-full w-full items-center justify-center bg-(--surface-panel) px-6">
-        <div className="max-w-md text-center">
-          <div className="text-[13px] font-semibold text-(--status-critical-fg)">Couldn't load this report</div>
-          <div className="mt-2 text-[13px] text-(--text-tertiary)">{error || "We couldn't find any data for this report."}</div>
+      <div className="flex h-full w-full flex-col bg-(--surface-app)">
+        {shared && (
+          <header className="flex items-center border-b border-(--border-hairline) bg-(--surface-panel) px-4 py-3 sm:px-6">
+            <span className="text-sm font-bold tracking-tight text-(--text-primary)">BUGSAFARI</span>
+          </header>
+        )}
+        <div className="flex flex-1 items-center justify-center px-6 py-12">
+          <div role="alert" className="flex w-full max-w-sm flex-col items-center gap-5 text-center">
+            <span className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-full border ${badgeTone}`}>
+              <ErrIcon className="h-8 w-8" strokeWidth={1.5} aria-hidden="true" />
+            </span>
+            <div className="flex flex-col gap-2">
+              <h1 className="text-base font-semibold text-(--text-primary) sm:text-lg">{heading}</h1>
+              <p className="text-[13px] leading-relaxed text-(--text-tertiary) sm:text-sm">{detail}</p>
+            </div>
+            {shared && (
+              <button
+                onClick={() => navigate('/')}
+                className="mt-1 cursor-pointer rounded-lg bg-(--surface-invert) px-5 py-2.5 text-[13px] font-semibold text-(--text-oninvert) transition-colors hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active)"
+              >
+                Go to BugSafari
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );

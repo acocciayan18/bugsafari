@@ -1325,6 +1325,16 @@ export class ActionExecutor {
   ): Promise<void> {
     const selector = target.selector;
 
+    // FormBypasser also runs on buttonLike controls to force-enable them, so this
+    // hook receives non-input targets (a dismiss '×', a submit button). A text
+    // payload has no field to land in there — injecting mislabels a non-input as
+    // fuzzed and no-ops. Gate on the same scope classifier that routes
+    // executeInputFuzzing so the two payload paths can never disagree.
+    if (classifyInteractionScope(target) !== 'attack-vector') {
+      obsLog.debug(`[SecurityFuzzerPayloads] Skipped non-fuzzable target ${selector} (not an attack-vector field).`);
+      return;
+    }
+
     // Classify the input element and synthesize a deterministic, replayable payload
     // at whatever escalation level this field is currently at.
     const category = classifyInputElement(target);
