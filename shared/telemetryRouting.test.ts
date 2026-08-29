@@ -115,9 +115,18 @@ check('HTTP 200 carrying an error payload is a finding', () => {
   assert.equal(v.promote, true);
 });
 
-check('chaos-injected failure outranks the cancellation filter', () => {
+check('an injected transport abort the app absorbs is a resilience pass, not a finding', () => {
+  // Injection alone is not proof of mishandling: an aborted request the app handles gracefully
+  // (no runtime fault) is CHAOS_ABSORBED (Network-only). It only becomes a finding if a runtime
+  // fault later claims it (routed as BROKE_UI via causedRuntimeFault) — see the next check.
   const v = routeNetworkEvent({ kind: 'TRANSPORT_FAILURE', resourceType: 'xhr', failureText: 'net::ERR_ABORTED', chaosInjected: true });
-  assert.equal(v.reasonCode, 'CHAOS_INJECTED');
+  assert.equal(v.reasonCode, 'CHAOS_ABSORBED');
+  assert.equal(v.promote, false);
+});
+
+check('an injected transport abort that broke the UI IS a finding (BROKE_UI)', () => {
+  const v = routeNetworkEvent({ kind: 'TRANSPORT_FAILURE', resourceType: 'xhr', failureText: 'net::ERR_FAILED', chaosInjected: true, causedRuntimeFault: true });
+  assert.equal(v.reasonCode, 'BROKE_UI');
   assert.equal(v.promote, true);
 });
 
@@ -132,12 +141,14 @@ check('a DEFENSIVE 4xx under an armed saboteur is correct handling, never a chao
 });
 
 check('a chaos-injected 5xx or error payload is still a genuine finding', () => {
+  // A mutated payload the backend answers with a 5xx (or a 200 hiding an error body) is a real
+  // server-side failure, not an absorbed abort — it promotes on its own merits (not chaos-gated).
   const server = routeNetworkEvent({ kind: 'HTTP_RESPONSE', statusCode: 500, url: 'https://app.io/api/login', resourceType: 'xhr', chaosInjected: true });
   assert.equal(server.promote, true);
-  assert.equal(server.reasonCode, 'CHAOS_INJECTED');
+  assert.equal(server.reasonCode, 'SERVER_ERROR');
   const soft = routeNetworkEvent({ kind: 'HTTP_RESPONSE', statusCode: 200, resourceType: 'xhr', softFailBody: true, chaosInjected: true });
   assert.equal(soft.promote, true);
-  assert.equal(soft.reasonCode, 'CHAOS_INJECTED');
+  assert.equal(soft.reasonCode, 'SOFT_FAIL_BODY');
 });
 
 check('chaos injection does NOT promote a healthy response', () => {

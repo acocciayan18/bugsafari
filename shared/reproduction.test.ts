@@ -408,6 +408,17 @@ check('an API endpoint is never rendered as a UI control name (fabricated-contro
   assert.equal(isDescriptiveControlName('the control that sends POST /api/x'), false);
   assert.equal(isDescriptiveControlName('Login'), true);
 
+  // A generic structural noun (genericElementLabel/elementNoun fallback for an anonymous control)
+  // is NOT descriptive — a fault must not be pinned to it with a meaningless selector.
+  for (const noun of ['button', 'link', 'input field', 'field', 'control', 'element', 'dropdown', 'text box']) {
+    assert.equal(isDescriptiveControlName(noun), false, noun);
+  }
+  assert.equal(isDescriptiveControlName('Button'), false); // case-insensitive
+  // Real control names still pass — no over-rejection.
+  for (const name of ['Add to cart', 'Search', 'Submit', 'Play Hymn']) {
+    assert.equal(isDescriptiveControlName(name), true, name);
+  }
+
   // describeTarget degrades an endpoint label to the noun, never quotes it as a control.
   assert.equal(describeTarget('POST /api/counter', 'button'), 'the button');
   assert.equal(describeTarget('the control that sends POST /api/login-nosql', 'control'), 'the control');

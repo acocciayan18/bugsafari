@@ -45,6 +45,19 @@ export class ChaosInjectionRegistry {
     return ChaosInjectionRegistry.lookup(url, atMs)?.mode;
   }
 
+  /** True when ANY endpoint is inside its injection window at `atMs`. An app fetch-rejection
+   *  log rarely names the sabotaged URL, so a downstream fault is correlated by time alone. */
+  public static hasActiveInjection(atMs: number = Date.now()): boolean {
+    for (const [key, entry] of ChaosInjectionRegistry.injected) {
+      if (atMs - entry.atMs > INJECTION_WINDOW_MS) {
+        ChaosInjectionRegistry.injected.delete(key);
+        continue;
+      }
+      return true;
+    }
+    return false;
+  }
+
   public static reset(): void {
     ChaosInjectionRegistry.injected.clear();
   }

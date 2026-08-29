@@ -29,6 +29,7 @@ export type RoutingTier = 'INFORMATIONAL' | 'MEDIUM' | 'CRITICAL';
 export type RoutingReasonCode =
   | 'ASSET_NOISE'
   | 'CHAOS_INJECTED'
+  | 'CHAOS_ABSORBED'
   | 'BROKE_UI'
   | 'CANCELLED'
   | 'ENVIRONMENT'
@@ -323,21 +324,31 @@ export function routeNetworkEvent(input: NetworkRoutingInput): NetworkRoutingVer
   // armed saboteur. Genuine mishandling still promotes below — a 5xx, an error payload, a
   // transport failure, or actual UI breakage (BROKE_UI).
   const defensiveClientStatus = status !== undefined && status >= 400 && status < 500;
-  if (input.chaosInjected && failed && !defensiveClientStatus) {
-    return verdict(
-      'FINDING',
-      'MEDIUM',
-      'CHAOS_INJECTED',
-      'Injected network fault. The application failed to handle the simulated failure properly.',
-    );
-  }
 
+  // A failed request that broke the UI (unhandled error / stuck view) is the real defect — and it
+  // also covers a chaos-injected fault the app FAILED to absorb. Checked before the chaos branch so
+  // a genuine break outranks the resilience-pass note.
   if (input.causedRuntimeFault && failed) {
     return verdict(
       'FINDING',
       'CRITICAL',
       'BROKE_UI',
       'The failed request left the interface broken (unhandled error or stuck UI).',
+    );
+  }
+
+  // An injected TRANSPORT abort the app ABSORBED — no runtime fault, no stuck UI — is a resilience
+  // pass, not a defect. Injecting a fault is not itself proof the app mishandled it (the old branch
+  // asserted "failed to handle" from injection alone, flagging every resilient app). It stays a
+  // Network observation; if the app breaks within the correlation window the arbiter re-promotes it
+  // as BROKE_UI above. Scoped to TRANSPORT_FAILURE so a chaos-injected 5xx or error payload still
+  // promotes as the genuine SERVER_ERROR / SOFT_FAIL_BODY below.
+  if (input.chaosInjected && input.kind === 'TRANSPORT_FAILURE') {
+    return verdict(
+      'NETWORK_ONLY',
+      'INFORMATIONAL',
+      'CHAOS_ABSORBED',
+      'Injected network fault; the application absorbed it without a visible break (resilience pass).',
     );
   }
 

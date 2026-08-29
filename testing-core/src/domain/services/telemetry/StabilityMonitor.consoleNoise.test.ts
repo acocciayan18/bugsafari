@@ -2,7 +2,7 @@
 // Run: `npx tsx src/domain/services/telemetry/StabilityMonitor.consoleNoise.test.ts`.
 
 import assert from 'node:assert/strict';
-import { isIgnorableConsoleError } from './StabilityMonitor.js';
+import { isIgnorableConsoleError, isFetchFailureText } from './StabilityMonitor.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -67,5 +67,19 @@ check('React 18 Warning-prefixed NaN warning is ignored', () =>
   assert.equal(isIgnorableConsoleError('Warning: Received NaN for the `value` attribute. If this is expected, cast the value to a string.'), true));
 check('React list-key dev warning is ignored', () =>
   assert.equal(isIgnorableConsoleError('Warning: Each child in a list should have a unique "key" prop.'), true));
+
+// isFetchFailureText — the browser fetch/XHR rejection signatures an app logs when its request
+// fails. During an active chaos sabotage window a CONSOLE line matching this is the app's own
+// handled echo of an injected abort (suppressed in reportRuntimeFault), not an app defect.
+console.log('\nisFetchFailureText — fetch/XHR rejection signatures');
+check('"Failed to fetch" is a fetch failure', () =>
+  assert.equal(isFetchFailureText('product search failed: Failed to fetch'), true));
+check('"NetworkError when attempting to fetch" is a fetch failure', () =>
+  assert.equal(isFetchFailureText('TypeError: NetworkError when attempting to fetch a resource.'), true));
+check('"Load failed" (Safari) is a fetch failure', () =>
+  assert.equal(isFetchFailureText('Load failed'), true));
+check('an unrelated app crash is NOT a fetch failure', () =>
+  assert.equal(isFetchFailureText("Cannot read properties of undefined (reading 'length')"), false));
+check('empty text is not a fetch failure', () => assert.equal(isFetchFailureText(''), false));
 
 console.log(`\n${passed} passed`);

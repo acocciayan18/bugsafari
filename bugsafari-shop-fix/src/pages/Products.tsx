@@ -30,7 +30,7 @@ export default function Products() {
     setFailed(false);
     api<{ products: Product[] }>(`/products?${q.toString()}`)
       .then((r) => {
-        setProducts(r.products);
+        setProducts(Array.isArray(r.products) ? r.products : []);
         setLoading(false);
       })
       .catch((e) => {

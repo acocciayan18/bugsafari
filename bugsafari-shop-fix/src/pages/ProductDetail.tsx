@@ -43,7 +43,7 @@ export default function ProductDetail() {
   useEffect(() => {
     setLoading(true);
     api<{ product: Product; reviews: Review[] }>(`/products/${id}`)
-      .then((r) => { setProduct(r.product); setReviews(r.reviews); })
+      .then((r) => { setProduct(r.product); setReviews(Array.isArray(r.reviews) ? r.reviews : []); })
       .catch(() => setMissing(true))
       .finally(() => setLoading(false));
   }, [id]);

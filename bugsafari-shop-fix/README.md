@@ -44,6 +44,8 @@ npm install
 | `npm run tunnel` | `serve` + a public `https://*.trycloudflare.com` URL to paste into BugSafari |
 | `npm test` | `node --test` — edge-case suite proving the fixes (pricing floor, catalog repricing, regex-safe search, orderNumber tracking, forged-token rejection) |
 
+npx cloudflared tunnel --url http://localhost:4310
+
 Open **http://localhost:4310** after `npm run serve`.
 
 ---

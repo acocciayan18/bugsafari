@@ -15,7 +15,7 @@ export default function Home() {
 
   useEffect(() => {
     api<{ products: Product[] }>('/products?sort=rating')
-      .then((r) => setFeatured(r.products.slice(0, 4)))
+      .then((r) => setFeatured(Array.isArray(r.products) ? r.products.slice(0, 4) : []))
       .catch(() => {});
   }, []);
 

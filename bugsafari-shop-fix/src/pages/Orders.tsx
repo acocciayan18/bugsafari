@@ -14,7 +14,7 @@ export default function Orders() {
     if (authLoading) return;
     if (!user) { setLoading(false); return; }
     api<{ orders: Order[] }>('/orders')
-      .then((r) => setOrders(r.orders))
+      .then((r) => setOrders(Array.isArray(r.orders) ? r.orders : []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [user, authLoading]);

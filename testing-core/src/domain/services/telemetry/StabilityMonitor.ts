@@ -206,6 +206,16 @@ export function isIgnorableConsoleError(text: string): boolean {
   return false;
 }
 
+// Browser fetch/XHR rejection signatures. An app that CATCHES its own failed request and logs it
+// (console.error) produces one of these — during an active chaos sabotage window that log is the
+// downstream echo of a fault the engine injected, not an app defect.
+const FETCH_FAILURE_RE = /failed to fetch|networkerror when attempting to fetch|load failed|network request failed/i;
+
+/** True for a browser fetch/XHR rejection message (the text an app logs when its request fails). */
+export function isFetchFailureText(text: string | undefined | null): boolean {
+  return !!text && FETCH_FAILURE_RE.test(text);
+}
+
 /**
  * Split a raw runtime fault into its human diagnostic message and its stack trace so
  * the two never share one field. A pageerror already separates them (message + stack),
@@ -291,7 +301,7 @@ export function isStressScenarioActive(): boolean {
 export function isRaceScenarioActive(): boolean {
   const scenario = ActiveScenarioTracker.getActiveScenarioName();
   if (!scenario) return false;
-  const raceScenarios = ['AsyncStateRacer', 'ButtonSpammer'];
+  const raceScenarios = ['AsyncStateRacer', 'ButtonSpammer', 'ConcurrentClicker'];
   return raceScenarios.some((s) => scenario.includes(s));
 }
 
@@ -821,6 +831,17 @@ export class StabilityMonitor {
       t.emit('ACTION', {
         actionExecuted: 'media-fault-suppressed',
         message: `Media playback fault suppressed (codec-less browser env): ${message}`,
+      });
+      return;
+    }
+    // The app CAUGHT its own failed request and logged it while a chaos fault is active — this
+    // CONSOLE line is the downstream echo of an abort the engine injected, i.e. correct handling,
+    // not an app defect. Suppress it (source-gated: an UNCAUGHT pageerror/rejection still promotes
+    // and can claim the held chaos fault as BROKE_UI, so a real resilience crash is never lost).
+    if (source === 'CONSOLE' && isFetchFailureText(message) && ChaosInjectionRegistry.hasActiveInjection(faultAtMs)) {
+      t.emit('ACTION', {
+        actionExecuted: 'chaos-echo-suppressed',
+        message: `App logged the injected network fault (handled): ${message}`,
       });
       return;
     }
@@ -1851,6 +1872,11 @@ export class StabilityMonitor {
         const startedAt = Date.now();
         this.requestStartTimes.set(request, startedAt);
         this.trackPending(request, page.url());
+        // Skip duplicate pairing while a synthetic burst fires: the ConcurrentClicker / race
+        // bursts use force:true clicks that bypass the app's disable-on-submit, so a "double
+        // submit" they provoke is an engine artifact a real user cannot reproduce — not a
+        // SPA_STATE_RACE_CONDITION. Organic double-clicks (no burst active) are still observed.
+        if (!ActiveScenarioTracker.isOffTargetScenarioActive() && !isRaceScenarioActive()) {
         this.duplicateFinder.observeRequest({
           requestId: this.requestIdFor(request),
           method: request.method(),
@@ -1868,6 +1894,7 @@ export class StabilityMonitor {
             : this.deps.getInteractionContext(startedAt) ?? undefined,
           pageUrl: page.url(),
         });
+        }
       } catch {
         // never let the reporter hook throw inside a page listener
       }

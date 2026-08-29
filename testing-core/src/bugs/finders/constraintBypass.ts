@@ -4,6 +4,7 @@ import type { BugFinder, BugContext, BugFinding } from '../types.js';
 import { triggerFormSubmission } from '../../domain/services/exploration/formSubmitter.js';
 import { humanizeElement, resolveElementLabel } from '../../../../shared/reproduction.js';
 import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
+import { detectSoftFailBody, isExpectedRejectionEnvelope, MAX_SOFT_FAIL_BODY_BYTES } from '../../domain/services/verification/softFailBody.js';
 
 // Rapid-click / concurrency stress windows. While one runs, a state-changing 2xx firing
 // in the observation window is far more likely a burst-provoked autosave/telemetry write
@@ -96,6 +97,19 @@ export function correlatesToSubmission(body: string, url: string, payload: strin
   if (payload !== '' && (body.includes(payload) || body.includes(encodeURIComponent(payload)))) return true;
   if (target.fieldName !== null && body.includes(target.fieldName)) return true;
   return target.actionPath !== null && safePathname(url) === target.actionPath;
+}
+
+/**
+ * A correlated 2xx only proves a bypass when its body shows the value was SILENTLY accepted:
+ * no soft-fail envelope ({"error":true}, "success":false, …) and no auth/validation rejection
+ * ("invalid credentials", "required", …). A 200 carrying either is the server enforcing the rule
+ * with the wrong status code, not a bypass — the same body signal the API-contract oracle uses,
+ * so the two oracles can never disagree about the same response.
+ */
+export function acceptedSilently(url: string, body: string): boolean {
+  if (detectSoftFailBody(body).softFail) return false;
+  if (isExpectedRejectionEnvelope(url, body)) return false;
+  return true;
 }
 
 // Data-type constraint from the parse-time snapshot, so it survives an earlier action
@@ -254,8 +268,10 @@ export const constraintBypassFinder: BugFinder = {
     // Resolved BEFORE the constraints are stripped, so the form action and field
     // name are read while the DOM still reflects the untouched control.
     const target = await resolveSubmissionTarget(ctx.page, element.selector);
-    // Holder object (not a bare let) so TS doesn't narrow the closure-mutated value.
-    const captured: { hit: { status: number; url: string; method: string } | null } = { hit: null };
+    // Holder object (not a bare let) so TS doesn't narrow the closure-mutated value. The
+    // Response is kept so its body can be judged after the window — a 2xx alone never proves
+    // acceptance, since an error/rejection body is a server rejection wearing a 200.
+    const captured: { hit: { status: number; url: string; method: string; response: Response } | null } = { hit: null };
     const onResponse = (response: Response): void => {
       if (captured.hit) return;
       try {
@@ -264,7 +280,7 @@ export const constraintBypassFinder: BugFinder = {
         const stateChanging = method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
         if (!stateChanging || response.status() >= 400 || !sameOrigin(response.url(), origin)) return;
         if (!correlatesToSubmission(request.postData() ?? '', response.url(), plan.violating, target)) return;
-        captured.hit = { status: response.status(), url: response.url(), method };
+        captured.hit = { status: response.status(), url: response.url(), method, response };
       } catch {
         // response detached — ignore
       }
@@ -281,6 +297,16 @@ export const constraintBypassFinder: BugFinder = {
 
     const accepted = captured.hit;
     if (!accepted) return []; // server rejected/errored or nothing submitted → not confirmed
+
+    // A correlated 2xx is only a bypass when its body shows silent acceptance. An unreadable
+    // body yields no positive proof, so it is not reported (the finder reports on evidence only).
+    let body: string;
+    try {
+      body = (await accepted.response.text()).slice(0, MAX_SOFT_FAIL_BODY_BYTES);
+    } catch {
+      return [];
+    }
+    if (!acceptedSilently(accepted.url, body)) return []; // 200+error/rejection body = server enforced the rule
 
     const label = resolveElementLabel(element);
     const endpoint = relativeEndpoint(accepted.url);

@@ -3,7 +3,7 @@
 // Exits non-zero on the first failed assertion.
 
 import assert from 'node:assert/strict';
-import { planFromType, planFromSnapshot, snapshotFromElement, correlatesToSubmission } from './constraintBypass.js';
+import { planFromType, planFromSnapshot, snapshotFromElement, correlatesToSubmission, acceptedSilently } from './constraintBypass.js';
 import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 
 let passed = 0;
@@ -144,6 +144,40 @@ function main(): void {
   check('an element with no captured constraint yields null (falls back to live DOM)', () => {
     assert.equal(snapshotFromElement(withConstraints({})), null);
     assert.equal(snapshotFromElement(withConstraints({ maxLength: 0, pattern: '', required: false })), null);
+  });
+
+  // acceptedSilently gates the correlated 2xx on its BODY: a bypass is confirmed only when the
+  // value was silently accepted. A 200 carrying an error/rejection body is a server rejection
+  // wearing a 200 — the false positive that contradicted the API-contract oracle on one endpoint.
+  const login = 'https://t/backend/C4F3_login.php';
+
+  check('a clean 2xx body is a genuine silent acceptance (still reported)', () => {
+    assert.equal(acceptedSilently('https://t/api/save', '{"id":42,"ok":true}'), true);
+  });
+
+  check('an empty 2xx body counts as acceptance (no rejection signal)', () => {
+    assert.equal(acceptedSilently('https://t/api/save', ''), true);
+  });
+
+  check('a declared error envelope ({"error":true}) is NOT acceptance', () => {
+    assert.equal(acceptedSilently(login, '{"error":true,"code":401}'), false);
+  });
+
+  check('a JSON auth rejection is NOT acceptance', () => {
+    assert.equal(acceptedSilently(login, '{"success":false,"message":"Invalid credentials"}'), false);
+  });
+
+  check('a plain-text auth rejection is NOT acceptance', () => {
+    assert.equal(acceptedSilently(login, 'Invalid credentials'), false);
+  });
+
+  check('a validation rejection ("email is required") is NOT acceptance', () => {
+    assert.equal(acceptedSilently(login, '{"success":false,"message":"email is required"}'), false);
+  });
+
+  // Over-suppression guard: a body that merely MENTIONS error without an envelope stays acceptance.
+  check('a non-envelope body mentioning "error" stays acceptance', () => {
+    assert.equal(acceptedSilently('https://t/api/save', '{"error":null,"active":true}'), true);
   });
 
   console.log(`\nconstraintBypass: ${passed} checks passed.`);

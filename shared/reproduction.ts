@@ -188,8 +188,20 @@ export function isDescriptiveControlName(label?: string): boolean {
   if (/^[+-]?\d[\d.,]*$/.test(value)) return false;
   // An endpoint reference ("POST /api/x") is not a UI control — drop it as a culprit.
   if (isApiEndpointLabel(value)) return false;
+  // A generic structural noun (genericElementLabel / elementNoun fallback) names a TYPE, not a
+  // specific control — drop it, as the <tag> form above is dropped, so a fault on an anonymous
+  // element is not pinned to it with a meaningless utility-class selector.
+  if (GENERIC_CONTROL_NOUNS.has(value.toLowerCase())) return false;
   return true;
 }
+
+// The fallback nouns genericElementLabel (structural) and elementNoun (reproduction) produce for
+// a control with no accessible name. They identify a type, never a specific control.
+const GENERIC_CONTROL_NOUNS: ReadonlySet<string> = new Set([
+  'element', 'control', 'button', 'link', 'navigation link', 'home link',
+  'field', 'input field', 'text box', 'dropdown', 'checkbox', 'radio button',
+  'file picker', 'slider', 'color picker',
+]);
 
 // A structural DOM path inside free text: three-plus selector tokens joined by
 // `>`, or a single token carrying a positional pseudo. Case-sensitive, gap-free
