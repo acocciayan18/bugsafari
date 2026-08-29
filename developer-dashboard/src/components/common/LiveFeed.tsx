@@ -269,7 +269,7 @@ function LiveFeed({
             <div className="relative flex h-14 w-14 items-center justify-center rounded-full border border-(--border-hairline) bg-(--surface-app) text-(--text-tertiary) shadow-(--shadow-sm)">
               <Globe size={24} strokeWidth={1.75} aria-hidden="true" />
             </div>
-            <p className="relative font-mono text-xs uppercase tracking-[0.14em] text-(--text-primary) sm:text-[13px]">
+            <p className="relative font-mono text-xs uppercase tracking-[0.07em] text-(--text-primary) sm:text-[13px]">
               Enter a target URL to begin
             </p>
           </div>
@@ -283,7 +283,7 @@ function LiveFeed({
               <span className="absolute inset-0 rounded-full border-2 border-(--border-hairline)"></span>
               <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-(--status-neutral-fg) animate-spin"></span>
             </span>
-            <p className="relative font-mono text-xs uppercase tracking-[0.14em] text-(--text-primary) sm:text-[13px]">
+            <p className="relative font-mono text-xs uppercase tracking-[0.07em] text-(--text-primary) sm:text-[13px]">
               Queued, waiting for an open slot
             </p>
           </div>
@@ -297,7 +297,7 @@ function LiveFeed({
               <span className="absolute inset-0 rounded-full border-2 border-(--border-hairline)"></span>
               <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-(--text-primary) animate-spin"></span>
             </span>
-            <p className="relative font-mono text-xs uppercase tracking-[0.14em] text-(--text-primary) sm:text-[13px]">
+            <p className="relative font-mono text-xs uppercase tracking-[0.07em] text-(--text-primary) sm:text-[13px]">
               Establishing telemetry stream
             </p>
           </div>
@@ -310,7 +310,7 @@ function LiveFeed({
             <div className="relative flex h-14 w-14 items-center justify-center rounded-full border border-(--border-hairline) bg-(--surface-app) text-(--text-tertiary) shadow-(--shadow-sm)">
               <Flag size={22} strokeWidth={1.75} aria-hidden="true" />
             </div>
-            <p className="relative font-mono text-xs uppercase tracking-[0.14em] text-(--text-primary) sm:text-[13px]">
+            <p className="relative font-mono text-xs uppercase tracking-[0.07em] text-(--text-primary) sm:text-[13px]">
               {terminationCopy?.label ?? 'Exploration Complete'}
             </p>
             <p className="relative max-w-md text-[13px] text-(--text-secondary)">
