@@ -253,6 +253,19 @@ check('the family collapse arbitrates worst severity and a consistent element ac
   assert.strictEqual(out[0].selector, '#sold-out', 'label and selector stay paired from that record');
 });
 
+// Cross-wire guard: when the label-carrying member has NO selector of its own, the reconciled
+// selector must stay empty — never borrow a DIFFERENT member's selector. Borrowing is exactly the
+// mis-attribution that stamped an unrelated red nav button onto a media/beacon finding.
+check('a label with no selector never borrows a different node\'s selector', () => {
+  // rep (richer repro) carries a selector but no label; the label lives on a member with no selector.
+  const server = [bug('finder-x', { message: 'boom', url: '/', stackTrace: 'at f (a.js:1:1)', elementLabel: '', selector: '#red-btn', reproductionSteps: ['s1', 's2'] })];
+  const client = [bug('incident-x', { message: 'boom', url: '/', stackTrace: 'at f (a.js:1:1)', elementLabel: 'Play Hymn', selector: undefined, reproductionSteps: ['s1'] })];
+  const out = reconcileFindingsForPersistence(server, client);
+  assert.strictEqual(out.length, 1, 'the twin collapses to one family');
+  assert.strictEqual(out[0].elementLabel, 'Play Hymn', 'the label is taken from the member that resolved it');
+  assert.notStrictEqual(out[0].selector, '#red-btn', 'the selector must NOT be cross-wired from a different node');
+});
+
 check('the collapse representative carries the content-richest repro steps, order-independent', () => {
   const rich = bug('b1', { message: 'boom', url: 'https://app/p', reproductionSteps: ['s1', 's2', 's3'] });
   const thin = bug('b2', { message: 'boom', url: 'https://app/p', reproductionSteps: ['s1'] });

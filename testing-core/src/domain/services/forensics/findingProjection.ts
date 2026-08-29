@@ -172,8 +172,11 @@ const caughtBugCollapseAdapter: CollapseAdapter<OriginBug> = {
       bug: {
         ...rep.bug,
         severity,
-        elementLabel: culprit?.bug.elementLabel ?? rep.bug.elementLabel,
-        selector: culprit?.bug.selector ?? rep.bug.selector,
+        // Label AND selector come from the SAME chosen member so they never describe different
+        // nodes. If that member's selector is empty, leave it empty — borrowing rep's selector
+        // (a different node) is exactly the label/selector cross-wire that mis-attributes findings.
+        elementLabel: culprit ? culprit.bug.elementLabel : rep.bug.elementLabel,
+        selector: culprit ? culprit.bug.selector : rep.bug.selector,
         statusCode: rep.bug.statusCode ?? members.find((m) => m.bug.statusCode !== undefined)?.bug.statusCode,
       },
     };

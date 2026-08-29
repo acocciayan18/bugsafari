@@ -36,6 +36,13 @@ check('CSP inline-style violation is ignored', () =>
 check('CSP inline-script violation is ignored', () =>
   assert.equal(isIgnorableConsoleError('Refused to execute inline script because it violates the following Content Security Policy directive: "script-src \'self\'".'), true));
 
+// Media-playback errors are an environment artifact: Playwright's codec-less Chromium rejects
+// H.264/AAC that real Chrome decodes. "No supported sources" must never be a CWE-248 exception.
+check('media "no supported sources" error is ignored', () =>
+  assert.equal(isIgnorableConsoleError('The element has no supported sources.'), true));
+check('a rejected play() request is ignored', () =>
+  assert.equal(isIgnorableConsoleError('NotSupportedError: The play() request was interrupted'), true));
+
 console.log('\nisIgnorableConsoleError — real faults pass through');
 
 check('a genuine app crash is NOT ignored', () =>

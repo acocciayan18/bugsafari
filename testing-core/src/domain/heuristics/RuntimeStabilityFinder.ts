@@ -62,6 +62,17 @@ export function stripConsoleFormat(message: string): string {
 const CORE_ERROR_RE =
   /cannot read propert(?:y|ies) (?:of (?:null|undefined)(?: \(reading '[^']*'\))?|'[^']*' of (?:null|undefined))|[\w$.]+ is not a function|[\w$.]+ is not defined|maximum call stack size exceeded/i;
 
+// A media element failed to play: no decodable source, or a play() promise rejected. Exported so
+// StabilityMonitor suppresses these as environment noise (Playwright's codec-less Chromium rejects
+// H.264/AAC that real Chrome plays) from a SINGLE source of truth — no divergent second regex.
+export const MEDIA_PLAYBACK_RE =
+  /no supported sources?|has no supported source|notsupportederror|the play\(\) request was interrupted|play\(\)\s*(?:request\s*)?(?:was\s*)?(?:interrupted|failed)|media (?:decode|source) (?:error|failed)/i;
+
+/** True for a media-playback fault (no decodable source, or a rejected play() promise). */
+export function isMediaPlaybackError(text: string | undefined | null): boolean {
+  return !!text && MEDIA_PLAYBACK_RE.test(text);
+}
+
 // Ordered so the most specific message shape wins; source is only a fallback tiebreaker.
 const SUBTYPE_PATTERNS: ReadonlyArray<[RuntimeSubtype, RegExp]> = [
   ['UNDEFINED_PROPERTY', /cannot read propert(?:y|ies)(?: '[^']*'| of)?.*undefined/i],
@@ -79,7 +90,7 @@ const SUBTYPE_PATTERNS: ReadonlyArray<[RuntimeSubtype, RegExp]> = [
   ['CHUNK_LOAD_FAILURE', /chunkloaderror|loading chunk .* failed|chunk.*not found/i],
   // A media element failed to play: no decodable source, or a play() promise rejected. Matched
   // before the source fallback so a play() rejection reads as a media fault, not a bare rejection.
-  ['MEDIA_PLAYBACK', /no supported sources?|has no supported source|notsupportederror|the play\(\) request was interrupted|play\(\)\s*(?:request\s*)?(?:was\s*)?(?:interrupted|failed)|media (?:decode|source) (?:error|failed)/i],
+  ['MEDIA_PLAYBACK', MEDIA_PLAYBACK_RE],
 ];
 
 // Subtypes assigned only when no message pattern matched — they differ purely by source

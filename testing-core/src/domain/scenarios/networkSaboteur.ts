@@ -341,6 +341,14 @@ export async function armNetworkSabotage(
       return;
     }
 
+    // Never sabotage a request issued from inside a third-party iframe (embedded Google Maps,
+    // ads, widgets). The app under test has no callsite for it and cannot handle its failure, so
+    // aborting one manufactures a phantom "failed to handle" finding on foreign traffic.
+    if (request.frame() !== page.mainFrame()) {
+      await safeContinue(route);
+      return;
+    }
+
     // Never sabotage a fire-and-forget telemetry/analytics/beacon — failing one produces a
     // meaningless finding, not a real resilience defect in the app's own data flow.
     if (isBackgroundTelemetryUrl(requestUrl)) {

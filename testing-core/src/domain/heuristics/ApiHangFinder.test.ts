@@ -75,10 +75,12 @@ check('isBackgroundTelemetryUrl matches the named endpoints, not real pages', ()
     'http://app.test/telemetry', 'http://app.test/analytics/event', 'http://app.test/api/metrics',
     'http://app.test/ping', 'http://app.test/beacon?x=1', 'http://app.test/bz/collect',
     'https://www.google-analytics.com/collect', 'http://app.test/track',
+    // Google Maps embed beacons fired from inside a third-party iframe — inert fire-and-forget.
+    'https://maps.google.com/maps/api/mapsjs/gen_204', 'https://maps.gstatic.com/mapfiles/csi?x=1',
   ]) assert.ok(isBackgroundTelemetryUrl(u), u);
   for (const u of [
     'http://app.test/api/orders', 'http://app.test/analytics-report', 'http://app.test/login',
-    'http://app.test/users/metrics-dashboard',
+    'http://app.test/users/metrics-dashboard', 'http://app.test/generate', 'http://app.test/api/csints',
   ]) assert.equal(isBackgroundTelemetryUrl(u), false, u);
 });
 

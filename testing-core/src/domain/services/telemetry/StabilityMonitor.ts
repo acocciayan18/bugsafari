@@ -23,7 +23,7 @@ import { scrubCredentials } from './credentialScrub.js';
 import { ContractResponseCorrelator, looksNonJsonBody } from './contractCorrelation.js';
 import { resolveRuntimeCulprit } from './runtimeCulprit.js';
 import { resolveControlName, isDescriptiveControlName } from '../../../../../shared/reproduction.js';
-import { RuntimeStabilityFinder, type RuntimeObservation, type RuntimeSubtype } from '../../heuristics/RuntimeStabilityFinder.js';
+import { RuntimeStabilityFinder, isMediaPlaybackError, type RuntimeObservation, type RuntimeSubtype } from '../../heuristics/RuntimeStabilityFinder.js';
 import { DuplicateActionFinder, buildDuplicateReplaySteps, type DuplicateActionDefect } from '../../heuristics/DuplicateActionFinder.js';
 import { ApiHangFinder, isBackgroundTelemetryUrl, isLongLivedRequestUrl, type LoadingProbe, type HangDiagnostic, type HangTrigger } from '../../heuristics/ApiHangFinder.js';
 import { initialSweepState, isSweepDue, advanceSweep, type SweepPolicy } from '../../heuristics/hangSweep.js';
@@ -200,6 +200,9 @@ export function isIgnorableConsoleError(text: string): boolean {
   if (RESOURCE_LOAD_CONSOLE_RE.test(text)) return true;
   if (REACT_DEV_WARNING_RE.test(text)) return true;
   if (CSP_VIOLATION_RE.test(text)) return true;
+  // Media-playback errors ("no supported sources") are an environment artifact: Playwright's
+  // codec-less bundled Chromium rejects H.264/AAC that real Chrome decodes. Suppress as noise.
+  if (isMediaPlaybackError(text)) return true;
   return false;
 }
 
@@ -523,9 +526,31 @@ export class StabilityMonitor {
   // acted at once): the issuing control can't be identified, so naming one sibling is a guess —
   // the finding falls back to the endpoint instead.
   private culpritForRequest(request: Request): string | undefined {
+    if (!this.isOwnControlRequest(request)) return undefined;
     const start = this.requestStartTimes.get(request) ?? this.requestSettledAtMs(request);
     if (this.deps.isConcurrentBurstAt?.(start)) return undefined;
     return this.culpritSelectorAt(start);
+  }
+
+  // A request that a first-party, main-frame control could actually have issued. A third-party
+  // or sub-frame (iframe) request has no app control behind it, so the time-window culprit
+  // lookup would blindly stamp the last unrelated click — the phantom-element leak. Decline it.
+  private isOwnControlRequest(request: Request): boolean {
+    try {
+      if (request.frame() !== request.frame().page()?.mainFrame()) return false;
+    } catch {
+      return false;
+    }
+    return siteRelationship(request.url(), this.safeTargetOrigin()) !== 'THIRD_PARTY';
+  }
+
+  // Chaos mode for a request, but only when it is genuinely the app's own (first-party, main-frame)
+  // traffic. A third-party/iframe request cannot "fail to handle" an injected fault it never owned,
+  // so it must never promote a CHAOS_INJECTED finding even if a stale registry mark lingers.
+  private chaosModeForRequest(request: Request, url: string, atMs: number): string | undefined {
+    const mode = ChaosInjectionRegistry.modeFor(url, atMs);
+    if (mode === undefined) return undefined;
+    return this.isOwnControlRequest(request) ? mode : undefined;
   }
 
   // Human label of the control that FIRED a network request, resolved at the request's
@@ -533,6 +558,7 @@ export class StabilityMonitor {
   // time lands on a LATER, unrelated click; resolving at start keeps the finding focused
   // on the element that actually triggered the failure, not a combined/adjacent action.
   private triggeringActionForRequest(request: Request): string | undefined {
+    if (!this.isOwnControlRequest(request)) return undefined;
     const start = this.requestStartTimes.get(request) ?? this.requestSettledAtMs(request);
     if (this.deps.isConcurrentBurstAt?.(start)) return undefined;
     return this.triggeringActionFor(start);
@@ -788,6 +814,16 @@ export class StabilityMonitor {
     // the finding shows a clean reason and the stack renders on its own.
     const { message, stackTrace } = separateMessageAndStack(rawMessage, stack);
     const url = page.url();
+    // Media-playback faults are an environment artifact: Playwright's codec-less Chromium rejects
+    // H.264/AAC that real Chrome decodes. Suppress across every channel (the console handler filters
+    // earlier; this also catches pageerror/rejection) as informational telemetry — never a bug.
+    if (isMediaPlaybackError(message)) {
+      t.emit('ACTION', {
+        actionExecuted: 'media-fault-suppressed',
+        message: `Media playback fault suppressed (codec-less browser env): ${message}`,
+      });
+      return;
+    }
     const timestamp = new Date().toISOString();
     const breadcrumbs = this.deps.getBreadcrumbs();
     const faultType: FaultType = source === 'CONSOLE' ? 'CONSOLE' : 'EXCEPTION';
@@ -1960,7 +1996,7 @@ export class StabilityMonitor {
       }
 
       const settledAtMs = this.requestSettledAtMs(response.request());
-      const chaosMode = ChaosInjectionRegistry.modeFor(url, settledAtMs);
+      const chaosMode = this.chaosModeForRequest(response.request(), url, settledAtMs);
       const verdict = routeNetworkEvent({
         kind: 'HTTP_RESPONSE',
         statusCode: status,
@@ -2055,7 +2091,7 @@ export class StabilityMonitor {
       }
 
       const failedAtMs = this.requestSettledAtMs(request);
-      const chaosMode = ChaosInjectionRegistry.modeFor(url, failedAtMs);
+      const chaosMode = this.chaosModeForRequest(request, url, failedAtMs);
       const routing = routeNetworkEvent({
         kind: 'TRANSPORT_FAILURE',
         url,

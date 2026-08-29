@@ -17,7 +17,7 @@ const SUSTAINED_PENDING_MS = 15_000;
 // path with word boundaries so "/analytics/event" hits but "/analytics-report" (a real page)
 // does not, and "/login" is never mistaken for a "log" endpoint.
 const BACKGROUND_TELEMETRY_RE =
-  /(?:^|[/.])(?:telemetry|analytics|metrics|ping|beacon|bz|collect|track(?:ing)?|rum|sentry|datadog|segment|mixpanel|amplitude|hotjar|gtag|gtm|google-analytics|googletagmanager|doubleclick)(?:[/.?#]|$)/i;
+  /(?:^|[/.])(?:telemetry|analytics|metrics|ping|beacon|bz|collect|track(?:ing)?|rum|sentry|datadog|segment|mixpanel|amplitude|hotjar|gtag|gtm|google-analytics|googletagmanager|doubleclick|gen_?204|csi|mapsjs)(?:[/.?#]|$)/i;
 
 /** True for a fire-and-forget telemetry/analytics/beacon URL whose timeout is not a UI bug. */
 export function isBackgroundTelemetryUrl(url?: string): boolean {
