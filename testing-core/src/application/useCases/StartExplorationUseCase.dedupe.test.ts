@@ -57,11 +57,12 @@ check('a row with no occurrences counts as 1', () => {
   assert.equal(out[0].occurrences, 2, 'two distinct instances, each worth 1');
 });
 
-// Distinct fault families (different message) never merge — each keeps its own count.
+// Distinct fault families (different message AND their own content-derived bugId, as the
+// engine assigns) never merge — each keeps its own count.
 check('distinct families stay separate with their own counts', () => {
   const out = dedupeCaughtBugsBySignature([
-    bug({ message: 'A', occurrences: 2 }),
-    bug({ message: 'B', occurrences: 5 }),
+    bug({ bugId: 'a', message: 'A', occurrences: 2 }),
+    bug({ bugId: 'b2', message: 'B', occurrences: 5 }),
   ]);
   assert.equal(out.length, 2);
   assert.deepEqual(out.map((b) => b.occurrences).sort(), [2, 5]);

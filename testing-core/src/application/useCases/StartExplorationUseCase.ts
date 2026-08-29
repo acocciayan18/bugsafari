@@ -394,14 +394,15 @@ export class StartExplorationUseCase {
             }),
         }));
 
-        // Reconcile server truth with the client's transferred findings by canonical
-        // SIGNATURE (not bugId): the two carry disjoint id namespaces, so a bugId union
-        // never merged a fault's server + client twin and the later sum double-counted it.
-        // Collapsing by signature yields one representative per family (occurrences summed
-        // within origin, max across origins) so the persisted findingCount matches the live
-        // badge and the report. Both sides are reportability-filtered so History never
-        // exceeds Live. Cap embedded arrays (SEC-27) so a finding-rich run cannot approach
-        // the 16MB BSON limit and fail the ENTIRE save.
+        // Reconcile server truth with the client's transferred findings by bugId OR canonical
+        // signature (the SAME union the live tab uses): the client now preserves each fault's
+        // REAL bugId, so a fault whose server ledger record and client payload record drifted
+        // in signature still collapses to ONE saved finding via the shared bugId — the fix for
+        // History showing two cards where Live showed one. The origin tag keeps a shared-events
+        // server/client twin from double-counting (occurrences summed within origin, max across
+        // origins). Both sides are reportability-filtered so History never exceeds Live. Cap
+        // embedded arrays (SEC-27) so a finding-rich run cannot approach the 16MB BSON limit
+        // and fail the ENTIRE save.
         const caughtBugs = capEmbedded(reconcileFindingsForPersistence(serverBugs, clientBugs), MAX_EMBEDDED_CAUGHT_BUGS, 'caughtBugs');
 
         // Derive the category breakdown dynamically from the *actual* persisted

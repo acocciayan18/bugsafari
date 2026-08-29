@@ -207,6 +207,28 @@ check('reconcileFindingsForPersistence does not double-count a server+client twi
   assert.strictEqual(out[0].occurrences, 2, 'max across origins — never the ×2 sum (4)');
 });
 
+// THE History>Live duplicate: the server ledger record and the client payload record of ONE
+// fault share a bugId but their signatures DRIFTED (message/stack), so a signature-only merge
+// left two saved cards. The bugId edge of the union now collapses them to one, with the ×N and
+// the Element ("Add") carried from whichever side has them.
+check('a server+client record of one fault with a SHARED bugId but drifted signature collapses to one', () => {
+  const server = [bug('runtime-null-x', { message: '[Read a field on null] Cannot read properties of null (reading \'name\')', url: '/', stackTrace: 'at real (app.js:1:1)', occurrences: 4, elementLabel: 'Add', selector: '#add' })];
+  const client = [bug('runtime-null-x', { message: 'TypeError: Cannot read properties of null (reading \'name\')', url: '/', stackTrace: 'at drifted (react.js:9:9)', occurrences: 1, elementLabel: '', selector: '' })];
+  const out = reconcileFindingsForPersistence(server, client);
+  assert.strictEqual(out.length, 1, 'shared bugId collapses the drifted server/client pair into ONE saved finding');
+  assert.strictEqual(out[0].occurrences, 4, 'max across origins — the authoritative ledger count, not 1 and not 5');
+  assert.strictEqual(out[0].elementLabel, 'Add', 'the Element is carried from the side that resolved it');
+});
+
+// Two genuinely distinct faults share NEITHER a bugId NOR a signature → never merged.
+check('distinct faults with different bugId and signature stay separate', () => {
+  const out = reconcileFindingsForPersistence(
+    [bug('a', { message: 'A', url: '/x', stackTrace: 'at a (a.js:1:1)' })],
+    [bug('b', { message: 'B', url: '/y', stackTrace: 'at b (b.js:1:1)' })],
+  );
+  assert.strictEqual(out.length, 2);
+});
+
 check('toSavedCaughtBug escalates a 5xx network fault past the low-confidence cap', () => {
   const saved = toSavedCaughtBug({
     bugId: 'n5', type: 'NETWORK', message: 'HTTP 500', selector: '', payloadUsed: '', advice: '',

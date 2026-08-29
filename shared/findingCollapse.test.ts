@@ -118,4 +118,32 @@ check('reconcile arbitrates a canonical field across the family, not just the re
   assert.equal(out[0].rank, 4, 'reconcile lifts the worst rank from a NON-representative member');
 });
 
+// identityKeys unions members sharing EITHER key (bugId OR signature) — the grouping the save
+// path uses so a fault's server ledger + client payload records collapse even when their
+// signatures drifted, while the origin contract still bars a shared-events twin from doubling.
+check('identityKeys unions on bugId OR signature, origin contract intact', () => {
+  interface H extends F { id?: string }
+  const keysAdapter: CollapseAdapter<H> = { ...adapter, identityKeys: (f) => [f.id ?? '', f.sig] };
+
+  const byId = collapseFindings<H>([
+    { sig: 'sig-a', origin: 'server', occ: 4, id: 'bug-1' },
+    { sig: 'sig-b', origin: 'client', occ: 1, id: 'bug-1' }, // shared id, drifted signature
+  ], keysAdapter);
+  assert.equal(byId.length, 1, 'shared bugId collapses drifted signatures');
+  assert.equal(byId[0].occ, 4, 'max across origins (server 4 vs client 1), never 5');
+
+  const bySig = collapseFindings<H>([
+    { sig: 'same', origin: 'server', occ: 3, id: 'bug-1' },
+    { sig: 'same', origin: 'server', occ: 5, id: 'bug-2' }, // shared signature, distinct id
+  ], keysAdapter);
+  assert.equal(bySig.length, 1);
+  assert.equal(bySig[0].occ, 8, 'distinct within-origin manifestations sum');
+
+  const distinct = collapseFindings<H>([
+    { sig: 's1', origin: 'server', occ: 1, id: 'x' },
+    { sig: 's2', origin: 'server', occ: 1, id: 'y' }, // neither key shared
+  ], keysAdapter);
+  assert.equal(distinct.length, 2);
+});
+
 console.log(`\nfindingCollapse.test.ts: ${passed} checks passed`);

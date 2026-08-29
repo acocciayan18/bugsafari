@@ -42,7 +42,7 @@ function classifyFinding(statusCode?: number): string {
 // severity/occurrences reconciled — so the client payload equals the displayed set and the
 // backend re-collapse stays idempotent. Infra noise is already filtered by the collapse.
 export function buildLiveFindings(incidents: IncidentReport[], reports: ForensicCrashReport[]): SaveFindingPayload[] {
-  return collapseLiveFindings(incidents, reports).map((finding, i) => {
+  return collapseLiveFindings(incidents, reports).map((finding) => {
     const fault = finding.representative;
     const view = finding.view;
     const isIncident = finding.kind === 'incident';
@@ -53,7 +53,10 @@ export function buildLiveFindings(incidents: IncidentReport[], reports: Forensic
           : mapForensicReportToPlaybook(fault as ForensicCrashReport));
     const type = classifyFinding(fault.statusCode);
     return {
-      bugId: `finding-${i + 1}`,
+      // The finding's REAL id (the engine's runtime/finder bugId), NOT a positional synthetic
+      // one: the backend save unions server ledger + client payload by bugId, so the same id on
+      // both sides is what collapses a fault's two records into ONE saved finding (no duplicate).
+      bugId: finding.key,
       type,
       message: fault.reason,
       // Culprit from the reconciled VIEW, not the raw representative twin: the "Add" the

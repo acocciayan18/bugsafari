@@ -140,6 +140,11 @@ interface OriginBug {
 
 const caughtBugCollapseAdapter: CollapseAdapter<OriginBug> = {
   signatureInput: (t) => ({ reason: t.bug.message, url: t.bug.url, stackTrace: t.bug.stackTrace, statusCode: t.bug.statusCode }),
+  // Group by bugId OR signature (the SAME union the live tab uses): the server ledger record
+  // and the client payload record of one fault share a bugId even when their signatures drift,
+  // so they collapse into ONE saved finding instead of two — the History>Live duplicate. The
+  // origin tag still prevents a shared-events server/client twin from double-counting.
+  identityKeys: (t) => [(t.bug.bugId ?? '').trim(), canonicalFindingSignature(t.bug)],
   representative: (t) => ({ reproductionSteps: t.bug.reproductionSteps, timestamp: t.bug.timestamp }),
   origin: (t) => t.origin,
   occurrences: (t) => t.bug.occurrences ?? 1,
