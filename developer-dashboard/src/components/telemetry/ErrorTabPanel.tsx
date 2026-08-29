@@ -4,9 +4,7 @@
 // concerns: report/incident dedup, ×N grouping, and the AI diagnostic block.
 
 import type { IncidentReport, ForensicCrashReport } from '../../types';
-import { dedupeReportsAgainstIncidents, groupBySignature, liveFaultSignature } from '../../utils/errorDeduplication';
-import { reportableIncidents, reportableReports } from '../../utils/findingRouting';
-import { incidentToFindingView, reportToFindingView } from '../../utils/findingView';
+import { collapseLiveFindings } from '../../utils/liveFindings';
 import { ShieldCheck } from 'lucide-react';
 import AiDiagnosticCard from './AiDiagnosticCard';
 import FindingCard from '../common/FindingCard';
@@ -23,47 +21,22 @@ interface ErrorTabPanelProps {
 export default function ErrorTabPanel({
   errors = { incidents: [], reports: [] }
 }: ErrorTabPanelProps) {
-  // Infrastructure/environment events belong to the Network tab — the shared
-  // routing tree decides, so live, replayed and saved views agree.
-  const errorIncidents = reportableIncidents(errors?.incidents ?? []);
-  // A JS exception / console error arrives as BOTH an incident and a crash
-  // report; render the incident once and suppress the mirrored report so each
-  // fault is a single card (matching the engine's confirmed-bug count).
-  const errorReports = dedupeReportsAgainstIncidents(errorIncidents, reportableReports(errors?.reports ?? []));
-
-  // Collapse identical repeats (same fault re-thrown across the run) into one card
-  // with an ×N count — lossless display grouping, nothing is dropped.
-  const incidentGroups = groupBySignature<IncidentReport>(errorIncidents, liveFaultSignature, (i) => i.occurrences ?? 1);
-  const reportGroups = groupBySignature<ForensicCrashReport>(errorReports, liveFaultSignature, (r) => r.occurrences ?? 1);
+  // ONE canonical projection: infra noise filtered, the incident/report twin collapsed by
+  // bugId-or-signature, occurrences authoritative, fields reconciled — the SAME families the
+  // saved Forensic Report shows, so the two views never diverge.
+  const findings = collapseLiveFindings(errors?.incidents ?? [], errors?.reports ?? []);
 
   // One entry per finding — the panel filters/sorts/groups by `view` and defers each
   // card back to `render`, so live cards stay identical to the saved report's.
-  const entries: FindingEntry[] = [
-    ...incidentGroups.map(({ item: incident, count }): FindingEntry => {
-      const view = incidentToFindingView(incident, count);
-      return {
-        key: `incident-${liveFaultSignature(incident)}`,
-        view,
-        render: (index) => (
-          <FindingCard view={view} index={index} showBypass={false}>
-            <AiDiagnosticCard ai={incident.aiDiagnostics} />
-          </FindingCard>
-        ),
-      };
-    }),
-    ...reportGroups.map(({ item: report, count }): FindingEntry => {
-      const view = reportToFindingView(report, count);
-      return {
-        key: `report-${liveFaultSignature(report)}`,
-        view,
-        render: (index) => (
-          <FindingCard view={view} index={index} showBypass={false}>
-            <AiDiagnosticCard ai={report.aiDiagnostics} />
-          </FindingCard>
-        ),
-      };
-    }),
-  ];
+  const entries: FindingEntry[] = findings.map(({ key, view, aiDiagnostics }): FindingEntry => ({
+    key,
+    view,
+    render: (index) => (
+      <FindingCard view={view} index={index} showBypass={false}>
+        <AiDiagnosticCard ai={aiDiagnostics} />
+      </FindingCard>
+    ),
+  }));
 
   return (
     <div >

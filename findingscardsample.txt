@@ -1,112 +1,1092 @@
-Runtime Stability Exception
-Medium
+SPA State Race Condition
+High
+Verify Fix
 
-CWE-248
+CWE
+CWE-362
 Status
-CONFIRMED 99%
+CONFIRMED 90%
 Message
-The element has no supported sources.
+The page stayed stuck in a loading or blocked state after the burst finished. 3 of 6 overlapping events fired at once.
 Element
-Play Hymn
-button.rounded-lg.bg-red-700
+Search
+input[aria-label="Search"]
+Reproduction Playbook
+
+1
+click
+Click the "Sold out" button
+Route
+/products?category=books
+·
+Element
+"Sold out" button
+2
+click
+Click the "Add" button
+Route
+/products?category=books
+·
+Element
+"Add" button
+3
+click
+Click the "Add" button
+Route
+/products?category=books
+·
+Element
+"Add" button
+4
+click
+Click the "home" button
+Route
+/products?category=books
+·
+Element
+"home" button
+5
+click
+Click the "Go" button
+Route
+/products?category=books
+·
+Element
+"Go" button
+6
+type
+Type "<script>alert(document.domain)</script>" into the "Search" field
+Route
+/products?category=books
+·
+Element
+"Search" field
+Suggested Fix
+
+1. Wrap the search input handler in a debounce utility (e.g., `lodash.debounce`) with a 300ms delay to prevent rapid-fire event bursts.
+2. Implement an `AbortController` in the data fetching layer to cancel stale search requests when new input arrives or route changes occur.
+3. Add a finally block to the search API call state machine to guarantee `isLoading = false` is always dispatched, preventing UI deadlock.
+4. Sanitize the search input value using a DOMPurify or encoding function before binding it to the component state or rendering it.
+Boundary Stress Failure
+Medium
+Verify Fix
+
+CWE
+CWE-400
+Status
+NEEDS VERIFICATION 59%
+Message
+Network request failed: GET /api/products (net::ERR_FAILED) · Injected network fault. The application failed to handle the simulated failure properly.
+API Endpoint
+GET /api/products
 Reproduction Playbook
 
 1
 open
-Navigate to /
+Navigate to /products?category=home
+2
+rapid
+Click 5 controls at the same time: the "Add" button, the "Add" button, the "home" button, the "Go" button and the "books" button
+Route
+/products?category=home
+Suggested Fix
+See More Suggestions
+
+For this finding
+• Address: GET /api/products
+
+Suggested fix: handle slow, cancelled, and overwhelming requests
+1. Add a request timeout and cancel in-flight calls that are superseded
+2. Add retry with backoff plus a visible error and timeout state for the user
+3. Guard the call site against empty, slow, or cancelled replies, and debounce bursts
+
+Stack Trace
+Click to expand
+Boundary Stress Failure
+Medium
+Verify Fix
+
+CWE
+CWE-400
+Status
+NEEDS VERIFICATION 59%
+Message
+Network request failed: GET /api/products (net::ERR_FAILED) · Injected network fault. The application failed to handle the simulated failure properly.
+Reproduction Playbook
+
+1
+open
+Navigate to /products?category=home
+2
+rapid
+Click 5 controls at the same time: the "Add" button, the "Add" button, the "home" button, the "Go" button and the "books" button
+Route
+/products?category=home
+Suggested Fix
+See More Suggestions
+
+For this finding
+• Address: GET /api/products
+
+Suggested fix: handle slow, cancelled, and overwhelming requests
+1. Add a request timeout and cancel in-flight calls that are superseded
+2. Add retry with backoff plus a visible error and timeout state for the user
+3. Guard the call site against empty, slow, or cancelled replies, and debounce bursts
+
+Stack Trace
+Click to expand
+Runtime Stability Exception
+Medium
+Verify Fix
+
+CWE
+CWE-248
+Status
+CONFIRMED 89%
+Message
+product search failed: Failed to fetch
+Reproduction Playbook
+
+1
+open
+Navigate to /products?category=home
+2
+rapid
+Click 5 controls at the same time: the "Add" button, the "Add" button, the "home" button, the "Go" button and the "books" button
+Route
+/products?category=home
+Suggested Fix
+See More Suggestions
+
+An unhandled error stopped the current operation from completing. Reproduce it with the checklist, wrap the failing operation in try/catch, and check its inputs.
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
+Runtime Stability Exception
+Medium
+Verify Fix
+
+CWE
+CWE-248
+Status
+CONFIRMED 89%
+Message
+product search failed: Failed to fetch
+Reproduction Playbook
+
+1
+open
+Navigate to /products?category=home
+2
+rapid
+Click 5 controls at the same time: the "Add" button, the "Add" button, the "home" button, the "Go" button and the "books" button
+Route
+/products?category=home
+Suggested Fix
+See More Suggestions
+
+An unhandled error stopped the current operation from completing. Reproduce it with the checklist, wrap the failing operation in try/catch, and check its inputs.
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
+SPA State Race Condition
+Medium
+Verify Fix
+
+CWE
+CWE-362
+Status
+CONFIRMED 90%
+Message
+The page stayed stuck in a loading or blocked state after the burst finished. 3 of 6 overlapping events fired at once.
+Element
+Sold out
+input[aria-label="Search"]
+Reproduction Playbook
+
+1
+click
+Click the "Sold out" button
+Route
+/products?category=books
+·
+Element
+"Sold out" button
 2
 click
-Click the "College Bulletin Board" button, repeated 17 times in quick succession
+Click the "Add" button
 Route
-/
-·
-Section
-"College of Arts & Sciences"
+/products?category=books
 ·
 Element
-"College Bulletin Board" button
+"Add" button
 3
 click
-Click the "About ▾" button, repeated 5 times in quick succession
+Click the "Add" button
 Route
-/
+/products?category=books
 ·
 Element
-"About ▾" button
+"Add" button
 4
 click
-Click the "Student Services ▾" button, repeated 2 times in quick succession
+Click the "home" button
 Route
-/
+/products?category=books
 ·
 Element
-"Student Services ▾" button
+"home" button
 5
-rapid
-Click 10 points spread evenly across the visible area of the 1440×900 window
+click
+Click the "Go" button
 Route
-/
+/products?category=books
+·
+Element
+"Go" button
 6
-click
-Click the "University Updates ▾" button, repeated 2 times in quick succession
+type
+Type "<script>alert(document.domain)</script>" into the "Search" field
 Route
-/
+/products?category=books
 ·
 Element
-"University Updates ▾" button
-7
-click
-Click the "Sports" button, repeated 17 times in quick succession
-Route
-/
-·
-Navigation
-"Explore"
-·
+"Search" field
+Suggested Fix
+See More Suggestions
+
+Suggested fix: guard against overlapping actions
+1. Disable or debounce the control after the first interaction until it finishes
+2. Make each state change safe to run more than once under overlapping events
+3. Add a test that fires a fast burst and confirms only one result is committed
+Runtime Stability Exception
+Medium
+Verify Fix
+
+CWE
+CWE-248
+Status
+CONFIRMED 89%
+Message
+product search failed: Cannot read properties of undefined (reading 'length')
 Element
-"Sports" button
-8
+electronics
+Reproduction Playbook
+
+1
+open
+Navigate to /products?category=home
+2
 click
-Click the "Play Hymn" button, repeated 2 times in quick succession
+Click the "Sold out" button, repeated 2 times in quick succession
 Route
-/
+/products?category=home
 ·
 Section
-"Explore"
+"Home"
 ·
 Element
-"Play Hymn" button
+"Sold out" button
+3
+network
+Make the /api/products request fail (aborted) to test the app's error handling
+Route
+/products?category=books
+4
+click
+Click the "books" button, repeated 2 times in quick succession
+Route
+/products?category=books
+·
+Sidebar
+"Category"
+·
+Element
+"books" button
+5
+click
+Click the "clearance" button, repeated 2 times in quick succession
+Route
+/products?category=clearance
+·
+Sidebar
+"Category"
+·
+Element
+"clearance" button
+6
+click
+Click the "Add" button, repeated 2 times in quick succession
+Route
+/products?category=electronics
+·
+Section
+"Electronics"
+·
+Element
+"Add" button
+7
+click
+Click the "Add" button, repeated 2 times in quick succession
+Route
+/products?category=electronics
+·
+Section
+"Electronics"
+·
+Element
+"Add" button
+8
+click
+Click the "Go" button, repeated 2 times in quick succession
+Route
+/products?category=books
+·
+Element
+"Go" button
+9
+click
+Click the "home" button. Result: the app moved to /products?category=home
+Route
+/products?category=apparel
+·
+Sidebar
+"Category"
+·
+Element
+"home" button
+10
+click
+Click the "home" button
+Route
+/products?category=home
+·
+Sidebar
+"Category"
+·
+Element
+"home" button
+11
+click
+Click the "electronics" button. Result: the app moved to /products?category=electronics
+Route
+/products?category=clearance
+·
+Sidebar
+"Category"
+·
+Element
+"electronics" button
+12
+click
+Click the "electronics" button, repeated 16 times in quick succession
+Route
+/products?category=electronics
+·
+Sidebar
+"Category"
+·
+Element
+"electronics" button
+13
+click
+Click the "clearance" button. Result: the app moved to /products?category=clearance
+Route
+/products?category=electronics
+·
+Sidebar
+"Category"
+·
+Element
+"clearance" button
+14
+click
+Click the "clearance" button, repeated 16 times in quick succession
+Route
+/products?category=clearance
+·
+Sidebar
+"Category"
+·
+Element
+"clearance" button
+15
+click
+Click the "Add" button, repeated 17 times in quick succession
+Route
+/products?category=electronics
+·
+Section
+"Electronics"
+·
+Element
+"Add" button
+16
+click
+Click the "electronics" button. Result: the app moved to /products?category=electronics
+Route
+/products?category=home
+·
+Sidebar
+"Category"
+·
+Element
+"electronics" button
+17
+click
+Click the "electronics" button
+Route
+/products?category=electronics
+·
+Sidebar
+"Category"
+·
+Element
+"electronics" button
+18
+network
+Make the /api/products request fail (mutated) to test the app's error handling
+Route
+/products?category=electronics
 Suggested Fix
+See More Suggestions
 
-A promise failed and nothing caught it: a failed `await` or `.then` with no `.catch`. Wrap the async call in try/catch and show the error to the user.
+The code read a field on a value that was `undefined`, so the object was never set before it was used. Guard it with `obj?.field` or check `if (obj)` first. Often the data has not loaded yet.
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
+Runtime Stability Exception
+Medium
+Verify Fix
+
+CWE
+CWE-248
+Status
+CONFIRMED 89%
+Message
+product search failed: Cannot read properties of undefined (reading 'length')
+Element
+electronics
+Reproduction Playbook
+
+1
+open
+Navigate to /products?category=home
+2
+click
+Click the "Sold out" button, repeated 2 times in quick succession
+Route
+/products?category=home
+·
+Section
+"Home"
+·
+Element
+"Sold out" button
+3
+network
+Make the /api/products request fail (aborted) to test the app's error handling
+Route
+/products?category=books
+4
+click
+Click the "books" button, repeated 2 times in quick succession
+Route
+/products?category=books
+·
+Sidebar
+"Category"
+·
+Element
+"books" button
+5
+click
+Click the "clearance" button, repeated 2 times in quick succession
+Route
+/products?category=clearance
+·
+Sidebar
+"Category"
+·
+Element
+"clearance" button
+6
+click
+Click the "Add" button, repeated 2 times in quick succession
+Route
+/products?category=electronics
+·
+Section
+"Electronics"
+·
+Element
+"Add" button
+7
+click
+Click the "Add" button, repeated 2 times in quick succession
+Route
+/products?category=electronics
+·
+Section
+"Electronics"
+·
+Element
+"Add" button
+8
+click
+Click the "Go" button, repeated 2 times in quick succession
+Route
+/products?category=books
+·
+Element
+"Go" button
+9
+click
+Click the "home" button. Result: the app moved to /products?category=home
+Route
+/products?category=apparel
+·
+Sidebar
+"Category"
+·
+Element
+"home" button
+10
+click
+Click the "home" button
+Route
+/products?category=home
+·
+Sidebar
+"Category"
+·
+Element
+"home" button
+11
+click
+Click the "electronics" button. Result: the app moved to /products?category=electronics
+Route
+/products?category=clearance
+·
+Sidebar
+"Category"
+·
+Element
+"electronics" button
+12
+click
+Click the "electronics" button, repeated 16 times in quick succession
+Route
+/products?category=electronics
+·
+Sidebar
+"Category"
+·
+Element
+"electronics" button
+13
+click
+Click the "clearance" button. Result: the app moved to /products?category=clearance
+Route
+/products?category=electronics
+·
+Sidebar
+"Category"
+·
+Element
+"clearance" button
+14
+click
+Click the "clearance" button, repeated 16 times in quick succession
+Route
+/products?category=clearance
+·
+Sidebar
+"Category"
+·
+Element
+"clearance" button
+15
+click
+Click the "Add" button, repeated 17 times in quick succession
+Route
+/products?category=electronics
+·
+Section
+"Electronics"
+·
+Element
+"Add" button
+16
+click
+Click the "electronics" button. Result: the app moved to /products?category=electronics
+Route
+/products?category=home
+·
+Sidebar
+"Category"
+·
+Element
+"electronics" button
+17
+click
+Click the "electronics" button
+Route
+/products?category=electronics
+·
+Sidebar
+"Category"
+·
+Element
+"electronics" button
+18
+network
+Make the /api/products request fail (mutated) to test the app's error handling
+Route
+/products?category=electronics
+Suggested Fix
+See More Suggestions
+
+The code read a field on a value that was `undefined`, so the object was never set before it was used. Guard it with `obj?.field` or check `if (obj)` first. Often the data has not loaded yet.
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
+Runtime Stability Exception
+Medium
+Verify Fix
+
+CWE
+CWE-248
+Status
+NEEDS VERIFICATION 74%
+Message
+TypeError: Cannot read properties of null (reading 'name')
+Element
+☕
+Reproduction Playbook
+
+1
+open
+Navigate to /login
+2
+rapid
+Click 5 controls at the same time: the "Cart" link, the "Track" button, the "Order number" field, the "Track" link and the "☁ Nimbus" link
+Route
+/login
+Suggested Fix
+See More Suggestions
+
+The code read a field on `null`, usually a missing page element (`querySelector` returned null) or an empty API result. Confirm the lookup found something before using it.
 
 Suggested fix:
 1. Reproduce the fault using the replay checklist above
 2. Apply that guard at the failing line
 3. Add a test that confirms it stays stable
 
+Stack Trace
+Click to expand
+Runtime Stability Exception
+Medium
+Verify Fix
 
-Client Render Freeze
-High
-CWE-834
+CWE
+CWE-248
+Status
+NEEDS VERIFICATION 74%
 Message
-Client render freeze: the main thread was blocked, so the page could not respond to input or repaint.
+TypeError: Cannot read properties of null (reading 'name')
+Reproduction Playbook
+
+1
+open
+Navigate to /login
+2
+rapid
+Click 5 controls at the same time: the "Cart" link, the "Track" button, the "Order number" field, the "Track" link and the "☁ Nimbus" link
+Route
+/login
+Suggested Fix
+See More Suggestions
+
+The code read a field on `null`, usually a missing page element (`querySelector` returned null) or an empty API result. Confirm the lookup found something before using it.
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
+
+Stack Trace
+
+
+
+
+
+
+**********************************
+
+
+
+
+SPA State Race Condition
+High
+
+CWE
+CWE-362
+Status
+CONFIRMED 90%
+Message
+The page stayed stuck in a loading or blocked state after the burst finished. 3 of 6 overlapping events fired at once.
+Element
+Sold out
+input[aria-label="Search"]
 Reproduction Playbook
 
 1
 click
-Click 5 controls at the same time: the "Academics ▾" button, the "Student Services ▾" button, the "← Back to Events" link, the "LANI Scholarship" link and the "Registrar's Office" link
-Observed result
-5 of 5 clicks registered in 218ms
+Click the "Sold out" button
+Route
+/products?category=books
+·
+Element
+"Sold out" button
+2
+click
+Click the "Add" button
+Route
+/products?category=books
+·
+Element
+"Add" button
+3
+click
+Click the "Add" button
+Route
+/products?category=books
+·
+Element
+"Add" button
+4
+click
+Click the "home" button
+Route
+/products?category=books
+·
+Element
+"home" button
+5
+click
+Click the "Go" button
+Route
+/products?category=books
+·
+Element
+"Go" button
+6
+type
+Type "<script>alert(document.domain)</script>" into the "Search" field
+Route
+/products?category=books
+·
+Element
+"Search" field
 Suggested Fix
 
-Suggested fix: free the main thread
-1. Move long synchronous work (large loops, parsing, layout) off the main thread with a Web Worker, or split it into async chunks so the view can paint
-2. If the view keeps re-rendering, find a state update inside render or an effect with no dependency guard (setState triggers render, which triggers setState again)
-3. Look for a subscription or observer that re-adds nodes on every change (toasts, live feeds, infinite scroll)
-4. Memoize derived values so a new object each render cannot keep retriggering the effect
+Suggested fix: guard against overlapping actions
+1. Disable or debounce the control after the first interaction until it finishes
+2. Make each state change safe to run more than once under overlapping events
+3. Add a test that fires a fast burst and confirms only one result is committed
+Boundary Stress Failure
+Medium
 
-▼
+CWE
+CWE-400
+Status
+NEEDS VERIFICATION 59%
+Message
+Network request failed: GET /api/products (net::ERR_FAILED) · Injected network fault. The application failed to handle the simulated failure properly.
+API Endpoint
+GET /api/products
+Reproduction Playbook
+
+1
+open
+Navigate to /products?category=home
+2
+rapid
+Click 5 controls at the same time: the "Add" button, the "Add" button, the "home" button, the "Go" button and the "books" button
+Route
+/products?category=home
+Suggested Fix
+
+For this finding
+• Address: GET /api/products
+
+Suggested fix: handle slow, cancelled, and overwhelming requests
+1. Add a request timeout and cancel in-flight calls that are superseded
+2. Add retry with backoff plus a visible error and timeout state for the user
+3. Guard the call site against empty, slow, or cancelled replies, and debounce bursts
+
 Stack Trace
-Click to collapse
-Heartbeat evaluate call exceeded 8000ms timeout.
+Click to expand
+Runtime Stability Exception
+Medium
+
+CWE
+CWE-248
+Status
+CONFIRMED 89%
+Message
+product search failed: Failed to fetch
+Reproduction Playbook
+
+1
+open
+Navigate to /products?category=home
+2
+rapid
+Click 5 controls at the same time: the "Add" button, the "Add" button, the "home" button, the "Go" button and the "books" button
+Route
+/products?category=home
+Suggested Fix
+
+An unhandled error stopped the current operation from completing. Reproduce it with the checklist, wrap the failing operation in try/catch, and check its inputs.
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
+Runtime Stability Exception
+Medium
+
+CWE
+CWE-248
+Status
+CONFIRMED 89%
+Message
+product search failed: Cannot read properties of undefined (reading 'length')
+Element
+electronics
+Reproduction Playbook
+
+1
+open
+Navigate to /products?category=home
+2
+click
+Click the "Sold out" button, repeated 2 times in quick succession
+Route
+/products?category=home
+·
+Section
+"Home"
+·
+Element
+"Sold out" button
+3
+network
+Make the /api/products request fail (aborted) to test the app's error handling
+Route
+/products?category=books
+4
+click
+Click the "books" button, repeated 2 times in quick succession
+Route
+/products?category=books
+·
+Sidebar
+"Category"
+·
+Element
+"books" button
+5
+click
+Click the "clearance" button, repeated 2 times in quick succession
+Route
+/products?category=clearance
+·
+Sidebar
+"Category"
+·
+Element
+"clearance" button
+6
+click
+Click the "Add" button, repeated 2 times in quick succession
+Route
+/products?category=electronics
+·
+Section
+"Electronics"
+·
+Element
+"Add" button
+7
+click
+Click the "Add" button, repeated 2 times in quick succession
+Route
+/products?category=electronics
+·
+Section
+"Electronics"
+·
+Element
+"Add" button
+8
+click
+Click the "Go" button, repeated 2 times in quick succession
+Route
+/products?category=books
+·
+Element
+"Go" button
+9
+click
+Click the "home" button. Result: the app moved to /products?category=home
+Route
+/products?category=apparel
+·
+Sidebar
+"Category"
+·
+Element
+"home" button
+10
+click
+Click the "home" button
+Route
+/products?category=home
+·
+Sidebar
+"Category"
+·
+Element
+"home" button
+11
+click
+Click the "electronics" button. Result: the app moved to /products?category=electronics
+Route
+/products?category=clearance
+·
+Sidebar
+"Category"
+·
+Element
+"electronics" button
+12
+click
+Click the "electronics" button, repeated 16 times in quick succession
+Route
+/products?category=electronics
+·
+Sidebar
+"Category"
+·
+Element
+"electronics" button
+13
+click
+Click the "clearance" button. Result: the app moved to /products?category=clearance
+Route
+/products?category=electronics
+·
+Sidebar
+"Category"
+·
+Element
+"clearance" button
+14
+click
+Click the "clearance" button, repeated 16 times in quick succession
+Route
+/products?category=clearance
+·
+Sidebar
+"Category"
+·
+Element
+"clearance" button
+15
+click
+Click the "Add" button, repeated 17 times in quick succession
+Route
+/products?category=electronics
+·
+Section
+"Electronics"
+·
+Element
+"Add" button
+16
+click
+Click the "electronics" button. Result: the app moved to /products?category=electronics
+Route
+/products?category=home
+·
+Sidebar
+"Category"
+·
+Element
+"electronics" button
+17
+click
+Click the "electronics" button
+Route
+/products?category=electronics
+·
+Sidebar
+"Category"
+·
+Element
+"electronics" button
+18
+network
+Make the /api/products request fail (mutated) to test the app's error handling
+Route
+/products?category=electronics
+Suggested Fix
+
+The code read a field on a value that was `undefined`, so the object was never set before it was used. Guard it with `obj?.field` or check `if (obj)` first. Often the data has not loaded yet.
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
+Runtime Stability Exception
+Medium
+
+CWE
+CWE-248
+Status
+NEEDS VERIFICATION 74%
+Message
+TypeError: Cannot read properties of null (reading 'name')
+Element
+☕
+Reproduction Playbook
+
+1
+open
+Navigate to /login
+2
+rapid
+Click 5 controls at the same time: the "Cart" link, the "Track" button, the "Order number" field, the "Track" link and the "☁ Nimbus" link
+Route
+/login
+Suggested Fix
+
+The code read a field on `null`, usually a missing page element (`querySelector` returned null) or an empty API result. Confirm the lookup found something before using it.
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
+
+Stack Trace

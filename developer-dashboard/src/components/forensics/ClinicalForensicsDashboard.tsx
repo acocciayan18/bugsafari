@@ -24,7 +24,7 @@ import { useStickyScroll } from '../../hooks/useStickyScroll';
 import { useDashboardTour } from '../../tour/useDashboardTour';
 import { ErrorTabPanel, AccessibilityWarningBanner, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard, TelemetryHelpModal } from '../telemetry';
 import EmptyState from '../common/EmptyState';
-import { buildLiveFindings } from '../../utils/findingsBuilder';
+import { collapseLiveFindings } from '../../utils/liveFindings';
 import { buildSavedNetworkRows } from '../../utils/networkLogBuilder';
 import { presentTelemetry, telemetryToneStyle } from '../../utils/telemetryPresentation';
 import { isVerboseTelemetry, createTelemetryDeduper } from '../../../../shared/types.js';
@@ -225,11 +225,11 @@ function ClinicalForensicsDashboard({
     return events.slice(-100);
   }, [telemetry, showVerbose]);
 
-  // Badge counts the EXACT findings the save transfers (buildLiveFindings), so the live
-  // Findings count and the saved forensic report never disagree. Memoized: a frame-only
-  // flush must not re-run the O(reports×incidents) build.
+  // Badge counts the EXACT collapsed families the Findings tab renders and the save
+  // transfers, so the live Findings count and the saved forensic report never disagree.
+  // Memoized: a frame-only flush must not re-run the collapse.
   const errorCount = useMemo(
-    () => buildLiveFindings(errors.incidents, errors.reports).length,
+    () => collapseLiveFindings(errors.incidents, errors.reports).length,
     [errors.incidents, errors.reports],
   );
   // Scroll growth uses raw occurrence totals (not distinct-card length) so a

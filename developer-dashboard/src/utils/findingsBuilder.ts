@@ -6,8 +6,7 @@
 import type { ForensicCrashReport, IncidentReport } from '../types';
 import type { SaveFindingPayload } from '../services/historyService';
 import { mapIncidentStepsToPlaybook, mapForensicReportToPlaybook, type PlaybookStep } from './semanticInstructionMapper';
-import { dedupeReportsAgainstIncidents } from './errorDeduplication';
-import { reportableIncidents, reportableReports } from './findingRouting';
+import { collapseLiveFindings } from './liveFindings';
 // Same culprit resolution the live cards render, so the saved Selector is the one
 // the operator already saw.
 import { resolveCulprit, resolveCulpritLabel } from './findingView';
@@ -41,69 +40,45 @@ function classifyFinding(statusCode?: number): string {
   return typeof statusCode === 'number' && statusCode >= 400 ? 'NETWORK' : 'EXCEPTION';
 }
 
-// Build the complete, uncompressed findings array from the exact incidents and
-// crash reports the operator saw live — no dedup, no filter, no truncation.
+// Build the findings array transferred on save from the EXACT collapsed families the live
+// Findings tab renders (collapseLiveFindings) — one slot per fault, twin already merged,
+// severity/occurrences reconciled — so the client payload equals the displayed set and the
+// backend re-collapse stays idempotent. Infra noise is already filtered by the collapse.
 export function buildLiveFindings(incidents: IncidentReport[], reports: ForensicCrashReport[]): SaveFindingPayload[] {
-  // Same routing tree as the live Errors tab, so a saved history holds exactly the
-  // findings the operator saw — infrastructure noise stays in the network log.
-  const actionableIncidents = reportableIncidents(incidents);
-  const fromIncidents: SaveFindingPayload[] = actionableIncidents.map((inc, i) => {
-    const checklist = inc.reproductionPlaybook && inc.reproductionPlaybook.length > 0
-      ? inc.reproductionPlaybook
-      : formatChecklist(mapIncidentStepsToPlaybook(inc.steps));
-    const type = classifyFinding(inc.statusCode);
+  return collapseLiveFindings(incidents, reports).map((finding, i) => {
+    const fault = finding.representative;
+    const isIncident = finding.kind === 'incident';
+    const steps = isIncident ? (fault as IncidentReport).steps : (fault as ForensicCrashReport).breadcrumbs;
+    const checklist = fault.reproductionPlaybook && fault.reproductionPlaybook.length > 0
+      ? fault.reproductionPlaybook
+      : formatChecklist(isIncident
+          ? mapIncidentStepsToPlaybook((fault as IncidentReport).steps)
+          : mapForensicReportToPlaybook(fault as ForensicCrashReport));
+    const type = classifyFinding(fault.statusCode);
     return {
-      bugId: `incident-${i + 1}`,
+      bugId: `finding-${i + 1}`,
       type,
-      message: inc.reason,
-      selector: resolveCulprit(inc.culpritSelector, inc.steps) ?? '',
-      culpritLabel: resolveCulpritLabel(inc.culpritLabel, inc.culpritSelector, inc.steps),
+      message: fault.reason,
+      selector: resolveCulprit(fault.culpritSelector, steps) ?? '',
+      culpritLabel: resolveCulpritLabel(fault.culpritLabel, fault.culpritSelector, steps),
       // Carried so the save-time family collapse keys on the SAME signature the live view did.
-      url: inc.url,
-      statusCode: inc.statusCode,
+      url: fault.url,
+      statusCode: fault.statusCode,
       payloadUsed: '',
-      stackTrace: inc.stackTrace ?? '',
+      stackTrace: fault.stackTrace ?? '',
       reproductionSteps: checklist,
-      // Carry the replayable timeline + fault-time state so a queue-mode save
-      // preserves what Verify Fix replays (engine memory is empty cross-process).
-      reproductionActions: inc.reproductionActions,
-      stateFingerprint: inc.stateFingerprint,
-      // Prefer the knowledge-base remediation bound to this finding; fall back to
-      // the local template only for legacy incidents lacking classifier advice.
-      advice: inc.advice ?? generateSuggestedFix(type, inc.reason, inc.statusCode),
-      timestamp: inc.timestamp,
-      attribution: inc.attribution,
-      severity: inc.severity,
+      // Carry the replayable timeline + fault-time state so a queue-mode save preserves what
+      // Verify Fix replays (engine memory is empty cross-process); reports carry neither.
+      ...(isIncident
+        ? { reproductionActions: (fault as IncidentReport).reproductionActions, stateFingerprint: (fault as IncidentReport).stateFingerprint }
+        : {}),
+      // Prefer the knowledge-base remediation bound to this finding; fall back to the local
+      // template only for legacy faults lacking classifier advice.
+      advice: fault.advice ?? generateSuggestedFix(type, fault.reason, fault.statusCode),
+      timestamp: fault.timestamp,
+      attribution: fault.attribution,
+      // Reconciled worst-tier severity across the family (see collapseLiveFindings).
+      severity: finding.severity,
     };
   });
-
-  // Drop crash reports that mirror an incident so the transferred findings match
-  // the de-duplicated live Errors Tab (one slot per fault).
-  const uniqueReports = dedupeReportsAgainstIncidents(actionableIncidents, reportableReports(reports));
-  const fromReports: SaveFindingPayload[] = uniqueReports.map((rep, i) => {
-    const checklist = rep.reproductionPlaybook && rep.reproductionPlaybook.length > 0
-      ? rep.reproductionPlaybook
-      : formatChecklist(mapForensicReportToPlaybook(rep));
-    const type = classifyFinding(rep.statusCode);
-    return {
-      bugId: `report-${i + 1}`,
-      type,
-      message: rep.reason,
-      selector: resolveCulprit(rep.culpritSelector, rep.breadcrumbs) ?? '',
-      culpritLabel: resolveCulpritLabel(rep.culpritLabel, rep.culpritSelector, rep.breadcrumbs),
-      // Carried so the save-time family collapse keys on the SAME signature the live view did.
-      url: rep.url,
-      statusCode: rep.statusCode,
-      payloadUsed: '',
-      stackTrace: rep.stackTrace ?? '',
-      reproductionSteps: checklist,
-      // Prefer the knowledge-base remediation bound to this finding (see above).
-      advice: rep.advice ?? generateSuggestedFix(type, rep.reason, rep.statusCode),
-      timestamp: rep.timestamp,
-      attribution: rep.attribution,
-      severity: rep.severity,
-    };
-  });
-
-  return [...fromIncidents, ...fromReports];
 }

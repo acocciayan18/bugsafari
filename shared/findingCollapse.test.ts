@@ -84,4 +84,38 @@ check('the representative is the content-richest member, order-independent', () 
   assert.deepEqual(reverse[0].steps, ['one', 'two', 'three']);
 });
 
+// A synthesized twin shares its bugId even when its content (and thus signature) drifted.
+// The `identity` override keys on that shared id so the twin still collapses — the exact
+// divergence the live Telemetry tab showed (two cards) while History (one ledger) showed one.
+check('identity override collapses a shared-id twin whose signatures have drifted', () => {
+  const idAdapter: CollapseAdapter<F & { id?: string }> = { ...adapter, identity: (f) => f.id ?? f.sig };
+  const out = collapseFindings<F & { id?: string }>([
+    { sig: 'drift-a', origin: 'server', occ: 1, id: 'bug-1' },
+    { sig: 'drift-b', origin: 'client', occ: 1, id: 'bug-1' },
+  ], idAdapter);
+  assert.equal(out.length, 1, 'shared identity merges the drifted twin');
+  assert.equal(out[0].occ, 1, 'max across origins — never the ×2 sum');
+});
+
+// The picker chooses the representative on reproduction richness alone, so a canonical field
+// (worst severity) must be arbitrated ACROSS the family by `reconcile`, not left riding along
+// from whichever member won the representative contest.
+check('reconcile arbitrates a canonical field across the family, not just the representative', () => {
+  interface G extends F { rank?: number }
+  const recAdapter: CollapseAdapter<G> = {
+    signatureInput: (f) => ({ reason: f.sig }),
+    representative: (f) => ({ reproductionSteps: f.steps, timestamp: f.ts }),
+    origin: (f) => f.origin,
+    occurrences: (f) => f.occ,
+    withOccurrences: (f, occ) => ({ ...f, occ }),
+    reconcile: (rep, members) => ({ ...rep, rank: Math.max(...members.map((m) => m.rank ?? 0)) }),
+  };
+  const out = collapseFindings<G>([
+    { sig: 'x', origin: 'server', occ: 1, rank: 1, steps: ['a', 'b', 'c'] }, // representative (richest steps), low rank
+    { sig: 'x', origin: 'client', occ: 1, rank: 4 },                          // twin with the worst rank
+  ], recAdapter);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].rank, 4, 'reconcile lifts the worst rank from a NON-representative member');
+});
+
 console.log(`\nfindingCollapse.test.ts: ${passed} checks passed`);

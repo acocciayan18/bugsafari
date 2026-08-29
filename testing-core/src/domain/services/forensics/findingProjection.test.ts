@@ -207,6 +207,30 @@ check('reconcileFindingsForPersistence does not double-count a server+client twi
   assert.strictEqual(out[0].occurrences, 2, 'max across origins — never the ×2 sum (4)');
 });
 
+check('toSavedCaughtBug escalates a 5xx network fault past the low-confidence cap', () => {
+  const saved = toSavedCaughtBug({
+    bugId: 'n5', type: 'NETWORK', message: 'HTTP 500', selector: '', payloadUsed: '', advice: '',
+    timestamp: new Date(0), url: 'https://api/x', statusCode: 500,
+    attribution: { bugClass: 'BOUNDARY_STRESS_FAILURE', verificationStatus: 'NEEDS_VERIFICATION' },
+  } as unknown as ConfirmedBug);
+  assert.strictEqual(saved.severity, 'HIGH', '5xx outranks the unverified MEDIUM cap, matching the live twin');
+});
+
+// A fault's server twin (CONFIRMED High, no culprit) and its client twin (unverified, capped
+// Medium, carries the Element) collapse to one family; the reconcile must lift the WORST
+// severity and take a consistent Element from the member that has one — not leave whichever
+// twin won the representative contest to dictate the fields.
+check('the family collapse arbitrates worst severity and a consistent element across twins', () => {
+  const attr = (o: object) => o as ICaughtBug['attribution'];
+  const server = [bug('finder-1', { message: 'boom', url: 'https://app/p', stackTrace: 'at f (a.js:1:1)', severity: 'HIGH', attribution: attr({ bugClass: 'SPA_STATE_RACE_CONDITION', confidence: 'CONFIRMED' }) })];
+  const client = [bug('incident-1', { message: 'boom', url: 'https://app/p', stackTrace: 'at f (a.js:1:1)', severity: 'HIGH', elementLabel: 'Sold out', selector: '#sold-out', attribution: attr({ verificationStatus: 'NEEDS_VERIFICATION' }) })];
+  const out = reconcileFindingsForPersistence(server, client);
+  assert.strictEqual(out.length, 1, 'the disjoint-id twin collapses to one family');
+  assert.strictEqual(out[0].severity, 'HIGH', 'worst tier across the family wins over the capped twin');
+  assert.strictEqual(out[0].elementLabel, 'Sold out', 'the element is taken from the member that resolved it');
+  assert.strictEqual(out[0].selector, '#sold-out', 'label and selector stay paired from that record');
+});
+
 check('the collapse representative carries the content-richest repro steps, order-independent', () => {
   const rich = bug('b1', { message: 'boom', url: 'https://app/p', reproductionSteps: ['s1', 's2', 's3'] });
   const thin = bug('b2', { message: 'boom', url: 'https://app/p', reproductionSteps: ['s1'] });

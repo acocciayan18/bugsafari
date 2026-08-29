@@ -7,6 +7,7 @@ import {
   displayableSelector,
   resolveEndpointLabel,
   resolveCulpritLabel,
+  resolveCulpritPair,
   incidentToFindingView,
   caughtBugToFindingView,
   buildFindingSummary,
@@ -239,6 +240,33 @@ check('once the culprit is patched in, live and saved resolve the IDENTICAL Elem
   } as unknown as ForensicCaughtBug);
   assert.equal(live.elementLabel, 'Place Order');
   assert.equal(live.elementLabel, saved.elementLabel, 'live Element equals the saved report Element');
+});
+
+// ── Element pairing: label + selector must come from ONE record ──────────────
+// The live sample showed "Sold out" beside an unrelated `input[aria-label="Search"]`
+// selector because the label and the selector were resolved from DIFFERENT sources.
+// resolveCulpritPair binds both to the same culprit record.
+
+check('resolveCulpritPair keeps the label and selector paired from one record', () => {
+  const pair = resolveCulpritPair('Sold out', '#sold-out', []);
+  assert.equal(pair.label, 'Sold out');
+  assert.equal(pair.selector, '#sold-out');
+});
+
+check('resolveCulpritPair yields no label for an endpoint culprit (surfaced as endpoint elsewhere)', () => {
+  const pair = resolveCulpritPair('GET /api/orders', undefined, []);
+  assert.equal(pair.label, undefined);
+  assert.equal(pair.selector, undefined);
+});
+
+// ── Saved severity parity: a 5xx escalates on render exactly as it does live ──
+check('a saved 5xx finding escalates to HIGH on render, matching its live twin', () => {
+  const bug = {
+    bugId: 'n1', type: 'NETWORK', message: 'HTTP 500', selector: '', payloadUsed: '', advice: '',
+    timestamp: '2026-08-20T00:00:00.000Z', statusCode: 500,
+    attribution: { bugClass: 'BOUNDARY_STRESS_FAILURE', verificationStatus: 'NEEDS_VERIFICATION' },
+  } as unknown as ForensicCaughtBug;
+  assert.equal(caughtBugToFindingView(bug).severity, 'HIGH', '5xx outranks the low-confidence MEDIUM cap');
 });
 
 console.log(`\n${passed} assertions passed.`);

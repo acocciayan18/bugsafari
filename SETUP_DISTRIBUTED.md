@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "History page dropdown redesign"
+git commit -m "telemetry-findings-forensic-parity"
 git push origin HEAD:dev --force
 
 

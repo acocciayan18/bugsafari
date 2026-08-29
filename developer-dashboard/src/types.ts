@@ -255,6 +255,8 @@ export interface ForensicCaughtBug {
   timestamp: string;
   /** Backend-classified severity (CRITICAL/HIGH/MEDIUM/LOW/INFO). */
   severity?: string;
+  /** HTTP status for a network fault — feeds the 5xx severity escalation on render. */
+  statusCode?: number;
   /** Full stack trace captured live, preserved verbatim into history. */
   stackTrace?: string;
   /** Top frames resolved to original source via the target's source maps (best-effort). */

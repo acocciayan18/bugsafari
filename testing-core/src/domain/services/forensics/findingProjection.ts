@@ -1,4 +1,4 @@
-import { resolveSeverity } from '../../../../../shared/types.js';
+import { resolveSeverity, worstSeverity } from '../../../../../shared/types.js';
 import { buildFaultSignature } from '../../../../../shared/faultSignature.js';
 import { collapseFindings, type CollapseAdapter, type FindingOrigin } from '../../../../../shared/findingCollapse.js';
 import { isReportableFinding } from '../../../../../shared/findingRouting.js';
@@ -60,6 +60,9 @@ export function toSavedCaughtBug(bug: ConfirmedBug): ICaughtBug {
       bugClass: bug.attribution?.bugClass,
       confidence: bug.attribution?.confidence,
       verificationStatus: bug.attribution?.verificationStatus,
+      // Carry statusCode so a 5xx escalates to >=HIGH here exactly as it does live —
+      // otherwise a saved network fault renders one tier below its live twin.
+      statusCode: bug.statusCode,
     }),
   };
 }
@@ -141,6 +144,35 @@ const caughtBugCollapseAdapter: CollapseAdapter<OriginBug> = {
   origin: (t) => t.origin,
   occurrences: (t) => t.bug.occurrences ?? 1,
   withOccurrences: (t, occurrences) => ({ bug: { ...t.bug, occurrences }, origin: t.origin }),
+  // Canonical fields across the family: worst resolved severity so a CONFIRMED-High twin
+  // is never hidden behind an unverified-Medium one, and a single non-empty culprit pair
+  // (label + its own selector) so the Element never drifts between members. The picker
+  // chooses on reproduction richness alone, so without this the fields would ride along
+  // from whichever twin happened to win — the drift the live view showed.
+  reconcile: (rep, members) => {
+    const severity = worstSeverity(members.map((m) => resolveSeverity({
+      severity: m.bug.severity,
+      bugClass: m.bug.attribution?.bugClass,
+      confidence: m.bug.attribution?.confidence,
+      verificationStatus: m.bug.attribution?.verificationStatus,
+      statusCode: m.bug.statusCode,
+    })));
+    // Prefer a member carrying a human label; fall back to one with any selector. Both
+    // fields come from that ONE record so the label and selector never describe different
+    // nodes. Representative first, so a self-sufficient rep is never overridden.
+    const culprit = [rep, ...members].find((m) => (m.bug.elementLabel ?? '').trim() !== '')
+      ?? [rep, ...members].find((m) => (m.bug.selector ?? '').trim() !== '');
+    return {
+      origin: rep.origin,
+      bug: {
+        ...rep.bug,
+        severity,
+        elementLabel: culprit?.bug.elementLabel ?? rep.bug.elementLabel,
+        selector: culprit?.bug.selector ?? rep.bug.selector,
+        statusCode: rep.bug.statusCode ?? members.find((m) => m.bug.statusCode !== undefined)?.bug.statusCode,
+      },
+    };
+  },
 };
 
 // Reportability of a persisted finding, mapped onto the shared predicate the live tab

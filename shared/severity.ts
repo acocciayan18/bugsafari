@@ -56,6 +56,17 @@ export function capSeverity(sev: FaultSeverity, max: FaultSeverity): FaultSeveri
   return SEVERITY_RANK[sev] > SEVERITY_RANK[max] ? max : sev;
 }
 
+// Worst (highest-ranked) severity in a set — the family badge when twins of one fault
+// resolve to different tiers, so a CONFIRMED-High is never hidden behind an unverified-
+// Medium twin. An empty set falls back to DEFAULT_SEVERITY.
+export function worstSeverity(severities: readonly FaultSeverity[]): FaultSeverity {
+  let worst: FaultSeverity | null = null;
+  for (const sev of severities) {
+    if (worst === null || SEVERITY_RANK[sev] > SEVERITY_RANK[worst]) worst = sev;
+  }
+  return worst ?? DEFAULT_SEVERITY;
+}
+
 // Per-session tally of findings by canonical severity — the History summary source.
 export type SeverityCounts = Partial<Record<FaultSeverity, number>>;
 

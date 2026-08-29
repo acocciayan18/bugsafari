@@ -2,7 +2,7 @@
 // resolveSeverity). Run with `npx tsx "shared/severity.test.ts"` or `npm test -w shared`.
 
 import assert from 'node:assert/strict';
-import { normalizeSeverity, resolveSeverity, capSeverity, DEFAULT_SEVERITY, summarizeSeverity } from './severity.js';
+import { normalizeSeverity, resolveSeverity, capSeverity, DEFAULT_SEVERITY, summarizeSeverity, worstSeverity } from './severity.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -88,6 +88,16 @@ check('summarizeSeverity treats an empty/absent tally as CLEAR', () => {
     assert.equal(s.count, 0);
     assert.equal(s.total, 0);
   }
+});
+
+check('worstSeverity returns the highest-ranked tier present', () => {
+  assert.equal(worstSeverity(['LOW', 'HIGH', 'MEDIUM']), 'HIGH');
+  assert.equal(worstSeverity(['MEDIUM', 'CRITICAL']), 'CRITICAL');
+  assert.equal(worstSeverity(['INFO']), 'INFO');
+});
+
+check('worstSeverity falls back to DEFAULT_SEVERITY for an empty set', () => {
+  assert.equal(worstSeverity([]), DEFAULT_SEVERITY);
 });
 
 console.log(`\nAll ${passed} assertions passed.`);

@@ -19,6 +19,14 @@ export interface CollapseAdapter<T> {
   withOccurrences: (item: T, occurrences: number) => T;
   // Optional reportability gate; a dropped item is excluded before grouping.
   reportable?: (item: T) => boolean;
+  // Optional grouping-key override. Default: buildFaultSignature(signatureInput(item)).
+  // The live surface keys bugId-first so a synthesized twin (shared bugId, drifted
+  // signature) still collapses; the saved surface keeps the signature default.
+  identity?: (item: T) => string;
+  // Optional cross-member field arbitration, applied AFTER occurrences are set, so a
+  // family's canonical fields (worst severity, one non-empty culprit) derive from the
+  // whole bucket instead of riding along from the representative alone.
+  reconcile?: (representative: T, members: T[]) => T;
 }
 
 // One representative per family. Occurrences follow "sum within origin, max across
@@ -31,7 +39,7 @@ export function collapseFindings<T>(items: T[], adapter: CollapseAdapter<T>): T[
   const groups = new Map<string, T[]>();
   for (const item of items) {
     if (adapter.reportable && !adapter.reportable(item)) continue;
-    const key = buildFaultSignature(adapter.signatureInput(item));
+    const key = adapter.identity ? adapter.identity(item) : buildFaultSignature(adapter.signatureInput(item));
     const bucket = groups.get(key);
     if (bucket) {
       bucket.push(item);
@@ -50,6 +58,7 @@ export function collapseFindings<T>(items: T[], adapter: CollapseAdapter<T>): T[
     }
     let occurrences = 0;
     for (const total of perOrigin.values()) occurrences = Math.max(occurrences, total);
-    return adapter.withOccurrences(rep, occurrences);
+    const withOcc = adapter.withOccurrences(rep, occurrences);
+    return adapter.reconcile ? adapter.reconcile(withOcc, bucket) : withOcc;
   });
 }

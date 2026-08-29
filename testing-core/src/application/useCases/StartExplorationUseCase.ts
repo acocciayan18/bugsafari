@@ -389,6 +389,8 @@ export class StartExplorationUseCase {
                 bugClass: finding.attribution?.bugClass,
                 confidence: finding.attribution?.confidence,
                 verificationStatus: finding.attribution?.verificationStatus,
+                // 5xx escalation parity with the live twin (see findingProjection).
+                statusCode: finding.statusCode,
             }),
         }));
 

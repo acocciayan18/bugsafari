@@ -162,6 +162,22 @@ export function resolveCulpritLabel(
   return undefined;
 }
 
+// Element label + its stable selector resolved from the SAME culprit record, so the two
+// never describe different DOM nodes (the "Sold out" label beside an unrelated Search
+// selector). Wraps the single-field resolvers, keeping every guard (fragile paths,
+// endpoint labels, bare tags). The label is looked up against the RESOLVED selector, so a
+// fallback selector and its label stay paired. A network fault's endpoint label yields no
+// pair here and surfaces separately via resolveEndpointLabel.
+export function resolveCulpritPair(
+  explicitLabel: string | undefined,
+  explicitSelector: string | undefined,
+  steps: LabelledStep[] | undefined,
+): { label?: string; selector?: string } {
+  const selector = resolveCulprit(explicitSelector, steps);
+  const label = resolveCulpritLabel(explicitLabel, selector ?? explicitSelector, steps);
+  return { label, selector };
+}
+
 // The endpoint a fault fired on when no UI control acted — the "METHOD /api/..." string
 // the backend overloads onto culpritLabel. Surfaced under its own API Endpoint field so
 // it never renders as a UI element. Returns undefined when the label is a real control.
@@ -191,6 +207,7 @@ export function buildFindingSummary(view: FindingView, index: number): string {
 
 export function incidentToFindingView(inc: IncidentReport, occurrences = inc.occurrences ?? 1): FindingView {
   const { badge, message } = extractLeadingTag(inc.reason);
+  const culprit = resolveCulpritPair(inc.culpritLabel, inc.culpritSelector, inc.steps);
   return {
     key: liveFaultSignature(inc),
     title: inc.attribution?.bugClass || 'Runtime Incident',
@@ -207,8 +224,8 @@ export function incidentToFindingView(inc: IncidentReport, occurrences = inc.occ
     occurrences,
     timestamp: inc.timestamp,
     url: inc.url,
-    selector: resolveCulprit(inc.culpritSelector, inc.steps),
-    elementLabel: resolveCulpritLabel(inc.culpritLabel, inc.culpritSelector, inc.steps),
+    selector: culprit.selector,
+    elementLabel: culprit.label,
     endpointLabel: resolveEndpointLabel(inc.culpritLabel),
     stackTrace: inc.stackTrace,
     resolvedStackTrace: inc.resolvedStackTrace,
@@ -224,6 +241,7 @@ export function incidentToFindingView(inc: IncidentReport, occurrences = inc.occ
 
 export function reportToFindingView(rep: ForensicCrashReport, occurrences = rep.occurrences ?? 1): FindingView {
   const { badge, message } = extractLeadingTag(rep.reason);
+  const culprit = resolveCulpritPair(rep.culpritLabel, rep.culpritSelector, rep.breadcrumbs);
   return {
     key: liveFaultSignature(rep),
     title: rep.attribution?.bugClass || 'Console Error',
@@ -240,8 +258,8 @@ export function reportToFindingView(rep: ForensicCrashReport, occurrences = rep.
     occurrences,
     timestamp: rep.timestamp,
     url: rep.url,
-    selector: resolveCulprit(rep.culpritSelector, rep.breadcrumbs),
-    elementLabel: resolveCulpritLabel(rep.culpritLabel, rep.culpritSelector, rep.breadcrumbs),
+    selector: culprit.selector,
+    elementLabel: culprit.label,
     endpointLabel: resolveEndpointLabel(rep.culpritLabel),
     stackTrace: rep.stackTrace,
     resolvedStackTrace: rep.resolvedStackTrace,
@@ -255,6 +273,7 @@ export function reportToFindingView(rep: ForensicCrashReport, occurrences = rep.
 
 export function caughtBugToFindingView(bug: ForensicCaughtBug, occurrences = bug.occurrences ?? 1): FindingView {
   const { badge, message } = extractLeadingTag(bug.message);
+  const culprit = resolveCulpritPair(bug.elementLabel, bug.selector, bug.actionSteps);
   return {
     key: bug.bugId,
     title: bug.attribution?.bugClass || bug.type || 'UNKNOWN',
@@ -265,12 +284,14 @@ export function caughtBugToFindingView(bug: ForensicCaughtBug, occurrences = bug
       bugClass: bug.attribution?.bugClass,
       confidence: bug.attribution?.confidence,
       verificationStatus: bug.attribution?.verificationStatus,
+      // Parity with the live twin's 5xx escalation (see incidentToFindingView).
+      statusCode: bug.statusCode,
     }),
     category: resolveCategory(bug.attribution?.bugClass ?? bug.type),
     occurrences,
     timestamp: bug.timestamp,
-    selector: resolveCulprit(bug.selector, bug.actionSteps),
-    elementLabel: resolveCulpritLabel(bug.elementLabel, bug.selector, bug.actionSteps),
+    selector: culprit.selector,
+    elementLabel: culprit.label,
     endpointLabel: resolveEndpointLabel(bug.elementLabel),
     payloadUsed: bug.payloadUsed,
     stackTrace: bug.stackTrace,
