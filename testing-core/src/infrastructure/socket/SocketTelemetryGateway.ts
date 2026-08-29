@@ -5,6 +5,7 @@ import { scrubCredentials } from '../../domain/services/telemetry/credentialScru
 import { scrubSelectors } from '../../../../shared/reproduction.js';
 
 import { createLogger } from '../observability/logger.js';
+import { logFindingIdentity } from '../observability/findingDebug.js';
 import { incCounter } from '../observability/metrics.js';
 
 const obsLog = createLogger('[SocketTelemetryGateway]');
@@ -133,6 +134,7 @@ export class SocketTelemetryGateway implements TelemetryGateway {
 
   public emitForensicReport(raw: ForensicCrashReport): void {
     const report = this.sanitizeNarrative(raw);
+    logFindingIdentity(obsLog, 'forensic', report);
     this.recorder?.record('forensic-report', report);
     this.channel().emit('forensic-report', report);
     this.emitIncidentReport({
@@ -172,6 +174,7 @@ export class SocketTelemetryGateway implements TelemetryGateway {
 
   public emitIncidentReport(raw: IncidentReport): void {
     const report = this.sanitizeNarrative(raw);
+    logFindingIdentity(obsLog, 'incident', report);
     this.recorder?.record('incident-report', report);
     this.channel().emit('incident-report', report);
   }

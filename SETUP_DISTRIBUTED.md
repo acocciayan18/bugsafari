@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "telemetry-findings-forensic-parity"
+git commit -m "lifecycle-parity-duplicate-findings"
 git push origin HEAD:dev --force
 
 

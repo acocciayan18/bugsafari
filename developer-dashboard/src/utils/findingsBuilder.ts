@@ -7,9 +7,6 @@ import type { ForensicCrashReport, IncidentReport } from '../types';
 import type { SaveFindingPayload } from '../services/historyService';
 import { mapIncidentStepsToPlaybook, mapForensicReportToPlaybook, type PlaybookStep } from './semanticInstructionMapper';
 import { collapseLiveFindings } from './liveFindings';
-// Same culprit resolution the live cards render, so the saved Selector is the one
-// the operator already saw.
-import { resolveCulprit, resolveCulpritLabel } from './findingView';
 
 // ── Live → History parity helpers ───────────────────────────────────────────
 // Serialize a playbook into a sequentially numbered, human-readable checklist,
@@ -47,8 +44,8 @@ function classifyFinding(statusCode?: number): string {
 export function buildLiveFindings(incidents: IncidentReport[], reports: ForensicCrashReport[]): SaveFindingPayload[] {
   return collapseLiveFindings(incidents, reports).map((finding, i) => {
     const fault = finding.representative;
+    const view = finding.view;
     const isIncident = finding.kind === 'incident';
-    const steps = isIncident ? (fault as IncidentReport).steps : (fault as ForensicCrashReport).breadcrumbs;
     const checklist = fault.reproductionPlaybook && fault.reproductionPlaybook.length > 0
       ? fault.reproductionPlaybook
       : formatChecklist(isIncident
@@ -59,8 +56,12 @@ export function buildLiveFindings(incidents: IncidentReport[], reports: Forensic
       bugId: `finding-${i + 1}`,
       type,
       message: fault.reason,
-      selector: resolveCulprit(fault.culpritSelector, steps) ?? '',
-      culpritLabel: resolveCulpritLabel(fault.culpritLabel, fault.culpritSelector, steps),
+      // Culprit from the reconciled VIEW, not the raw representative twin: the "Add" the
+      // operator saw may live on a NON-representative member, so serializing off the
+      // representative dropped it from the saved payload. endpointLabel rides culpritLabel
+      // too — the backend re-splits it via isApiEndpointLabel.
+      selector: view.selector ?? '',
+      culpritLabel: view.elementLabel ?? view.endpointLabel,
       // Carried so the save-time family collapse keys on the SAME signature the live view did.
       url: fault.url,
       statusCode: fault.statusCode,

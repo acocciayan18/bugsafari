@@ -95,4 +95,29 @@ check('the transferred save payload equals the displayed findings (Live ≡ save
   assert.equal(buildLiveFindings(incidents, reports).length, 5);
 });
 
+// D2 regression: the culprit ("Add") lives on a NON-representative twin (the representative
+// wins on richer reproduction but has no culprit). The reconciled view must surface "Add",
+// and buildLiveFindings must serialize it from that VIEW — not the raw representative — so the
+// saved payload carries the Element the operator saw. Same for worst-tier severity.
+check('buildLiveFindings serializes the culprit + worst severity from the reconciled view', () => {
+  const richNoCulprit = incident({
+    bugId: 'rt-x', reason: 'TypeError: boom', url: '/', reproductionPlaybook: ['s1', 's2', 's3'],
+    severity: 'HIGH', attribution: promote('RUNTIME_STABILITY_EXCEPTION', { verificationStatus: 'NEEDS_VERIFICATION', confidence: 'INFERRED' }),
+  });
+  const thinWithCulprit = twin({
+    bugId: 'rt-x', reason: 'TypeError: boom', url: '/', reproductionPlaybook: ['s1'],
+    culpritLabel: 'Add', culpritSelector: '#add', severity: 'HIGH', attribution: promote('RUNTIME_STABILITY_EXCEPTION'),
+  });
+
+  const collapsed = collapseLiveFindings([richNoCulprit], [thinWithCulprit]);
+  assert.equal(collapsed.length, 1, 'the twins share a bugId and collapse to one');
+  assert.equal(collapsed[0].view.elementLabel, 'Add', 'the reconciled view surfaces the twin culprit');
+
+  const payload = buildLiveFindings([richNoCulprit], [thinWithCulprit]);
+  assert.equal(payload.length, 1);
+  assert.equal(payload[0].culpritLabel, 'Add', 'save payload carries the culprit from the reconciled view');
+  assert.equal(payload[0].selector, '#add', 'save payload carries the paired selector');
+  assert.equal(payload[0].severity, 'HIGH', 'worst tier (HIGH) beats the capped-MEDIUM representative');
+});
+
 console.log(`\n${passed} liveFindings assertion group(s) passed.`);

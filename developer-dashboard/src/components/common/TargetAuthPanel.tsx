@@ -227,7 +227,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
         <AnimatePresence initial={false}>
           {showAdvanced && (
             <motion.div key="target-auth-advanced" {...COLLAPSE_MOTION} className="space-y-3 overflow-hidden pt-1">
-              <p className="text-xs text-(--text-tertiary) font-sans leading-relaxed">
+              <p className="text-[13px] text-(--text-tertiary) font-sans leading-relaxed">
                 Leave blank to auto-detect. The engine finds the login form on the target, behind a Login /
                 Sign In control, or at a common auth route. Set these when the form is multi-step or built from
                 custom components, where detection cannot find the fields.

@@ -71,6 +71,7 @@ import { TabWindowManager } from './TabWindowManager.js';
 import type { CleanActionStep, ConfirmedBug, ExplorationLoopDeps, ForensicErrorParams, RunResult, RunTerminationOutcome, RuntimeMetrics, StopReason } from './types.js';
 
 import { createLogger } from '../../../infrastructure/observability/logger.js';
+import { logFindingIdentity } from '../../../infrastructure/observability/findingDebug.js';
 
 const obsLog = createLogger('[ExplorationEngine]');
 
@@ -500,6 +501,7 @@ export class ExplorationEngine {
       // running total via recordFindingOccurrence as repeats accrue.
       occurrences: incoming.occurrences ?? 1,
     };
+    logFindingIdentity(obsLog, 'register', { bugId: bug.bugId, reason: bug.message, url: bug.url, stackTrace: bug.stackTrace, statusCode: bug.statusCode, occurrences: bug.occurrences, type: bug.type, source: bug.payloadUsed });
     // IDENTITY-ONLY dedup. Content-based dedup (type+message+selector+payload)
     // catastrophically collapsed distinct error INSTANCES — e.g. 15 HTTP 500s to
     // the same endpoint share an identical signature and were merged into 1,
