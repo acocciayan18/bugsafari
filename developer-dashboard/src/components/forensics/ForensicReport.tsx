@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, TriangleAlert, CircleHelp, CircleX, CircleSlash, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, ArrowRight, CircleCheckBig, Calendar, ChevronDown, Hash, Clock, Sparkles, Network, Terminal, Link2Off, FileWarning } from 'lucide-react';
+import { Check, TriangleAlert, CircleHelp, CircleX, CircleSlash, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, ArrowRight, CircleCheckBig, Calendar, ChevronDown, Hash, Clock, Sparkles, Network, Terminal, Link2Off, FileWarning, Info } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useHistoryStore } from '../../stores/history/historyStore';
@@ -446,10 +446,10 @@ const VERDICT_META: Record<RegressionVerdict, VerdictMeta> = {
 // Operator-facing explanation for each non-terminal-proof reason.
 const REASON_TEXT: Record<VerifyFixReason, string> = {
   REPRODUCED:
-    'The original error happened again during replay. The defect is still present and needs further investigation.',
+    'The original error signal fired again while replaying the recorded steps. The defect is still present in the application and the fix has not resolved it.',
 
   CLEAN_REPLAY:
-    'The recorded steps completed successfully, and none of the original error signals appeared. This is a good indication that the issue may be resolved.',
+    'Enough of the recorded steps ran, the action that originally triggered the error was re-executed, and none of the original error signals (crashes, console errors, failed requests, or freezes) reappeared. This is a good indication the issue may be resolved.',
 
   INSUFFICIENT_REPLAY:
     'Only some of the recorded steps were completed, possibly because selectors or page elements have changed. A clean result is not enough to confirm that the fix works.',
@@ -484,6 +484,79 @@ const REASON_TEXT: Record<VerifyFixReason, string> = {
   REPLAY_ERROR:
     'BugSafari could not complete the replay because an error occurred. This result does not confirm whether the issue is fixed. Check the target application and try again.',
 };
+
+// Concrete next steps per reason so every outcome ends with an action, not just a diagnosis.
+const NEXT_STEPS: Record<VerifyFixReason, string[]> = {
+  CLEAN_REPLAY: [
+    'Run Verify Fix once more to rule out a one-off clean pass on a live target.',
+    'Manually reproduce the original steps in the app to confirm from a user’s point of view.',
+    'Once a second test agrees, you can safely treat this finding as closed.',
+  ],
+  REPRODUCED: [
+    'Review the reproduced signals below and the reproduction steps to locate the fault.',
+    'Apply or adjust the fix in your code, then run Verify Fix again.',
+    'Use the finding’s suggested fix as a starting point for the correction.',
+  ],
+  INSUFFICIENT_REPLAY: [
+    'Selectors or page elements likely changed since the finding was recorded.',
+    'Run a fresh exploration to capture up-to-date steps, then verify again.',
+    'Or reproduce the issue manually to confirm whether it still occurs.',
+  ],
+  FAULT_TRIGGER_NOT_EXERCISED: [
+    'The action that caused the original error was never reached during replay.',
+    'Manually perform the original action in the app to check the fix directly.',
+    'Run a new exploration so a fresh timeline can re-trigger the fault.',
+  ],
+  WEAK_MATCH_ONLY: [
+    'Treat the issue as unresolved until a test can confirm it either way.',
+    'Run Verify Fix again to see if the same-type signal recurs.',
+    'Inspect the signals below to judge whether they match the original defect.',
+  ],
+  UNCONFIRMED_RESOLUTION: [
+    'The bug appears intermittent — one replay was clean, another was not.',
+    'Re-verify a few times against a stable build to see the consistent outcome.',
+    'Reproduce manually to check for a timing or data-dependent cause.',
+  ],
+  INCOMPLETE_REPLAY: [
+    'A page navigation aborted before the affected screen loaded.',
+    'Make sure the target app is stable and reachable, then run Verify Fix again.',
+    'Reproduce the steps manually if the replay keeps stopping early.',
+  ],
+  LEGACY_TIMELINE: [
+    'This finding predates detailed reproduction timelines, so replay is imprecise.',
+    'Run a new exploration to capture a step-by-step timeline, then verify.',
+    'Reproduce the issue manually in the meantime to confirm the fix.',
+  ],
+  NO_REPLAY_STEPS: [
+    'No steps were recorded, so there is nothing to replay for this finding.',
+    'Run a new exploration to capture the reproduction steps, then verify.',
+    'Reproduce the issue manually using the finding details to confirm the fix.',
+  ],
+  UNVERIFIABLE_BUG_CLASS: [
+    'This bug type cannot be confirmed automatically — it depends on live conditions.',
+    'Reproduce the issue manually to judge whether the fix works.',
+    'Run a new exploration to gather more evidence about the behavior.',
+  ],
+  TARGET_UNREACHABLE: [
+    'Confirm the target application is running and reachable, then retry.',
+    'Check the tunnel/URL configuration if the app is hosted remotely.',
+    'This result says nothing about the bug — re-verify once the app is up.',
+  ],
+  AUTH_WALL: [
+    'The saved login session expired and the replay hit a login screen.',
+    'Start a fresh authenticated run, then verify the finding again.',
+    'This result does not indicate whether the bug is fixed.',
+  ],
+  REPLAY_ERROR: [
+    'An internal error stopped the replay before it could reach a verdict.',
+    'Check the target application, then run Verify Fix again.',
+    'If it keeps failing, reproduce the issue manually to check the fix.',
+  ],
+};
+
+// Universal caveat shown on every outcome: a replay is an indicator, never proof.
+const VERIFICATION_DISCLAIMER =
+  'Automated verification is an indicator, not proof. A replay only re-runs the recorded steps against the current app, so a passing result does not guarantee the bug is gone and a failed run does not always mean the fix is broken. Always confirm by running another verification or by reproducing the issue manually before closing a finding.';
 
 // A distinct, calmer badge for findings replay fundamentally CAN'T check — a class with
 // no replay-time detector, or a finding with no recorded steps. These aren't "inconclusive
@@ -626,6 +699,41 @@ function ReproducedSignal({ signal }: { signal: RegressionSignal }) {
   );
 }
 
+// Verdict-toned "what this means + what to do next" block, rendered for every outcome
+// so a student reader always gets the reasoning and a concrete recommendation.
+function VerdictExplanation({ result, meta }: { result: VerifyFixResult; meta: VerdictMeta }) {
+  const why = REASON_TEXT[result.reason] ?? REASON_TEXT.REPLAY_ERROR;
+  const steps = NEXT_STEPS[result.reason] ?? NEXT_STEPS.REPLAY_ERROR;
+  return (
+    <div className={`mt-4 rounded-lg border ${meta.cardBorder} ${meta.cardHeaderBg} p-4`}>
+      <div className={`text-xs font-bold uppercase tracking-wide ${meta.cardTitle}`}>What this result means</div>
+      <p className="mt-1.5 text-[13px] leading-relaxed text-(--text-primary)">{why}</p>
+      <div className={`mt-3.5 text-xs font-bold uppercase tracking-wide ${meta.cardTitle}`}>Recommended next steps</div>
+      <ul className="mt-1.5 space-y-1.5">
+        {steps.map((step, idx) => (
+          <li key={idx} className="flex gap-2 text-[13px] leading-relaxed text-(--text-primary)">
+            <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`} aria-hidden="true" />
+            <span>{step}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// Always-on caveat: a replay verdict is evidence, not a guarantee.
+function VerificationDisclaimer() {
+  return (
+    <div className="mt-4 flex gap-2.5 rounded-lg border border-(--border-hairline) bg-(--surface-inset) p-3.5">
+      <Info className="mt-0.5 h-4 w-4 shrink-0 text-(--text-tertiary)" strokeWidth={1.75} aria-hidden="true" />
+      <p className="text-xs leading-relaxed text-(--text-secondary)">
+        <span className="font-semibold text-(--text-primary)">Not a 100% guarantee. </span>
+        {VERIFICATION_DISCLAIMER}
+      </p>
+    </div>
+  );
+}
+
 function VerificationResultModal({
   result,
   onReverify,
@@ -678,23 +786,7 @@ function VerificationResultModal({
           </div>
         )}
 
-        {result.verdict === 'RESOLVED' && (
-          <div className="mt-4 rounded-lg border border-(--status-stable-border) bg-(--status-stable-bg) p-3.5 text-[13px] leading-relaxed text-(--status-stable-fg)">
-            {REASON_TEXT.CLEAN_REPLAY}
-          </div>
-        )}
-
-        {result.verdict === 'INCONCLUSIVE' && (
-          <div className="mt-4 rounded-lg border border-(--status-warning-border) bg-(--status-warning-bg) p-3.5 text-[13px] leading-relaxed text-(--status-warning-fg)">
-            {REASON_TEXT[result.reason] ?? 'The replay could not finish. Try again.'}
-          </div>
-        )}
-
-        {result.verdict === 'VERIFICATION_FAILED' && (
-          <div className="mt-4 rounded-lg border border-(--status-warning-border) bg-(--status-warning-bg) p-3.5 text-[13px] leading-relaxed text-(--status-warning-fg)">
-            {REASON_TEXT[result.reason] ?? REASON_TEXT.REPLAY_ERROR}
-          </div>
-        )}
+        <VerdictExplanation result={result} meta={meta} />
 
         {result.otherSignals.length > 0 && (
           <div className="mt-4">
@@ -708,6 +800,8 @@ function VerificationResultModal({
             </ul>
           </div>
         )}
+
+        <VerificationDisclaimer />
       </div>
 
       {/* Footer actions */}

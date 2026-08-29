@@ -194,7 +194,7 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "updated auth and landing page design"
+git commit -m "Bugsafari verification results messaging"
 git checkout -b 8-29-Ayan-5
 git push --set-upstream origin 8-29-Ayan-5
 
