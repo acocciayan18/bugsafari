@@ -3,7 +3,7 @@
 // Dark container for canvas streaming
 
 import { memo, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, ArrowRight, RotateCw, Lock, Globe, MoreVertical } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RotateCw, Lock, Globe, MoreVertical, Target, Flag } from 'lucide-react';
 import { normalizeTargetUrl } from '../../../../shared/url.js';
 import type { RunTerminationOutcome } from '../../types';
 import { TERMINATION_COPY } from '../../types';
@@ -222,9 +222,9 @@ function LiveFeed({
       <div className="flex items-center gap-1.5 border-b border-(--border-hairline) bg-(--surface-app) px-2 py-2 shrink-0 rounded-t-md sm:gap-2 sm:px-3">
         {/* LEFT: nav controls (decorative) — arrows drop first, they carry no meaning here */}
         <div className="flex shrink-0 items-center gap-1 text-(--text-tertiary)">
-          <span className="hidden p-1 opacity-40 cursor-default sm:inline" aria-hidden="true"><ArrowLeft size={14} /></span>
-          <span className="hidden p-1 opacity-40 cursor-default sm:inline" aria-hidden="true"><ArrowRight size={14} /></span>
-          <span className="p-1 opacity-70 cursor-default" aria-hidden="true"><RotateCw size={13} /></span>
+          <span className="hidden p-1  cursor-default sm:inline" aria-hidden="true"><ArrowLeft size={14} /></span>
+          <span className="hidden p-1  cursor-default sm:inline" aria-hidden="true"><ArrowRight size={14} /></span>
+          <span className="p-1  cursor-default" aria-hidden="true"><RotateCw size={13} /></span>
         </div>
 
         {/* CENTER: URL bar */}
@@ -250,7 +250,7 @@ function LiveFeed({
             <span className="whitespace-nowrap text-xs text-(--text-tertiary) sm:text-[13px]">Ready</span>
           )}
 
-          <span className="hidden p-1 opacity-70 cursor-default text-(--text-tertiary) sm:inline" aria-hidden="true">
+          <span className="hidden p-1 cursor-default text-(--text-tertiary) sm:inline" aria-hidden="true">
             <MoreVertical size={14} />
           </span>
         </div>
@@ -264,44 +264,56 @@ function LiveFeed({
         {/* Overlays fill the container, not the cover-scaled canvas resolution, which overflows it. */}
         {/* IDLE STATE */}
         {isIdle && (
-          <div className="absolute inset-0 flex items-center justify-center z-10 bg-(--surface-panel) px-4 text-center">
-            <p className="font-mono text-xs sm:text-[13px]  sm: uppercase text-(--text-primary)">
-              ENTER A TARGET URL TO BEGIN
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-(--surface-panel) px-4 text-center">
+            <div className="livefeed-grid" aria-hidden="true"></div>
+            <div className="relative flex h-14 w-14 items-center justify-center rounded-full border border-(--border-hairline) bg-(--surface-app) text-(--text-tertiary) shadow-(--shadow-sm)">
+              <Target size={24} strokeWidth={1.75} aria-hidden="true" />
+            </div>
+            <p className="relative font-mono text-xs uppercase tracking-[0.14em] text-(--text-primary) sm:text-[13px]">
+              Enter a target URL to begin
             </p>
           </div>
         )}
 
         {/* QUEUED STANDBY STATE — run parked behind the worker fleet; no stream yet. */}
         {isQueued && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-(--surface-panel) px-4 text-center">
-            <span className="mb-4 inline-block h-6 w-6 shrink-0 animate-spin rounded-full border-2 border-(--status-neutral-fg) border-r-transparent"></span>
-            <p className="font-mono text-xs sm:text-[13px]  sm: uppercase text-(--text-primary)">
-              QUEUED, WAITING FOR AN OPEN SLOT
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-(--surface-panel) px-4 text-center">
+            <div className="livefeed-grid" aria-hidden="true"></div>
+            <span className="relative flex h-11 w-11 items-center justify-center" aria-hidden="true">
+              <span className="absolute inset-0 rounded-full border-2 border-(--border-hairline)"></span>
+              <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-(--status-neutral-fg) animate-spin"></span>
+            </span>
+            <p className="relative font-mono text-xs uppercase tracking-[0.14em] text-(--text-primary) sm:text-[13px]">
+              Queued, waiting for an open slot
             </p>
           </div>
         )}
 
         {/* INITIALIZING STATE */}
         {isInitializingScreen && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center z-10 bg-(--surface-panel) px-4 text-center">
-            <div className="mb-4 flex items-center justify-center gap-1">
-              <span className="h-3 w-3 bg-(--text-primary) animate-pulse"></span>
-              <span className="h-3 w-3 bg-(--text-primary) animate-pulse" style={{ animationDelay: '150ms' }}></span>
-              <span className="h-3 w-3 bg-(--text-primary) animate-pulse" style={{ animationDelay: '300ms' }}></span>
-            </div>
-            <p className="font-mono text-xs sm:text-[13px]  sm: uppercase text-(--text-primary)">
-              ESTABLISHING TELEMETRY STREAM
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-(--surface-panel) px-4 text-center">
+            <div className="livefeed-grid" aria-hidden="true"></div>
+            <span className="relative flex h-11 w-11 items-center justify-center" aria-hidden="true">
+              <span className="absolute inset-0 rounded-full border-2 border-(--border-hairline)"></span>
+              <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-(--text-primary) animate-spin"></span>
+            </span>
+            <p className="relative font-mono text-xs uppercase tracking-[0.14em] text-(--text-primary) sm:text-[13px]">
+              Establishing telemetry stream
             </p>
           </div>
         )}
 
         {/* COMPLETED STATE */}
         {isCompleted && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 z-10 overflow-y-auto bg-(--surface-panel) px-4 py-3 text-center sm:px-6">
-            <p className="font-mono text-xs sm:text-[13px]  sm: uppercase text-(--text-primary)">
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 overflow-y-auto bg-(--surface-panel) px-4 py-3 text-center sm:px-6">
+            <div className="livefeed-grid" aria-hidden="true"></div>
+            <div className="relative flex h-14 w-14 items-center justify-center rounded-full border border-(--border-hairline) bg-(--surface-app) text-(--text-tertiary) shadow-(--shadow-sm)">
+              <Flag size={22} strokeWidth={1.75} aria-hidden="true" />
+            </div>
+            <p className="relative font-mono text-xs uppercase tracking-[0.14em] text-(--text-primary) sm:text-[13px]">
               {terminationCopy?.label ?? 'Exploration Complete'}
             </p>
-            <p className="max-w-md text-[13px] text-(--text-secondary)">
+            <p className="relative max-w-md text-[13px] text-(--text-secondary)">
               {terminationReason ?? terminationCopy?.detail ?? 'Exploration finished.'}
             </p>
           </div>

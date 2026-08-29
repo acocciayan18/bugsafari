@@ -9,6 +9,7 @@ import { buildSavedNetworkRows } from '../../utils/networkLogBuilder';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
 import type { RunControlOutcome } from '../../application/ports/EngineGateway';
 import { canApplyRollback, refusalMessage, shouldRollbackControl } from './controlOutcome';
+import { resolveLaunchFailure } from './launchFailure';
 import { useRunStore, runRefs } from './runStore';
 import { RUN_ID_STORAGE_KEY, RUN_CODE_STORAGE_KEY, JOB_ID_STORAGE_KEY, RUN_CONTROL_STORAGE_KEY, STATUS_TOAST_ID, resolveStatus, resolvePendingReissue, type TestSessionStatus } from './types';
 
@@ -111,24 +112,13 @@ export async function startRun(
         // wait, 'active' → ACTIVE on instant pickup. Flipping to QUEUED here forced a
         // transient standby frame that reverted the moment that push landed.
     } catch (error) {
-        const err = error as Error & { status?: number; code?: string };
-        const raw = error instanceof Error ? error.message : String(error);
+        // Every failed start signals now — a 502 enqueue fail or a generic 5xx no longer
+        // reaches only the telemetry feed. STATUS_TOAST_ID dedupes an upstream toast.
+        const { message, authOnQueue } = resolveLaunchFailure(error);
         // The backend refuses authenticated runs only when its credential-encryption
-        // key is unset — a deployment misconfig, not a product limit. Surface the fix.
-        const isAuthOnQueue = raw.includes('AUTH_UNSUPPORTED_ON_QUEUE');
-        if (isAuthOnQueue) console.error('[runCommands] Authenticated runs require the server credential key (BUGSAFARI_AUTH_KEY) to be configured.');
-        // Guest limit rejections carry the server's prose (rate/cooldown, one-run,
-        // Target-Auth-disabled); surface it so the block is legible, not silent.
-        const isGuestLimit = err.status === 429 || err.status === 403
-            || err.code === 'RATE_LIMITED' || err.code === 'GUEST_TARGET_AUTH_FORBIDDEN';
-        // Fleet-gate 503s (no worker connected, or a full backlog) carry deliberate
-        // operator prose. Without a toast the refusal only reaches the telemetry feed,
-        // which is exactly the silence this gate exists to end.
-        const isFleetRejection = err.code === 'FLEET_UNAVAILABLE' || err.code === 'QUEUE_FULL';
-        const message = isAuthOnQueue
-            ? "Authenticated runs aren't available right now. Try again later, or start a run without signing in to the target."
-            : raw;
-        if (isAuthOnQueue || isGuestLimit || isFleetRejection) toast.error(message, { id: STATUS_TOAST_ID });
+        // key is unset — a deployment misconfig, not a product limit. Log the fix.
+        if (authOnQueue) console.error('[runCommands] Authenticated runs require the server credential key (BUGSAFARI_AUTH_KEY) to be configured.');
+        toast.error(message, { id: STATUS_TOAST_ID });
         useRunStore.getState().markLaunchFailed(message);
     } finally {
         // Release the latch once the POST settles; isActiveSession now gates the UI.

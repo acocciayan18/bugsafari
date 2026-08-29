@@ -339,6 +339,22 @@
     .auth-backdrop::after { display: none; }
   }
 
+  /* Live-feed empty state: node dot-grid over a fine blueprint grid, edge-masked and low-opacity so
+     telemetry stays the focus. Static (no animation) and token-driven so it inverts cleanly light/dark. */
+  .livefeed-grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      radial-gradient(100% 70% at 50% 0%, var(--grid-glow), transparent 62%),
+      radial-gradient(var(--auth-node) 1px, transparent 1.5px),
+      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+    background-size: 100% 100%, 26px 26px, 26px 26px, 26px 26px;
+    -webkit-mask-image: radial-gradient(120% 100% at 50% 42%, #000 40%, transparent 85%);
+    mask-image: radial-gradient(120% 100% at 50% 42%, #000 40%, transparent 85%);
+  }
+
   /* Overlay fade — opacity only, so a scale never unblurs the backdrop edges */
   @keyframes backdrop-in {
     from {

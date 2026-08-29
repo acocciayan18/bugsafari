@@ -30,6 +30,7 @@ import { presentTelemetry, telemetryToneStyle } from '../../utils/telemetryPrese
 import { isVerboseTelemetry, createTelemetryDeduper } from '../../../../shared/types.js';
 import { isPrivateTargetUrl, SELF_TARGET_FORBIDDEN_MESSAGE } from '../../../../shared/url.js';
 import { isSelfTargetUrl } from '../../utils/selfTarget';
+import { isLaunchBlocked } from '../../stores/run/launchGating';
 import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, TEST_DURATION_PRESETS, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId, type BoundaryLockMode, type TestDurationId } from '../../types';
 
 // A Pause/Stop that settles within this window shows no transitional label — the
@@ -255,9 +256,12 @@ function ClinicalForensicsDashboard({
   const { containerRef: logContainerRef, atBottom, scrollToBottom } = useStickyScroll<HTMLDivElement>(terminalContentSignal);
 
   const authIncomplete = isTargetAuthIncomplete(authDraft);
+  // Single launch gate shared by the button, Enter key, and click handler — a blank
+  // URL now disqualifies Start instead of looking clickable then failing with a toast.
+  const launchBlocked = isLaunchBlocked({ urlInput, authIncomplete, isBlockedTarget });
 
   const handleInitialize = () => {
-    if (!onStartInitialization || authIncomplete || isBlockedTarget) return;
+    if (!onStartInitialization || launchBlocked) return;
     // Duration, Navigation, and the auth structure persist across runs; the auth
     // password stays in component state only and is re-entered each run.
     onStartInitialization(urlInput, selectedProfile, boundaryMode, duration, toTargetAuthConfig(authDraft));
@@ -456,7 +460,7 @@ function ClinicalForensicsDashboard({
                 if (noticeDismissed && !isPrivateTargetUrl(e.target.value) && !isSelfTargetUrl(e.target.value)) setNoticeDismissed(false);
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !isActiveSession && !authIncomplete) handleInitialize();
+                if (e.key === 'Enter' && !isActiveSession && !launchBlocked) handleInitialize();
               }}
               disabled={isActiveSession}
               className={`w-full h-11 border rounded-lg pl-11 pr-4 text-base sm:text-sm font-normal font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled) ${showLocalTargetError ? 'border-(--status-critical-fg)' : 'border-(--border-strong)'}`}
@@ -473,7 +477,7 @@ function ClinicalForensicsDashboard({
           <button
             data-tour="start"
             onClick={handleInitialize}
-            disabled={isActiveSession || authIncomplete || isBlockedTarget}
+            disabled={isActiveSession || launchBlocked}
             title={
               isSelfTarget
                 ? "BugSafari can't test itself. Enter a different public website."

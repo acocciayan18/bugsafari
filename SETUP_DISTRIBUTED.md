@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "files ni tibo"
+git commit -m "Live Feed empty state redesign"
 git push origin HEAD:dev --force
 
 
