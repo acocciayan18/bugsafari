@@ -194,9 +194,9 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "live-feed testing redesign"
-git checkout -b 8-29-Ayan-7
-git push --set-upstream origin 8-29-Ayan-7
+git commit -m "Live Feed empty state redesign"
+git checkout -b 8-29-Ayan-8
+git push --set-upstream origin 8-29-Ayan-8
 
 
 
