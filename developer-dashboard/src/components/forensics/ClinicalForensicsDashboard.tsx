@@ -520,7 +520,7 @@ function ClinicalForensicsDashboard({
 
         {/* FEED PANEL: Browser Frame Viewport */}
         <div className="flex w-full shrink-0 flex-col overflow-hidden border-b border-(--border-hairline) lg:h-full lg:w-[55%] lg:shrink lg:border-b-0 lg:border-r">
-          <div className="flex-1 overflow-hidden bg-(--surface-raised) p-2 pb-2">
+          <div className="flex-1 overflow-hidden bg-(--surface-raised) p-3">
             <div data-tour="live-feed" className="aspect-video lg:aspect-auto lg:h-full overflow-hidden rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-sm">
               <LiveFeedConnected
                 currentUrl={currentUrl || targetUrl}
