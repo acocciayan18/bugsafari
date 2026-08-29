@@ -3,7 +3,7 @@
 // Dark container for canvas streaming
 
 import { memo, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, ArrowRight, RotateCw, Lock, Globe, MoreVertical, Target, Flag } from 'lucide-react';
+import { ArrowLeft, ArrowRight, RotateCw, Lock, Globe, MoreVertical, Flag } from 'lucide-react';
 import { normalizeTargetUrl } from '../../../../shared/url.js';
 import type { RunTerminationOutcome } from '../../types';
 import { TERMINATION_COPY } from '../../types';
@@ -267,7 +267,7 @@ function LiveFeed({
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-(--surface-panel) px-4 text-center">
             <div className="livefeed-grid" aria-hidden="true"></div>
             <div className="relative flex h-14 w-14 items-center justify-center rounded-full border border-(--border-hairline) bg-(--surface-app) text-(--text-tertiary) shadow-(--shadow-sm)">
-              <Target size={24} strokeWidth={1.75} aria-hidden="true" />
+              <Globe size={24} strokeWidth={1.75} aria-hidden="true" />
             </div>
             <p className="relative font-mono text-xs uppercase tracking-[0.14em] text-(--text-primary) sm:text-[13px]">
               Enter a target URL to begin
