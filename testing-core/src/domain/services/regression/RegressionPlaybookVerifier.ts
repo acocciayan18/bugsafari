@@ -165,13 +165,16 @@ export class RegressionPlaybookVerifier {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // A browser that never launched is an infra crash, not a generic replay error —
+      // surface the real cause so the operator sees "browser could not start", not noise.
+      const reason: VerifyFixReason = /launch timeout/i.test(message) ? 'BROWSER_CRASH' : 'REPLAY_ERROR';
       return this.failed(
         sessionId,
         bugId,
         originalBugClass,
         startedAt,
-        `Replay error: ${message}`,
-        'REPLAY_ERROR',
+        reason === 'BROWSER_CRASH' ? `Browser could not start: ${message}` : `Replay error: ${message}`,
+        reason,
         { ...EMPTY_STATS, total: finding.actionSteps.length },
         finding.timelineSource,
       );

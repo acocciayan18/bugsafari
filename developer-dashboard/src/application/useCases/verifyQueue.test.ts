@@ -162,6 +162,14 @@ async function run(): Promise<void> {
     assert.equal(failed.verdict, 'VERIFICATION_FAILED');
     assert.equal(failed.bugId, 'Z');
     assert.equal(failed.error, 'boom');
+    assert.equal(failed.reason, 'REPLAY_ERROR', 'defaults to REPLAY_ERROR');
+  });
+
+  await check('buildVerifyFailure carries a passed reason (client ack timeout → VERIFY_TIMEOUT)', () => {
+    const failed = buildVerifyFailure(req('Z'), 'operation has timed out', 'VERIFY_TIMEOUT');
+    assert.equal(failed.verdict, 'VERIFICATION_FAILED');
+    assert.equal(failed.reason, 'VERIFY_TIMEOUT');
+    assert.equal(failed.error, 'operation has timed out');
   });
 
   console.log(`\n${passed} checks passed.`);

@@ -9,13 +9,14 @@
 // The caller owns the context lifecycle and MUST pass a fresh, isolated one: this
 // seeds cookies/init scripts that would otherwise leak into a reused session.
 
-import type { BrowserContext, Page } from 'playwright';
+import type { BrowserContext, Page, Response } from 'playwright';
 import type { ActionStepTrace } from '../../../infrastructure/database/models/SessionModel.js';
 import type { FaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
 import type { ReplayStepStats, StateFingerprint, VerifyFixReason } from '../../../../../shared/types.js';
 import { FaultCollector, type SignalBuckets } from './FaultCollector.js';
 import { ReplayActionRunner, type ReplayStepStatus } from './ReplayActionRunner.js';
 import { ReplayProbes, requiresBodyScan } from './replayProbes.js';
+import { isAuthPage } from '../exploration/SessionPreservationGuard.js';
 
 import { createLogger } from '../../../infrastructure/observability/logger.js';
 
@@ -80,16 +81,16 @@ const EMPTY_STATS: ReplayStepStats = { total: 0, executed: 0, skipped: 0, failed
 // Load the replay target with bounded retries. Earlier attempts wait for domcontentloaded;
 // the final attempt falls back to 'commit' + a bounded 'load' wait so a slow-but-reachable
 // target still hydrates before the timeline replays, instead of reading as undecidable.
-async function navigateWithRetry(page: Page, targetUrl: string): Promise<void> {
+async function navigateWithRetry(page: Page, targetUrl: string): Promise<Response | null> {
   let navError: unknown;
   for (let attempt = 1; attempt <= NAV_ATTEMPTS; attempt++) {
     const waitUntil = attempt < NAV_ATTEMPTS ? 'domcontentloaded' : 'commit';
     try {
-      await page.goto(targetUrl, { waitUntil, timeout: NAV_TIMEOUT_MS });
+      const response = await page.goto(targetUrl, { waitUntil, timeout: NAV_TIMEOUT_MS });
       if (waitUntil === 'commit') {
         await page.waitForLoadState('load', { timeout: HYDRATION_SETTLE_MS }).catch(() => undefined);
       }
-      return;
+      return response;
     } catch (error) {
       navError = error;
       if (attempt >= NAV_ATTEMPTS) break;
@@ -129,6 +130,12 @@ export async function runReplaySession(
   await restoreState(context, params.stateFingerprint, targetUrl);
 
   const page = await context.newPage();
+  // A renderer crash (or container OOM-kill) surfaces as thrown step/nav errors that
+  // would otherwise read as REPLAY_ERROR; this flag lets us report the real cause.
+  let browserCrashed = false;
+  page.on('crash', () => {
+    browserCrashed = true;
+  });
   const collector = new FaultCollector(page, requiresBodyScan(bugClass));
   collector.attach();
   const probes = new ReplayProbes(page, collector, bugClass, faultType, params.faultEndpoint);
@@ -136,10 +143,12 @@ export async function runReplaySession(
   const runner = new ReplayActionRunner(page, targetUrl);
 
   try {
+    let response: Response | null = null;
     try {
-      await navigateWithRetry(page, targetUrl);
+      response = await navigateWithRetry(page, targetUrl);
     } catch (navError) {
       const message = navError instanceof Error ? navError.message : String(navError);
+      if (browserCrashed) return failed(`Browser crashed while loading target: ${message}`, 'BROWSER_CRASH');
       return failed(`Could not load target: ${message}`, 'TARGET_UNREACHABLE');
     }
 
@@ -149,10 +158,21 @@ export async function runReplaySession(
       return failed('Target requires authentication; the replay never reached the recorded surface.', 'AUTH_WALL');
     }
 
+    // A recorded route that now errors (moved/removed) is not comparable to the original
+    // finding. Checked AFTER the auth-wall gate so a 401+login still reads AUTH_WALL.
+    if (classifyNavStatus(response ? response.status() : null) === 'ROUTE_CHANGED') {
+      const status = response?.status();
+      return failed(
+        `The recorded route returned HTTP ${status}; it may have moved or been removed, so this result may not be comparable.`,
+        'ROUTE_CHANGED',
+      );
+    }
+
     const stats: ReplayStepStats = { ...EMPTY_STATS, total: steps.length };
     let stepsReplayed = 0;
     emit('replaying', stepsReplayed);
     for (const step of steps) {
+      if (browserCrashed) return failed('The browser process crashed or ran out of memory during replay.', 'BROWSER_CRASH');
       const status = await replayStep(runner, step);
       tally(stats, status);
       if (step === steps[steps.length - 1]) stats.finalStepExecuted = status === 'ok';
@@ -191,6 +211,7 @@ export async function runReplaySession(
       replayIncomplete: collector.hadNavigationFailure(),
     };
   } catch (error) {
+    if (browserCrashed) return failed('The browser process crashed or ran out of memory during replay.', 'BROWSER_CRASH');
     return failed(`Replay error: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
     probes.detach();
@@ -217,6 +238,15 @@ function tally(stats: ReplayStepStats, status: ReplayStepStatus): void {
   if (status === 'ok') stats.executed += 1;
   else if (status === 'skipped') stats.skipped += 1;
   else stats.failed += 1;
+}
+
+/**
+ * A recorded route that now returns a 4xx/5xx no longer serves the surface the finding
+ * was captured on, so a clean replay is not comparable to the original. 2xx/3xx (and a
+ * null status, e.g. same-document SPA navigation) count as servable.
+ */
+export function classifyNavStatus(status: number | null): 'ok' | 'ROUTE_CHANGED' {
+  return status !== null && status >= 400 ? 'ROUTE_CHANGED' : 'ok';
 }
 
 /** Drop script/style bodies + comments so the content scan sees rendered DOM, not source code. */
@@ -278,6 +308,12 @@ async function restoreState(
  * replayable and must not be refused.
  */
 async function isBlockedByLogin(page: Page, recordedUrl: string): Promise<boolean> {
+  // A redirect to a recognized auth path (login/signin/sso/…) is a login wall even when
+  // no password field is rendered yet — SSO/token gates, async login forms. Only counts
+  // when the finding itself was not recorded on an auth page.
+  const landedUrl = page.url();
+  if (isAuthPage(landedUrl) && !isAuthPage(recordedUrl)) return true;
+
   const hasPasswordField = await page
     .evaluate(() =>
       Array.from(document.querySelectorAll('input[type="password"]')).some((el) => {
@@ -289,7 +325,7 @@ async function isBlockedByLogin(page: Page, recordedUrl: string): Promise<boolea
   if (!hasPasswordField) return false;
 
   try {
-    return new URL(page.url()).pathname !== new URL(recordedUrl).pathname;
+    return new URL(landedUrl).pathname !== new URL(recordedUrl).pathname;
   } catch {
     return false;
   }

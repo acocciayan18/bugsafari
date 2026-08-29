@@ -481,6 +481,15 @@ const REASON_TEXT: Record<VerifyFixReason, string> = {
   AUTH_WALL:
     'The replay reached a login screen because the saved authentication session is no longer valid. Run the test again with a fresh authenticated session.',
 
+  ROUTE_CHANGED:
+    'The page this finding was recorded on returned an error (it may have moved or been removed), so the replay could not reach the original surface. This result may not be comparable to the original finding.',
+
+  VERIFY_TIMEOUT:
+    'The verification did not finish within the time limit, so no verdict was reached. This does not indicate whether the issue is fixed. Try again, and check that the target application is responsive.',
+
+  BROWSER_CRASH:
+    'The browser used for replay crashed or ran out of memory before a verdict was reached. This result does not confirm whether the issue is fixed. Try again, and lower concurrent runs if it recurs.',
+
   REPLAY_ERROR:
     'BugSafari could not complete the replay because an error occurred. This result does not confirm whether the issue is fixed. Check the target application and try again.',
 };
@@ -547,6 +556,21 @@ const NEXT_STEPS: Record<VerifyFixReason, string[]> = {
     'Start a fresh authenticated run, then verify the finding again.',
     'This result does not indicate whether the bug is fixed.',
   ],
+  ROUTE_CHANGED: [
+    'The recorded page returned an error, so it may have moved or been removed.',
+    'Run a fresh exploration to capture the current route, then verify again.',
+    'This result may not be comparable — it does not confirm whether the bug is fixed.',
+  ],
+  VERIFY_TIMEOUT: [
+    'Verification ran out of time before reaching a verdict.',
+    'Confirm the target application is responsive, then run Verify Fix again.',
+    'This result says nothing about the bug — re-verify once the app is stable.',
+  ],
+  BROWSER_CRASH: [
+    'The replay browser crashed or ran out of memory before finishing.',
+    'Run Verify Fix again; if it recurs, reduce concurrent runs or raise container memory.',
+    'This result does not indicate whether the bug is fixed.',
+  ],
   REPLAY_ERROR: [
     'An internal error stopped the replay before it could reach a verdict.',
     'Check the target application, then run Verify Fix again.',
@@ -578,6 +602,12 @@ const NOT_REPLAYABLE_META: VerdictMeta = {
 
 const NOT_REPLAYABLE_REASONS = new Set<VerifyFixReason>(['UNVERIFIABLE_BUG_CLASS', 'NO_REPLAY_STEPS']);
 
+// Some VERIFICATION_FAILED reasons read clearer with a purpose-named badge than the
+// generic "Verification Failed" — the verdict is unchanged, only the label operators see.
+const REASON_LABEL_OVERRIDE: Partial<Record<VerifyFixReason, string>> = {
+  AUTH_WALL: 'Authentication Required',
+};
+
 function verdictMetaOf(verdict: RegressionVerdict): VerdictMeta {
   return VERDICT_META[verdict] ?? VERDICT_META.INCONCLUSIVE;
 }
@@ -585,7 +615,9 @@ function verdictMetaOf(verdict: RegressionVerdict): VerdictMeta {
 /** Badge/theme for a settled result — a "can't replay this" reason reads Not Replayable. */
 function metaForResult(result: { verdict: RegressionVerdict; reason: VerifyFixReason }): VerdictMeta {
   if (result.verdict === 'INCONCLUSIVE' && NOT_REPLAYABLE_REASONS.has(result.reason)) return NOT_REPLAYABLE_META;
-  return verdictMetaOf(result.verdict);
+  const base = verdictMetaOf(result.verdict);
+  const label = REASON_LABEL_OVERRIDE[result.reason];
+  return label ? { ...base, label } : base;
 }
 
 /** Human phase label for the running pill (real per-step counts when known). */

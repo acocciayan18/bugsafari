@@ -28,6 +28,9 @@ export type VerifyFixReason =
   | 'LEGACY_TIMELINE' // session-global fallback timeline; clean run not provable
   | 'TARGET_UNREACHABLE' // replay could not load the live target — says nothing about the bug
   | 'AUTH_WALL' // replay hit a login wall (stale credentials); never reached the recorded surface
+  | 'ROUTE_CHANGED' // recorded route returned 4xx / no longer serves the surface — result not comparable
+  | 'VERIFY_TIMEOUT' // replay/browser exceeded the time budget before a verdict
+  | 'BROWSER_CRASH' // headless browser crashed or was OOM-killed mid-replay
   | 'REPLAY_ERROR'; // infra failure, detail in `error`
 
 /** Per-step execution evidence backing the verdict. */

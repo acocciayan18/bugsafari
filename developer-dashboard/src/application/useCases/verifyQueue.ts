@@ -12,7 +12,7 @@
 // drain FIFO. Framework-agnostic and side-effect-free beyond the injected executor,
 // so it is unit-tested directly without React or a DOM.
 
-import type { VerifyFixRequest, VerifyFixResult, VerifyFixProgress, VerifyFixPhase } from '../../types';
+import type { VerifyFixRequest, VerifyFixResult, VerifyFixReason, VerifyFixProgress, VerifyFixPhase } from '../../types';
 
 /**
  * Per-bug verification state as a discriminated union:
@@ -33,11 +33,15 @@ export const IDLE_VERIFY_STATUS: VerifyStatus = { state: 'idle' };
 export type VerifyExecutor = (request: VerifyFixRequest) => Promise<VerifyFixResult>;
 
 /** Terminal VERIFICATION_FAILED verdict for a transport/timeout error — the replay never produced a verdict. */
-export function buildVerifyFailure(request: VerifyFixRequest, message: string): VerifyFixResult {
+export function buildVerifyFailure(
+  request: VerifyFixRequest,
+  message: string,
+  reason: VerifyFixReason = 'REPLAY_ERROR',
+): VerifyFixResult {
   return {
     ok: false,
     verdict: 'VERIFICATION_FAILED',
-    reason: 'REPLAY_ERROR',
+    reason,
     sessionId: request.sessionId,
     bugId: request.bugId,
     bugClass: 'UNKNOWN',

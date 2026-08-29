@@ -12,6 +12,7 @@ import {
   type RunControlAck,
   type VerifyFixRequest,
   type VerifyFixResult,
+  type VerifyFixReason,
   type VerifyFixProgress,
   type StopReason,
   coerceClientStopReason,
@@ -82,11 +83,15 @@ function joinLimited(socket: Socket, room: string): boolean {
 }
 
 /** Build a terminal VERIFICATION_FAILED ack without running a replay (validation/guard failures). */
-function verificationFailedAck(request: Partial<VerifyFixRequest>, error: string): VerifyFixResult {
+function verificationFailedAck(
+  request: Partial<VerifyFixRequest>,
+  error: string,
+  reason: VerifyFixReason = 'REPLAY_ERROR',
+): VerifyFixResult {
   return {
     ok: false,
     verdict: 'VERIFICATION_FAILED',
-    reason: 'REPLAY_ERROR',
+    reason,
     sessionId: request.sessionId ?? '',
     bugId: request.bugId ?? '',
     bugClass: 'UNKNOWN',
@@ -415,6 +420,10 @@ export function registerSocketHandlers(io: Server, queueSupport?: QueueSocketSup
         if (isReplayBusyError(error)) {
           obsLog.warn(`[Socket] verify-fix rejected — replay capacity full for user ${userId}`);
           respond(verificationFailedAck(request, 'The verification service is busy right now. Please retry in a moment.'));
+        } else if (/timed out/i.test(message)) {
+          // The hard ack timeout won the race — the replay could not conclude in time.
+          obsLog.warn(`[Socket] verify-fix timed out for user ${userId}`);
+          respond(verificationFailedAck(request, message, 'VERIFY_TIMEOUT'));
         } else {
           obsLog.error('[Socket] verify-fix failed:', message);
           respond(verificationFailedAck(request, `Verification error: ${message}`));

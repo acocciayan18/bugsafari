@@ -17,7 +17,7 @@ import { io, type Socket } from 'socket.io-client';
 import { VERIFY_FIX_EVENT, VERIFY_FIX_PROGRESS_EVENT } from '../../types';
 import type { VerifyFixRequest, VerifyFixResult, VerifyFixProgress } from '../../types';
 import { useAuth } from '../../context/AuthContext';
-import { VerifyQueue, IDLE_VERIFY_STATUS, type VerifyStatus } from './verifyQueue';
+import { VerifyQueue, IDLE_VERIFY_STATUS, buildVerifyFailure, type VerifyStatus } from './verifyQueue';
 
 export type { VerifyStatus };
 export { IDLE_VERIFY_STATUS };
@@ -66,11 +66,13 @@ export function useRegressionVerifier(): RegressionVerifier {
   const runOnSocket = useCallback(
     (request: VerifyFixRequest): Promise<VerifyFixResult> => {
       const socket = getSocket();
-      return new Promise<VerifyFixResult>((resolve, reject) => {
+      return new Promise<VerifyFixResult>((resolve) => {
         socket
           .timeout(VERIFY_TIMEOUT_MS)
           .emit(VERIFY_FIX_EVENT, request, (err: Error | null, response: VerifyFixResult) => {
-            if (err) reject(err);
+            // The ack never returned in time (timeout/transport) — the replay produced no
+            // verdict. Surface it as VERIFY_TIMEOUT, not a generic replay error.
+            if (err) resolve(buildVerifyFailure(request, err.message || 'Verification timed out.', 'VERIFY_TIMEOUT'));
             else resolve(response);
           });
       });

@@ -8,7 +8,8 @@ import { decideVerdict, confirmResolution, summarize, MIN_EXECUTED_RATIO } from 
 import { FaultCollector, messagesSimilar, normalizeMessage } from './FaultCollector.js';
 import { isReplayVerifiable } from './replayProbes.js';
 import { detectApiContractViolation } from '../verification/apiContractBody.js';
-import { stripNonRendered } from './ReplaySession.js';
+import { stripNonRendered, classifyNavStatus } from './ReplaySession.js';
+import { isAuthPage } from '../exploration/SessionPreservationGuard.js';
 import type { ReplayStepStats } from '../../../../../shared/types.js';
 
 let passed = 0;
@@ -458,6 +459,40 @@ check('oracle-only classes are demoted from the verifiable set', () => {
   assert.ok(!isReplayVerifiable('FUZZ_VULNERABILITY_LEAK'));
   assert.ok(!isReplayVerifiable('INPUT_SANITIZATION_FAILURE'));
   assert.ok(!isReplayVerifiable('CLIENT_TRUST_BOUNDARY_VIOLATION'));
+});
+
+console.log('classifyNavStatus — recorded-route reachability gate');
+
+check('2xx/3xx and null (SPA same-document nav) are servable', () => {
+  assert.equal(classifyNavStatus(200), 'ok');
+  assert.equal(classifyNavStatus(204), 'ok');
+  assert.equal(classifyNavStatus(302), 'ok');
+  assert.equal(classifyNavStatus(null), 'ok');
+});
+
+check('4xx/5xx recorded route → ROUTE_CHANGED (result not comparable)', () => {
+  assert.equal(classifyNavStatus(404), 'ROUTE_CHANGED');
+  assert.equal(classifyNavStatus(410), 'ROUTE_CHANGED');
+  assert.equal(classifyNavStatus(500), 'ROUTE_CHANGED');
+});
+
+console.log('isAuthPage — login-wall path detection (shared with the exploration guard)');
+
+check('recognized auth paths are login walls', () => {
+  assert.ok(isAuthPage('https://app.test/login'));
+  assert.ok(isAuthPage('https://app.test/sign-in'));
+  assert.ok(isAuthPage('https://app.test/auth/callback'));
+  assert.ok(isAuthPage('https://idp.test/sso'));
+});
+
+check('non-auth surfaces are not login walls; a finding recorded on login is exempt', () => {
+  assert.ok(!isAuthPage('https://app.test/dashboard'));
+  assert.ok(!isAuthPage('https://app.test/cart?step=login'));
+  // A finding captured ON the login page must not be refused as an auth wall: both
+  // landed and recorded URLs are auth pages, so the replay guard's `landed && !recorded`
+  // condition is false. Proven here at the predicate level.
+  const recordedOnLogin = isAuthPage('https://app.test/login');
+  assert.ok(recordedOnLogin && isAuthPage('https://app.test/login'));
 });
 
 console.log(`\nAll ${passed} regression-verdict checks passed.`);

@@ -347,10 +347,8 @@
     pointer-events: none;
     background-image:
       radial-gradient(100% 70% at 50% 0%, var(--grid-glow), transparent 62%),
-      radial-gradient(var(--auth-node) 1px, transparent 1.5px),
-      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
-      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
-    background-size: 100% 100%, 26px 26px, 26px 26px, 26px 26px;
+      conic-gradient(var(--grid-line) 90deg, transparent 90deg 180deg, var(--grid-line) 180deg 270deg, transparent 270deg);
+    background-size: 100% 100%, 44px 44px;
     -webkit-mask-image: radial-gradient(120% 100% at 50% 42%, #000 40%, transparent 85%);
     mask-image: radial-gradient(120% 100% at 50% 42%, #000 40%, transparent 85%);
   }
