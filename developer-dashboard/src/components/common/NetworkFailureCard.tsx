@@ -92,7 +92,7 @@ export default function NetworkFailureList({
 
   return (
     <div className="space-y-3 p-2">
-      <div className="text-(--text-primary) mb-2 font-bold">Network Failures ({rows.length})</div>
+      
       {rows.map((row, idx) => (
         <NetworkFailureCard key={`network-${idx}`} row={row} />
       ))}

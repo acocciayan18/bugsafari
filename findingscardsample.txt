@@ -1,301 +1,51 @@
 Runtime Stability Exception
-Medium
-×4
+Critical
 Verify Fix
 
 CWE
 CWE-248
 Status
-CONFIRMED 89%
+CONFIRMED 90%
 Message
-TypeError: Cannot read properties of null (reading 'name')
+Maximum call stack size exceeded
 Element
-Add
+Stack overflow
+Payload Used
+EXCEPTION
 Reproduction Playbook
 
 1
 open
 Navigate to /
 2
-rapid
-Click 5 controls at the same time: the "Add" button, the "Add" button, the "Add" button, the "Sign in" link and the "☕" link
+click
+Click the "JavaScript Runtime Errors" link. Result: the app moved to /js-runtime-errors
 Route
 /
-Suggested Fix
-See More Suggestions
-
-The code read a field on `null`, usually a missing page element (`querySelector` returned null) or an empty API result. Confirm the lookup found something before using it.
-
-Suggested fix:
-1. Reproduce the fault using the replay checklist above
-2. Apply that guard at the failing line
-3. Add a test that confirms it stays stable
-
-Stack Trace
-Click to expand
-Runtime Stability Exception
-Medium
-Verify Fix
-
-CWE
-CWE-248
-Status
-CONFIRMED 89%
-Message
-TypeError: Cannot read properties of null (reading 'name')
-Reproduction Playbook
-
-1
-open
-Navigate to /
-2
-rapid
-Click 5 controls at the same time: the "Add" button, the "Add" button, the "Add" button, the "Sign in" link and the "☕" link
-Route
-/
-Suggested Fix
-See More Suggestions
-
-The code read a field on `null`, usually a missing page element (`querySelector` returned null) or an empty API result. Confirm the lookup found something before using it.
-
-Suggested fix:
-1. Reproduce the fault using the replay checklist above
-2. Apply that guard at the failing line
-3. Add a test that confirms it stays stable
-
-Stack Trace
-Click to expand
-Boundary Stress Failure
-Medium
-Verify Fix
-
-CWE
-CWE-400
-Status
-NEEDS VERIFICATION 59%
-Message
-Network request failed: GET /api/products (net::ERR_FAILED) · Injected network fault. The application failed to handle the simulated failure properly.
+·
+Section
+"Runtime"
+·
 Element
-All
-Reproduction Playbook
-
-1
-open
-Navigate to /products?search=%3Cscript%3Eeval%28atob%28%22YWxlcnQoIlhTUyIp%22%29%29%3C%2Fscript%3E&category=clearance
-2
-rapid
-Click 5 controls at the same time: the "All" button, the "books" button, the "Go" button, the "apparel" button and the "electronics" button
+"JavaScript Runtime Errors" link
+3
+click
+Click the "JavaScript Runtime Errors" link
 Route
-/products?search=%3Cscript%3Eeval%28atob%28%22YWxlcnQoIlhTUyIp%22%29%29%3C%2Fscript%3E&category=clearance
-Suggested Fix
-See More Suggestions
-
-For this finding
-• Address: GET /api/products
-
-Suggested fix: handle slow, cancelled, and overwhelming requests
-1. Add a request timeout and cancel in-flight calls that are superseded
-2. Add retry with backoff plus a visible error and timeout state for the user
-3. Guard the call site against empty, slow, or cancelled replies, and debounce bursts
-
-Stack Trace
-Click to expand
-Boundary Stress Failure
-Medium
-Verify Fix
-
-CWE
-CWE-400
-Status
-NEEDS VERIFICATION 59%
-Message
-Network request failed: GET /api/products (net::ERR_FAILED) · Injected network fault. The application failed to handle the simulated failure properly.
-Reproduction Playbook
-
-1
-open
-Navigate to /products?search=%3Cscript%3Eeval%28atob%28%22YWxlcnQoIlhTUyIp%22%29%29%3C%2Fscript%3E&category=clearance
-2
-rapid
-Click 5 controls at the same time: the "All" button, the "books" button, the "Go" button, the "apparel" button and the "electronics" button
-Route
-/products?search=%3Cscript%3Eeval%28atob%28%22YWxlcnQoIlhTUyIp%22%29%29%3C%2Fscript%3E&category=clearance
-Suggested Fix
-See More Suggestions
-
-For this finding
-• Address: GET /api/products
-
-Suggested fix: handle slow, cancelled, and overwhelming requests
-1. Add a request timeout and cancel in-flight calls that are superseded
-2. Add retry with backoff plus a visible error and timeout state for the user
-3. Guard the call site against empty, slow, or cancelled replies, and debounce bursts
-
-Stack Trace
-Click to expand
-Runtime Stability Exception
-Medium
-Verify Fix
-
-CWE
-CWE-248
-Status
-CONFIRMED 89%
-Message
-product search failed: Failed to fetch
+/js-runtime-errors
+·
+Section
+"Runtime"
+·
 Element
-All
-Reproduction Playbook
-
-1
-open
-Navigate to /products?search=%3Cscript%3Eeval%28atob%28%22YWxlcnQoIlhTUyIp%22%29%29%3C%2Fscript%3E&category=clearance
-2
+"JavaScript Runtime Errors" link
+4
 rapid
-Click 5 controls at the same time: the "All" button, the "books" button, the "Go" button, the "apparel" button and the "electronics" button
+Click 10 points spread evenly across the visible area of the 1440×900 window
 Route
-/products?search=%3Cscript%3Eeval%28atob%28%22YWxlcnQoIlhTUyIp%22%29%29%3C%2Fscript%3E&category=clearance
-Suggested Fix
-See More Suggestions
-
-An unhandled error stopped the current operation from completing. Reproduce it with the checklist, wrap the failing operation in try/catch, and check its inputs.
-
-Suggested fix:
-1. Reproduce the fault using the replay checklist above
-2. Apply that guard at the failing line
-3. Add a test that confirms it stays stable
-Runtime Stability Exception
-Medium
-Verify Fix
-
-CWE
-CWE-248
-Status
-CONFIRMED 89%
-Message
-product search failed: Failed to fetch
-Reproduction Playbook
-
-1
-open
-Navigate to /products?search=%3Cscript%3Eeval%28atob%28%22YWxlcnQoIlhTUyIp%22%29%29%3C%2Fscript%3E&category=clearance
-2
+/js-runtime-errors
+5
 rapid
-Click 5 controls at the same time: the "All" button, the "books" button, the "Go" button, the "apparel" button and the "electronics" button
+Click 5 controls at the same time: the "SQL Injection" link, the "Main-thread Freeze" link, the "JavaScript Runtime Errors" link, the "Network & Backend Failures" link and the "Infinite Loading / API Hang" link
 Route
-/products?search=%3Cscript%3Eeval%28atob%28%22YWxlcnQoIlhTUyIp%22%29%29%3C%2Fscript%3E&category=clearance
-Suggested Fix
-See More Suggestions
-
-An unhandled error stopped the current operation from completing. Reproduce it with the checklist, wrap the failing operation in try/catch, and check its inputs.
-
-Suggested fix:
-1. Reproduce the fault using the replay checklist above
-2. Apply that guard at the failing line
-3. Add a test that confirms it stays stable
-
-
-
-
-
-
-
-
-
-
-
-************************
-
-
-
-Runtime Stability Exception
-Medium
-×4
-
-CWE
-CWE-248
-Status
-CONFIRMED 89%
-Message
-TypeError: Cannot read properties of null (reading 'name')
-Reproduction Playbook
-
-1
-open
-Navigate to /
-2
-rapid
-Click 5 controls at the same time: the "Add" button, the "Add" button, the "Add" button, the "Sign in" link and the "☕" link
-Route
-/
-Suggested Fix
-
-The code read a field on `null`, usually a missing page element (`querySelector` returned null) or an empty API result. Confirm the lookup found something before using it.
-
-Suggested fix:
-1. Reproduce the fault using the replay checklist above
-2. Apply that guard at the failing line
-3. Add a test that confirms it stays stable
-
-Stack Trace
-Click to expand
-Boundary Stress Failure
-Medium
-
-CWE
-CWE-400
-Status
-NEEDS VERIFICATION 59%
-Message
-Network request failed: GET /api/products (net::ERR_FAILED) · Injected network fault. The application failed to handle the simulated failure properly.
-API Endpoint
-GET /api/products
-Reproduction Playbook
-
-1
-open
-Navigate to /products?search=%3Cscript%3Eeval%28atob%28%22YWxlcnQoIlhTUyIp%22%29%29%3C%2Fscript%3E&category=clearance
-2
-rapid
-Click 5 controls at the same time: the "All" button, the "books" button, the "Go" button, the "apparel" button and the "electronics" button
-Route
-/products?search=%3Cscript%3Eeval%28atob%28%22YWxlcnQoIlhTUyIp%22%29%29%3C%2Fscript%3E&category=clearance
-Suggested Fix
-
-For this finding
-• Address: GET /api/products
-
-Suggested fix: handle slow, cancelled, and overwhelming requests
-1. Add a request timeout and cancel in-flight calls that are superseded
-2. Add retry with backoff plus a visible error and timeout state for the user
-3. Guard the call site against empty, slow, or cancelled replies, and debounce bursts
-
-Stack Trace
-Click to expand
-Runtime Stability Exception
-Medium
-
-CWE
-CWE-248
-Status
-CONFIRMED 89%
-Message
-product search failed: Failed to fetch
-Reproduction Playbook
-
-1
-open
-Navigate to /products?search=%3Cscript%3Eeval%28atob%28%22YWxlcnQoIlhTUyIp%22%29%29%3C%2Fscript%3E&category=clearance
-2
-rapid
-Click 5 controls at the same time: the "All" button, the "books" button, the "Go" button, the "apparel" button and the "electronics" button
-Route
-/products?search=%3Cscript%3Eeval%28atob%28%22YWxlcnQoIlhTUyIp%22%29%29%3C%2Fscript%3E&category=clearance
-Suggested Fix
-
-An unhandled error stopped the current operation from completing. Reproduce it with the checklist, wrap the failing operation in try/catch, and check its inputs.
-
-Suggested fix:
-1. Reproduce the fault using the replay checklist above
-2. Apply that guard at the failing line
-3. Add a test that confirms it stays stable
+/js-runtime-errors

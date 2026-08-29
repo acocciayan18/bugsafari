@@ -40,7 +40,6 @@ export interface FindingView {
   elementLabel?: string;
   // Endpoint the fault fired on when no UI control acted — shown as API Endpoint, never Element.
   endpointLabel?: string;
-  payloadUsed?: string;
   stackTrace?: string;
   resolvedStackTrace?: string;
   /** Narrative reproduction playbook (reproductionPlaybook ≡ reproductionSteps). */
@@ -197,7 +196,6 @@ export function buildFindingSummary(view: FindingView, index: number): string {
     view.message ? `Message: ${view.message}` : '',
     view.elementLabel ? `Element: ${view.elementLabel}` : '',
     !view.elementLabel && view.endpointLabel ? `Endpoint: ${view.endpointLabel}` : '',
-    view.payloadUsed ? `Payload: ${view.payloadUsed}` : '',
     `Detected: ${formatReportDateTime(view.timestamp)}`,
     view.advice ? `\nSuggested Fix:\n${view.advice}` : '',
     repro ? `\nReproduction Steps:\n${repro}` : '',
@@ -293,7 +291,6 @@ export function caughtBugToFindingView(bug: ForensicCaughtBug, occurrences = bug
     selector: culprit.selector,
     elementLabel: culprit.label,
     endpointLabel: resolveEndpointLabel(bug.elementLabel),
-    payloadUsed: bug.payloadUsed,
     stackTrace: bug.stackTrace,
     resolvedStackTrace: bug.resolvedStackTrace,
     reproductionSteps: bug.reproductionSteps ?? [],

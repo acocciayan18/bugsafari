@@ -163,7 +163,6 @@ function toSuggestFixContext(view: FindingView, sessionId?: string): SuggestFixR
     cwe: view.attribution?.cwe,
     elementLabel: view.elementLabel,
     stackTrace: view.resolvedStackTrace ?? view.stackTrace,
-    payloadUsed: view.payloadUsed,
     reproductionSteps: view.reproductionSteps,
     sessionId,
     bugId: view.bugId,
