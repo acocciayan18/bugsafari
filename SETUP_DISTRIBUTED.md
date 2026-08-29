@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "lifecycle-parity-duplicate-findings"
+git commit -m "files ni tibo"
 git push origin HEAD:dev --force
 
 
