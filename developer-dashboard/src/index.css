@@ -99,13 +99,25 @@
   --status-neutral-bg: #f4f4f5;
   --status-neutral-border: #e4e4e7;
 
-  /* Shared auth-screen backdrop — swaps by theme; consumed by AuthShell. */
-  --auth-bg-image: url('/auth-bg-light.png');
+  /* Auth backdrop — exploration-graph field tokens; node dots + one signal-green telemetry bloom. */
+  --auth-node: rgba(24, 24, 27, 0.06);
+  --auth-signal: rgba(62, 207, 126, 0.07);
+  --auth-sweep: rgba(24, 24, 27, 0.035);
+
+  /* Landing backdrop — blueprint grid line + hero spotlight bloom (monochrome, token-driven) */
+  --grid-line: rgba(24, 24, 27, 0.045);
+  --grid-glow: rgba(24, 24, 27, 0.05);
 }
 
 .dark {
-  /* Shared auth-screen backdrop (dark variant). */
-  --auth-bg-image: url('/auth-bg-dark.png');
+  /* Auth backdrop (dark variant) — faint nodes lift off the deep base, green signal glows. */
+  --auth-node: rgba(244, 244, 245, 0.05);
+  --auth-signal: rgba(62, 207, 126, 0.06);
+  --auth-sweep: rgba(244, 244, 245, 0.04);
+
+  /* Landing backdrop (dark variant) — faint light lines lift off the deep base */
+  --grid-line: rgba(244, 244, 245, 0.035);
+  --grid-glow: rgba(244, 244, 245, 0.05);
 
   /* ==========================================
      WATCHTOWER COMPONENT CORE — DARK THEME 
@@ -231,6 +243,100 @@
 
   .animate-fade-in {
     animation: fade-in 0.15s ease-out forwards;
+  }
+
+  /* Landing background: hero spotlight bloom over a blueprint DOM-grid, edge-masked so text stays clean */
+  .landing-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: -10;
+    pointer-events: none;
+    background-image:
+      radial-gradient(120% 80% at 50% -10%, var(--grid-glow), transparent 60%),
+      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+    background-size: 100% 100%, 64px 64px, 64px 64px;
+    -webkit-mask-image: radial-gradient(125% 90% at 50% 0%, #000 45%, transparent 88%);
+    mask-image: radial-gradient(125% 90% at 50% 0%, #000 45%, transparent 88%);
+  }
+
+  /* Denser fill on phones is wasted and costs fill-rate; loosen the grid, drop the bloom */
+  @media (max-width: 640px) {
+    .landing-backdrop {
+      background-image:
+        linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+      background-size: 40px 40px, 40px 40px;
+    }
+  }
+
+  /* Auth background: an exploration-graph field — node dot-grid over a fine blueprint grid, a drifting
+     signal-green telemetry bloom, and one slow scan-sweep (the engine walking the DOM). Edge-masked and
+     low-opacity so the form stays fully readable; fully token-driven so it inverts cleanly light/dark. */
+  .auth-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: -10;
+    pointer-events: none;
+    overflow: hidden;
+    background-color: var(--surface-app);
+    background-image:
+      radial-gradient(115% 78% at 50% -12%, var(--grid-glow), transparent 60%),
+      radial-gradient(var(--auth-node) 1.1px, transparent 1.6px),
+      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+    background-size: 100% 100%, 32px 32px, 32px 32px, 32px 32px;
+    -webkit-mask-image: radial-gradient(130% 100% at 50% 0%, #000 55%, transparent 92%);
+    mask-image: radial-gradient(130% 100% at 50% 0%, #000 55%, transparent 92%);
+  }
+
+  /* Signal bloom — the single accent: two green telemetry glows drifting behind the card */
+  .auth-backdrop::before {
+    content: "";
+    position: absolute;
+    inset: -25%;
+    background:
+      radial-gradient(38% 38% at 26% 30%, var(--auth-signal), transparent 70%),
+      radial-gradient(34% 34% at 76% 70%, var(--auth-signal), transparent 70%);
+    animation: auth-drift 26s ease-in-out infinite alternate;
+  }
+
+  /* Scan sweep — signature: a slow diagonal light band traversing the field */
+  .auth-backdrop::after {
+    content: "";
+    position: absolute;
+    top: -50%;
+    left: -70%;
+    width: 55%;
+    height: 200%;
+    background: linear-gradient(90deg, transparent, var(--auth-sweep), transparent);
+    transform: rotate(12deg);
+    animation: auth-sweep 9s linear infinite;
+  }
+
+  @keyframes auth-drift {
+    from { transform: translate3d(-2%, -1%, 0) scale(1); }
+    to   { transform: translate3d(2%, 2%, 0) scale(1.07); }
+  }
+
+  @keyframes auth-sweep {
+    0%   { transform: translateX(0) rotate(12deg); opacity: 0; }
+    12%  { opacity: 1; }
+    88%  { opacity: 1; }
+    100% { transform: translateX(360%) rotate(12deg); opacity: 0; }
+  }
+
+  /* Phones: loosen the grid, drop the sweep to save fill-rate */
+  @media (max-width: 640px) {
+    .auth-backdrop {
+      background-size: 100% 100%, 26px 26px, 26px 26px, 26px 26px;
+    }
+    .auth-backdrop::after { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .auth-backdrop::before { animation: none; }
+    .auth-backdrop::after { display: none; }
   }
 
   /* Overlay fade — opacity only, so a scale never unblurs the backdrop edges */

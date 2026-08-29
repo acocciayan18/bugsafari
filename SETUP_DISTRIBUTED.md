@@ -194,9 +194,9 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "BugSafari reproduction step audit"
-git checkout -b 8-29-Ayan-4
-git push --set-upstream origin 8-29-Ayan-4
+git commit -m "updated auth and landing page design"
+git checkout -b 8-29-Ayan-5
+git push --set-upstream origin 8-29-Ayan-5
 
 
 
