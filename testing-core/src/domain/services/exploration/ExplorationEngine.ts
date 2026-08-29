@@ -28,6 +28,7 @@ import {
   resetNoSqlInjectionFinder,
 } from '../../../bugs/finders/index.js';
 import { setChaosManagerAccessor as setFuzzGuardAccessor } from '../../../bugs/finders/fuzzGuard.js';
+import { setFuzzRunSeed, resetFuzzRunSeed } from '../../scenarios/fuzzing/runFuzzSeed.js';
 import { BoundingBoxHighlighter } from '../../../infrastructure/playwright/BoundingBoxHighlighter.js';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
@@ -995,6 +996,9 @@ export class ExplorationEngine {
     ActiveScenarioTracker.reset();
     this.clusterRegistry.reset();
     this.escalationTracker.resetAll();
+    // Per-run fuzz salt (XOR of the start-time's low/high 32 bits): rotates payload
+    // picks across runs/retests while a single run stays deterministic and replayable.
+    setFuzzRunSeed(((this.runtimeMetrics.startTime & 0xffffffff) ^ Math.floor(this.runtimeMetrics.startTime / 0x100000000)) >>> 0);
     this.routeExhaustion.reset();
     this.edgeRepeat.reset();
     this.formFuzz.reset();
@@ -1716,6 +1720,7 @@ export class ExplorationEngine {
       this.findingsDirty = this.findingsDirty || this.confirmedBugsMemory.length > 0;
       await this.flushFindingCheckpoint();
       await this.completeSession(runResult);
+      resetFuzzRunSeed(); // clear run salt so a reused engine instance can't leak it
       this.sessionId = null;
       this.activePage = null;
       this.activeGateway = null;

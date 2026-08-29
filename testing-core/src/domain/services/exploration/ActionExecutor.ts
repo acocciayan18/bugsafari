@@ -6,6 +6,7 @@ import type { StorageTamperFinding } from '../../scenarios/storageTamper.js';
 import { stripConstraintsSilently } from '../../scenarios/formBypasser.js';
 import { classifyInputElement, benignValueFor } from '../../scenarios/fuzzing/elementClassifier.js';
 import { synthesizeEscalatedPayload, deriveFuzzSeed } from '../../scenarios/fuzzing/payloadEscalator.js';
+import { saltFieldSeed } from '../../scenarios/fuzzing/runFuzzSeed.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
 import {
@@ -864,7 +865,7 @@ export class ActionExecutor {
     const synth = synthesizeEscalatedPayload(
       category,
       level,
-      deriveFuzzSeed(target.selector, category),
+      saltFieldSeed(deriveFuzzSeed(target.selector, category)),
       cursor,
       'field',
     );
@@ -1299,7 +1300,7 @@ export class ActionExecutor {
       const payload = synthesizeEscalatedPayload(
         siblingCategory,
         siblingLevel,
-        deriveFuzzSeed(selector, siblingCategory),
+        saltFieldSeed(deriveFuzzSeed(selector, siblingCategory)),
       ).value;
       await this.injectPayload(page, selector, payload);
     }
@@ -1339,7 +1340,7 @@ export class ActionExecutor {
     // at whatever escalation level this field is currently at.
     const category = classifyInputElement(target);
     const level = this.deps.escalationTracker.getLevel(selector, category);
-    const payload = synthesizeEscalatedPayload(category, level, deriveFuzzSeed(selector, category)).value;
+    const payload = synthesizeEscalatedPayload(category, level, saltFieldSeed(deriveFuzzSeed(selector, category))).value;
 
     try {
       await this.injectPayload(page, selector, payload);

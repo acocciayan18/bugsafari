@@ -59,4 +59,23 @@ check('advancing the cursor sweeps to a different chaos token', () => {
   assert.notEqual(a.value, b.value, 'cursor+1 must change the payload');
 });
 
+check('cursor sweep covers many distinct base vectors (pool is utilized)', () => {
+  const seed = seedFor('DATABASE_AUTH');
+  const seen = new Set<string>();
+  for (let cursor = 0; cursor < 40; cursor++) {
+    seen.add(synthesizeEscalatedPayload('DATABASE_AUTH', 0, seed, cursor).value);
+  }
+  assert.ok(seen.size >= 20, `expected >=20 distinct SQL/NoSQL vectors, got ${seen.size}`);
+});
+
+check('salting the seed varies the vector across runs (run-to-run diversity)', () => {
+  const base = deriveFuzzSeed('#login', 'DATABASE_AUTH');
+  const values = new Set<string>();
+  for (let i = 0; i < 8; i++) {
+    const salted = (base ^ (i * 0x9e3779b1)) >>> 0;
+    values.add(synthesizeEscalatedPayload('DATABASE_AUTH', 0, salted, 0).value);
+  }
+  assert.ok(values.size >= 2, `expected varied vectors across salts, got ${values.size}`);
+});
+
 console.log(`\npayloadEscalator: ${passed} checks passed.`);

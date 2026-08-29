@@ -15,6 +15,7 @@ import {
   deriveFuzzSeed,
   MAX_ESCALATION_LEVEL,
 } from './payloadEscalator.js';
+import { saltFieldSeed } from './runFuzzSeed.js';
 import { captureFuzzStep } from '../../../infrastructure/monitoring/fuzzForensics.js';
 import { DomHasher } from '../../../ml/domHasher.js';
 
@@ -93,7 +94,8 @@ export async function fuzzTextInput(
   // Fold the caller's seed into the stable per-field seed so distinct call
   // sites/steps get distinct-but-replayable payloads.
   const fieldSeed = (deriveFuzzSeed(element.selector ?? '', category) ^ (seed >>> 0)) >>> 0;
-  return synthesizeEscalatedPayload(category, 0, fieldSeed, cursor).value;
+  // Fold the run salt so retests sweep different vectors; the returned literal is recorded.
+  return synthesizeEscalatedPayload(category, 0, saltFieldSeed(fieldSeed), cursor).value;
 }
 
 /**

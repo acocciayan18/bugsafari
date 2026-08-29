@@ -85,4 +85,15 @@ check('every real finder shape survives the gate (no legit finding is dropped)',
   assert.equal(isReportableSecurityFinding(f('FUZZ_VULNERABILITY_LEAK', { signals: ['INFO_LEAK'] })), true);
 });
 
+check('pure chaos/edge input (emoji/zalgo/unicode) alone never makes a vuln finding', () => {
+  const chaos = "🙈👩‍👩‍👧‍👦​ź́a﻿" + "A".repeat(9000);
+  for (const c of ['FUZZ_VULNERABILITY_LEAK', 'NOSQL_INJECTION', 'SQL_INJECTION'] as BugClass[]) {
+    assert.equal(
+      isReportableSecurityFinding(f(c, { payload: chaos, selector: '#q', message: 'field accepted the value' })),
+      false,
+      `${c} must not report on chaos input without a behavioral marker`,
+    );
+  }
+});
+
 console.log(`\nAll ${passed} assertions passed.`);

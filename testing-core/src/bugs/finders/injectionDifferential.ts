@@ -3,6 +3,8 @@ import type { BugClass, BugFinder, BugContext, BugFinding } from '../types.js';
 import { triggerFormSubmission } from '../../domain/services/exploration/formSubmitter.js';
 import { setFieldValue } from '../../domain/services/exploration/frameworkInput.js';
 import { isInjectableTarget } from './injectionSuitability.js';
+import { deriveFuzzSeed } from '../../domain/scenarios/fuzzing/payloadEscalator.js';
+import { currentFuzzRunSeed } from '../../domain/scenarios/fuzzing/runFuzzSeed.js';
 import { describeTarget } from '../../../../shared/reproduction.js';
 import {
   buildInjectionEvidence,
@@ -41,10 +43,28 @@ const BENIGN_VALUE = 'bugsafari';
 // coercion, or string-concatenated SQL) reacts. The SQL operator routes to SQL_INJECTION
 // (CWE-89), the Mongo operator to NOSQL_INJECTION (CWE-943), so the finding is labelled for
 // the backend it actually hit.
-const OPERATOR_PAYLOADS: ReadonlyArray<{ value: string; bugClass: Extract<BugClass, 'SQL_INJECTION' | 'NOSQL_INJECTION'> }> = [
-  { value: "' OR '1'='1", bugClass: 'SQL_INJECTION' },
-  { value: '{"$ne":null}', bugClass: 'NOSQL_INJECTION' },
-];
+type OperatorClass = Extract<BugClass, 'SQL_INJECTION' | 'NOSQL_INJECTION'>;
+
+// Rotation pools — one SQL + one NoSQL operator picked per field per run so different
+// runs/retests exercise different operators instead of re-firing one constant. Every entry
+// carries attack surface and stays inert-as-text on a safe backend.
+const SQL_OPERATORS: readonly string[] = ["' OR '1'='1", "' OR '1'='1' --", "admin'--", "' OR 1=1--"];
+const NOSQL_OPERATORS: readonly string[] = ['{"$ne":null}', '{"$gt":""}', '{"$ne":""}', '{"$regex":".*"}'];
+
+// Deterministic per-(selector, run) pick: stable within a run (replayable), varied across
+// runs via the run salt. The chosen literal is recorded on the finding for reproducibility.
+function pickOperator(pool: readonly string[], selector: string): string {
+  const idx = (deriveFuzzSeed(selector, 'DATABASE_AUTH') ^ currentFuzzRunSeed()) >>> 0;
+  return pool[idx % pool.length];
+}
+
+// Build this field's two differential attempts (one per datastore class) for the current run.
+export function selectOperatorPayloads(selector: string): ReadonlyArray<{ value: string; bugClass: OperatorClass }> {
+  return [
+    { value: pickOperator(SQL_OPERATORS, selector), bugClass: 'SQL_INJECTION' },
+    { value: pickOperator(NOSQL_OPERATORS, selector), bugClass: 'NOSQL_INJECTION' },
+  ];
+}
 // Data-amplification thresholds: the operator body must be BOTH >3× and >512 bytes
 // larger than the baseline before a same-status differential counts as broadened data.
 const AMPLIFY_RATIO = 3;
@@ -168,7 +188,7 @@ export const injectionDifferentialFinder: BugFinder = {
       return []; // nothing correlated → cannot judge a differential
     }
 
-    for (const { value: payload, bugClass } of OPERATOR_PAYLOADS) {
+    for (const { value: payload, bugClass } of selectOperatorPayloads(element.selector)) {
       await restore();
       // The field must still exist on the restored view to submit the operator.
       const present = await ctx.page.$(element.selector).then((el) => el !== null).catch(() => false);

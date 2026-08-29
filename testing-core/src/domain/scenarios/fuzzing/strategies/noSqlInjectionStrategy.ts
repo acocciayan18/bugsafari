@@ -29,7 +29,6 @@ const SQL_CLASSIC_VECTORS = [
   "1' OR '1'='1",
   "' OR ''='",
   "' OR 'a'='a",
-  "' OR 1=1--",
 ];
 
 /**
