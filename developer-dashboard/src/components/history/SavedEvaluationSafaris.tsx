@@ -57,12 +57,12 @@ const SEVERITY_TABS: { value: SeverityFilter; label: string }[] = [
 // share the critical accent, MEDIUM/LOW the amber warning, INFO the neutral, CLEAR the
 // stable green. Keeps the badge truthful about the worst finding present.
 const SEVERITY_BADGE_CLASS: Record<string, string> = {
-  CRITICAL: 'border-[var(--status-critical-border)] text-[var(--status-critical-fg)]',
-  HIGH: 'border-[var(--status-critical-border)] text-[var(--status-critical-fg)]',
-  MEDIUM: 'border-[var(--status-warning-border)] text-[var(--status-warning-fg)]',
-  LOW: 'border-[var(--status-warning-border)] text-[var(--status-warning-fg)]',
-  INFO: 'border-[var(--status-neutral-border)] text-[var(--status-neutral-fg)]',
-  CLEAR: 'border-[var(--status-stable-border)] text-[var(--status-stable-fg)]',
+  CRITICAL: 'border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] text-[var(--status-critical-fg)]',
+  HIGH: 'border-[var(--status-critical-border)] bg-[var(--status-critical-bg)] text-[var(--status-critical-fg)]',
+  MEDIUM: 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]',
+  LOW: 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] text-[var(--status-warning-fg)]',
+  INFO: 'border-[var(--status-neutral-border)] bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
+  CLEAR: 'border-[var(--status-stable-border)] bg-[var(--status-stable-bg)] text-[var(--status-stable-fg)]',
 };
 
 // Accent dot per severity tier — mirrors the badge palette so the menu reads at a glance.

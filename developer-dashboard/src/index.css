@@ -84,16 +84,16 @@
   /* Bounded Low-Strain System Alert Markers (Strict Single Accent Distribution) */
   --status-warning-fg: #9a3412;     /* Warm rust amber text (uncluttered contrast) */
   --status-warning-bg: #fff7ed;     /* Extremely soft warning amber backdrop hint */
-  --status-warning-border: #ffedd5; /* Muted amber divider */
-  
+  --status-warning-border: #fdba74; /* Visible amber divider on white */
+
   --status-critical-fg: #991b1b;    /* Single solid deep crimson error token */
   --status-critical-bg: #fef2f2;    /* Soft neutral error backdrop hint */
-  --status-critical-border: #fee2e2;/* Muted crimson divider */
-  
+  --status-critical-border: #fca5a5;/* Visible crimson divider on white */
+
   /* Stable/Neutral parameters match clean gray rule guidelines */
   --status-stable-fg: #166534;
   --status-stable-bg: #f0fdf4;
-  --status-stable-border: #dcfce7;
+  --status-stable-border: #86efac;
   
   --status-neutral-fg: #52525b;
   --status-neutral-bg: #f4f4f5;
