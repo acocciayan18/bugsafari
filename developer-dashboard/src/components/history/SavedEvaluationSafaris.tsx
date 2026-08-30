@@ -520,7 +520,7 @@ export default function SavedEvaluationSafaris() {
                 >
                   {/* Metadata wraps instead of overflowing; separators are drawn by the
                       wrapper so a wrapped line never starts with a stray bullet. */}
-                  <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
+                  <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-base font-medium text-[var(--text-primary)]">
                         {evalItem.targetUrl}
