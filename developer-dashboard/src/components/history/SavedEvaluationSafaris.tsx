@@ -527,11 +527,11 @@ export default function SavedEvaluationSafaris() {
                       </div>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[13px] text-[var(--text-secondary)]">
                         {/* Session ID, Date, and Status each sit in a subtle neutral badge so they read as distinct chips, not a run-on line. */}
-                        <span className="inline-flex min-h-6 items-center truncate rounded border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-2 py-0.5 font-mono text-[var(--text-secondary)]">
+                        <span className="inline-flex min-h-6 items-center truncate rounded border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-2 py-0.5 font-mono font-normal text-[var(--text-secondary)]">
                           <Hash className="mr-1 h-3 w-3 shrink-0 text-[var(--text-tertiary)]" aria-hidden="true" />
                           <span className="truncate">{evalItem.runId ?? evalItem.id}</span>
                         </span>
-                        <span className="inline-flex min-h-6 items-center truncate rounded border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-2 py-0.5 font-mono text-[var(--text-secondary)]">
+                        <span className="inline-flex min-h-6 items-center truncate rounded border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-2 py-0.5 font-mono font-normal text-[var(--text-secondary)]">
                           <Calendar className="mr-1 h-3 w-3 shrink-0 text-[var(--text-tertiary)]" aria-hidden="true" />
                           <span className="truncate">{evalItem.date}</span>
                         </span>

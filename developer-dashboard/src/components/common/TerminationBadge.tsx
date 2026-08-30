@@ -49,7 +49,7 @@ export function TerminationBadge({ outcome, status, reason, variant = 'default',
 
   return (
     <span
-      className={`inline-flex min-h-6 items-center gap-1 truncate rounded border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-2 py-0.5 font-mono text-xs font-medium text-[var(--text-secondary)] sm:text-[13px] ${tone} ${className}`}
+      className={`inline-flex min-h-6 items-center gap-1 truncate rounded border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-2 py-0.5 font-mono text-xs font-normal text-[var(--text-secondary)] sm:text-[13px] ${tone} ${className}`}
       title={reason || copy.detail}
     >
       <span className="shrink-0" aria-hidden="true">{copy.icon}</span>
