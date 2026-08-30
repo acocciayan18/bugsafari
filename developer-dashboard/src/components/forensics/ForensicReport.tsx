@@ -46,7 +46,6 @@ import FindingCard, { BASE_FINDING_THEME } from '../common/FindingCard';
 import FindingsPanel, { type FindingEntry } from '../common/FindingsPanel';
 import NetworkFailureList, { type NetworkFailureRow } from '../common/NetworkFailureCard';
 import ConsoleMessageList from '../common/ConsoleMessageCard';
-import { ConsoleFilterBar, type ConsoleFilter } from '../telemetry';
 import { caughtBugToFindingView, humanizeFindingTitle } from '../../utils/findingView';
 import { requestAiInsights, fetchPublicForensicReport } from '../../services/historyService';
 import { Modal } from '../ui/Modal';
@@ -137,33 +136,25 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
     {report.url || 'N/A'}
   </div>
 </div>
-<div className="flex flex-wrap items-center mt-1 gap-2 text-xs text-(--text-secondary)">
-          {/* Run Session Badge — public RUN- code, falls back to the record id on legacy reports */}
-          <span className="inline-flex items-center gap-1.5 py-0.5 rounded text-(--text-secondary) font-mono font-medium ">
+<div className="flex flex-wrap items-center mt-1.5 gap-1.5 text-xs text-(--text-secondary)">
+          {/* ID / Date / Status share one neutral badge shape with the History cards. */}
+          <span className="inline-flex min-h-6 items-center gap-1 truncate rounded border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 font-mono font-medium text-(--text-secondary)">
             <Hash className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" aria-hidden="true" />
-            <span>{runCode}</span>
+            <span className="truncate">{runCode}</span>
           </span>
 
-    {/* Vertical Hairline Divider */}
-    <span className="h-3.5 w-px bg-(--border-hairline)" aria-hidden="true" />
-
-    {/* Date Timestamp */}
-    <span className="inline-flex items-center gap-1.5 text-(--text-secondary)">
+    <span className="inline-flex min-h-6 items-center gap-1 truncate rounded border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 font-mono text-(--text-secondary)">
       <Calendar className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" aria-hidden="true" />
-      <span>{formatReportDateTime(report.date)}</span>
+      <span className="truncate">{formatReportDateTime(report.date)}</span>
     </span>
-
-    
-    
   </div>
         </div>
         <div className="shrink-0">
           {report.outcome || outcomeFromStatus(report.status) ? (
-            <TerminationBadge outcome={report.outcome} status={report.status} reason={report.endedReason} />
+            <TerminationBadge variant="mono" outcome={report.outcome} status={report.status} reason={report.endedReason} />
           ) : (
-            <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 ${theme.bg}`}>
-              <span className={`h-2.5 w-2.5 rounded-full ${theme.dot}`} />
-              <span className={`text-[13px] font-bold uppercase ${theme.text}`}>{report.status || 'UNKNOWN'}</span>
+            <span className="inline-flex min-h-6 items-center gap-1.5 rounded border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 text-xs font-medium text-(--text-secondary)">
+              {report.status || 'UNKNOWN'}
             </span>
           )}
         </div>
@@ -1177,11 +1168,6 @@ export default function ForensicReport({ shared = false }: { shared?: boolean } 
       .map((e) => ({ timestamp: e.createdAt ?? '', level: 'error' as const, type: e.type ?? 'CONSOLE', message: e.message ?? '', stackTrace: e.stackTrace }));
   }, [report, reportErrors]);
   const [activeTab, setActiveTab] = useState<'findings' | 'network' | 'console'>('findings');
-  const [consoleFilter, setConsoleFilter] = useState<ConsoleFilter>('all');
-  const visibleConsole = useMemo(
-    () => (consoleFilter === 'all' ? consoleRows : consoleRows.filter((r) => r.level === consoleFilter)),
-    [consoleRows, consoleFilter],
-  );
   const { statuses, verify } = useRegressionVerifier();
 
   // The verification result modal is a SINGLE page-level surface shared by every
@@ -1344,18 +1330,9 @@ export default function ForensicReport({ shared = false }: { shared?: boolean } 
               />
             )}
             {activeTab === 'console' && (
-              consoleRows.length > 0 ? (
-                <div className="flex flex-col gap-3">
-                  <div className="overflow-hidden rounded-lg border border-(--border-hairline)">
-                    <ConsoleFilterBar browserConsole={consoleRows} filter={consoleFilter} onFilterChange={setConsoleFilter} />
-                  </div>
-                  {visibleConsole.length > 0
-                    ? <ConsoleMessageList logs={visibleConsole} />
-                    : <EmptyTab message={`No ${consoleFilter} logs were recorded for this session.`} />}
-                </div>
-              ) : (
-                <EmptyTab message="No console output was recorded for this session." />
-              )
+              consoleRows.length > 0
+                ? <ConsoleMessageList logs={consoleRows} />
+                : <EmptyTab message="No console output was recorded for this session." />
             )}
           </section>
 

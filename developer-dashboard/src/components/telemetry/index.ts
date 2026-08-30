@@ -4,6 +4,6 @@
 export { default as ErrorTabPanel } from './ErrorTabPanel';
 export { default as AccessibilityWarningBanner } from './AccessibilityWarningBanner';
 export { default as NetworkTabPanel } from './NetworkTabPanel';
-export { default as ConsoleTabPanel, ConsoleFilterBar, type ConsoleFilter } from './ConsoleTabPanel';
+export { default as ConsoleTabPanel, type ConsoleFilter } from './ConsoleTabPanel';
 export { default as AiDiagnosticCard } from './AiDiagnosticCard';
 export { default as TelemetryHelpModal } from './TelemetryHelpModal';

@@ -40,7 +40,7 @@ export function TerminationBadge({ outcome, status, reason, variant = 'default',
 
   const copy = TERMINATION_COPY[resolved];
   const tone = variant === 'mono'
-    ? 'border-[var(--border-hairline)] bg-[var(--surface-inset)] text-[var(--text-primary)]'
+    ? 'border-[var(--border-hairline)] bg-[var(--surface-inset)] text-[var(--text-secondary)]'
     : isCleanTermination(resolved)
       ? 'border-[var(--status-stable-border)] text-[var(--status-stable-fg)]'
       : resolved === 'graceful-shutdown' || resolved === 'abandoned' || resolved === 'engine-error'
