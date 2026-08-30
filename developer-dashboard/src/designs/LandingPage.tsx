@@ -29,7 +29,7 @@ const featureCards = [
         icon: ClipboardCheck,
         title: 'Shows What Broke',
         description:
-            'Every confirmed bug comes with a reproduction playbook and a plain-language suggested fix, so you know exactly what to change.',
+            'Every confirmed bug comes with a reproduction guide and a plain-language suggested fix, so you know exactly what to change.',
     },
 ];
 
@@ -192,12 +192,12 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
             <section className="py-16 lg:py-20 px-6 bg-[var(--surface-inset)] border-y border-[var(--border-hairline)]">
                 <div className="max-w-[1280px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
                     <div className="order-2 lg:order-1">
-                        <BrowserFrame base="product-findings" alt="A confirmed BugSafari finding with reproduction playbook and suggested fix" label="BugSafari: Finding Detail" />
+                        <BrowserFrame base="product-findings" alt="A confirmed BugSafari finding with reproduction guide and suggested fix" label="BugSafari: Finding Detail" />
                     </div>
                     <div className="order-1 lg:order-2 space-y-5">
                         <span className="font-mono text-sm font-bold uppercase tracking-wide text-[var(--text-tertiary)]">Proof, Not Guesses</span>
-                        <h2 className="text-2xl lg:text-3xl font-extrabold uppercase tracking-tight text-[var(--text-primary)]">Every Bug Comes With A Playbook</h2>
-                        <p className="text-base leading-relaxed text-[var(--text-secondary)]">Each confirmed finding carries a severity, the element and message involved, a step-by-step reproduction playbook, and a plain suggested fix, so you can see the problem yourself and confirm it's gone after you patch it.</p>
+                        <h2 className="text-2xl lg:text-3xl font-extrabold uppercase tracking-tight text-[var(--text-primary)]">Every Bug Comes With A Guide</h2>
+                        <p className="text-base leading-relaxed text-[var(--text-secondary)]">Each confirmed finding carries a severity, the element and message involved, a step-by-step reproduction guide, and a plain suggested fix, so you can see the problem yourself and confirm it's gone after you patch it.</p>
                     </div>
                 </div>
             </section>

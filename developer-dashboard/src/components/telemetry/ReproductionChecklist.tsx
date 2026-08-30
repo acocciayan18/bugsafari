@@ -21,7 +21,7 @@ export default function ReproductionChecklist({ steps }: { steps: string[] }) {
   return (
     <div className="mt-3 rounded-lg border border-(--border-hairline) bg-(--surface-inset) p-3">
       <div className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase text-(--text-secondary)">
-        Reproduction Playbook
+        Reproduction Guide
         <ReproNotice />
       </div>
       {actions.length > 0 ? (
