@@ -143,7 +143,7 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
             <span className="truncate">{runCode}</span>
           </span>
 
-    <span className="inline-flex min-h-6 items-center gap-1 truncate rounded border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 font-mono text-(--text-secondary)">
+    <span className="inline-flex min-h-6 items-center gap-1 upperacase truncate rounded border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 font-mono font-medium text-(--text-secondary)">
       <Calendar className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" aria-hidden="true" />
       <span className="truncate">{formatReportDateTime(report.date)}</span>
     </span>
