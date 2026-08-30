@@ -48,6 +48,7 @@ export type TargetAuthFailureCategory =
   | 'captcha'                   // a CAPTCHA challenge blocks the form
   | 'account-locked'            // lockout / too-many-attempts / suspended
   | 'form-not-found'            // no login form discoverable on the target
+  | 'unsupported-auth-method'   // only OAuth/SSO/social sign-in offered — a form fill cannot complete it
   | 'success-indicator-missing' // the configured success selector never appeared
   | 'page-load-error'           // the page/entry URL could not be loaded (retryable)
   | 'transient'                 // no decisive signal yet — likely slow/loading (retryable)

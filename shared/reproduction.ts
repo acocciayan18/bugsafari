@@ -953,7 +953,8 @@ export function actionRecordsToSteps(records: readonly ActionRecord[]): Reproduc
     selector:           record.selector && record.selector.trim() ? record.selector : 'N/A',
     label:              record.elementLabel || record.fallbackLabel,
     elementKind:        record.elementKind,
-    payloadText:        record.payload,
+    // redactValue withholds the value at persist, not just at render — a real credential never reaches storage.
+    payloadText:        record.redactValue ? undefined : record.payload,
     resultingStateHash: '',
     durationMs:         record.durationMs,
     repeatCount:        record.repeatCount,

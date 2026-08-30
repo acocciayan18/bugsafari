@@ -39,6 +39,13 @@ const CAPTCHA_SELECTORS = ['iframe[src*="recaptcha" i]', 'iframe[src*="hcaptcha"
 const LOCKOUT_TEXT_SELECTORS = [...ERROR_AFFORDANCE_SELECTORS, 'h1', 'h2', 'h3', 'p'];
 const LOCKOUT_TEXT_RE = /\b(locked|too many (attempts|tries|sign[-\s]?ins?)|temporarily (disabled|blocked|locked)|account (disabled|suspended|locked)|try again later)\b/i;
 
+// A login that offers only OAuth/social/SSO — no fillable username+password form —
+// cannot be completed by a form fill. Detected so it reports as an unsupported method
+// (clear, terminal) instead of a generic "no form found".
+const SSO_ELEMENT_SELECTORS = ['[class*="oauth" i]', '[class*="sso" i]', '[data-provider]', 'a[href*="/oauth" i]', 'a[href*="/saml" i]', 'a[href*="accounts.google." i]', 'a[href*="github.com/login/oauth" i]', 'a[href*="login.microsoftonline." i]'];
+const SSO_TEXT_SELECTORS = ['button', 'a', '[role="button"]'];
+const SSO_TEXT_RE = /\b((sign[-\s]?in|log[-\s]?in|continue|register|sign[-\s]?up) with (google|github|apple|facebook|microsoft|twitter|x|linkedin|gitlab|okta|slack|discord|sso|single sign)|use single sign[-\s]?on|continue with sso)\b/i;
+
 /**
  * Logs the engine into the application under test so exploration can reach
  * authenticated surface.
@@ -96,6 +103,15 @@ export class TargetAuthenticator {
     // Fresh per login: the locator accumulates visited origins/tried controls.
     const location = await new LoginFormLocator().locate(page, config, targetUrl, narrator);
     if (!location) {
+      // No fillable form, but only OAuth/SSO offered ⇒ report the accurate, terminal
+      // cause rather than a generic "no form found" the operator can't act on.
+      if (await this.hasSsoAffordance(page)) {
+        return {
+          status: 'failed',
+          category: 'unsupported-auth-method',
+          reason: 'the target offers only OAuth/SSO sign-in, which a username/password form fill cannot complete',
+        };
+      }
       return {
         status: 'failed',
         category: 'form-not-found',
@@ -244,11 +260,12 @@ export class TargetAuthenticator {
       .then(() => true)
       .catch(() => false);
 
-    const [hasCaptcha, hasMfa, hasLockout, hasAuthError] = await Promise.all([
+    const [hasCaptcha, hasMfa, hasLockout, hasAuthError, pageStillSettling] = await Promise.all([
       this.hasCaptcha(page),
       this.hasMfaPrompt(page),
       this.hasLockout(page),
       this.hasAuthError(page),
+      this.isStillSettling(page),
     ]);
 
     const signals: CredentialVerifySignals = {
@@ -258,6 +275,7 @@ export class TargetAuthenticator {
       hasAuthError,
       passwordGone,
       urlMoved: normalizeUrl(page.url()) !== normalizeUrl(formUrl),
+      pageStillSettling,
     };
 
     const verdict = classifyCredentialVerdict(signals, isFinalAttempt);
@@ -282,6 +300,17 @@ export class TargetAuthenticator {
   /** Lockout / too-many-attempts / suspended-account language in a prompt. */
   private hasLockout(page: Page): Promise<boolean> {
     return this.matchesVisibleText(page, [...LOCKOUT_TEXT_SELECTORS], LOCKOUT_TEXT_RE);
+  }
+
+  /** An OAuth/SSO/social sign-in affordance the form-fill path cannot complete. */
+  private async hasSsoAffordance(page: Page): Promise<boolean> {
+    if (await this.hasVisibleElement(page, [...SSO_ELEMENT_SELECTORS])) return true;
+    return this.matchesVisibleText(page, [...SSO_TEXT_SELECTORS], SSO_TEXT_RE);
+  }
+
+  /** The document is still loading — a slow login in flight, not a settled rejection. */
+  private isStillSettling(page: Page): Promise<boolean> {
+    return page.evaluate(() => document.readyState !== 'complete').catch(() => false);
   }
 
   /** True if any of the selectors resolves to a laid-out (visible) element. */

@@ -11,7 +11,23 @@ import type { Page } from 'playwright';
 export const MASK_ATTRIBUTE = 'data-bugsafari-mask';
 const STYLE_ID = 'bugsafari-credential-mask';
 
-const MASK_CSS = `input[type="password"],[${MASK_ATTRIBUTE}]{-webkit-text-security:disc !important;}`;
+// Value tokens whose field must render as bullets in captured frames even when it is
+// not a password input — financial + government identifiers the engine may type into
+// during exploration/fuzzing. Mirrors SENSITIVE_VALUE_TOKENS in elementClassifier.ts.
+const SENSITIVE_TOKENS = [
+  'password', 'passwd', 'pwd', 'secret', 'otp', 'cvv', 'cvc', 'card', 'cardnumber',
+  'creditcard', 'ccnumber', 'iban', 'routing', 'accountnumber', 'ssn', 'social',
+  'passport', 'taxid', 'securitycode', 'apikey', 'privatekey', 'pin',
+] as const;
+
+// Case-insensitive attribute-substring selectors over the identifiers a field
+// carries (name/id/autocomplete). A pure-CSS net needs no runtime tagging and
+// survives every redirect the login flow makes.
+const SENSITIVE_SELECTORS = SENSITIVE_TOKENS.flatMap((t) => [
+  `input[name*="${t}" i]`, `input[id*="${t}" i]`, `input[autocomplete*="${t}" i]`,
+]).join(',');
+
+export const MASK_CSS = `input[type="password"],[${MASK_ATTRIBUTE}],${SENSITIVE_SELECTORS}{-webkit-text-security:disc !important;}`;
 
 /**
  * Install the mask for every document this page loads. Must be called before the

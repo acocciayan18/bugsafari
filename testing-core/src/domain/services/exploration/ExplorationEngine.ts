@@ -1245,28 +1245,11 @@ export class ExplorationEngine {
         verificationStatus: 'NEEDS_VERIFICATION',
       };
       emitter.emitMilestone(` Session synchronization fault — ${descriptor.reason}`);
-      emitter.gateway.emitIncidentReport({
-        bugId,
-        timestamp,
-        reason: descriptor.reason,
-        url: to,
-        steps: this.breadcrumbsToActionRecords(this.actions.snapshot()),
-        advice: definition.remediation,
-        attribution,
-        severity: definition.defaultSeverity,
-      });
-      this.registerConfirmedBug({
-        bugId,
-        type: 'SESSION_SYNC_FAULT',
-        message: descriptor.reason,
-        selector: '',
-        payloadUsed: '',
-        advice: definition.remediation,
-        attribution,
-        severity: definition.defaultSeverity,
-        timestamp: new Date(),
-      });
 
+      // Attempt re-auth BEFORE finalizing the finding so its record carries the
+      // recovery outcome: a failed/unavailable restore means the authenticated
+      // surface was left, which the operator must see — not just a status line.
+      let recovery: string;
       if (restoreCoordinator.canRestore() && this.activePage) {
         const ok = await restoreCoordinator.restore(this.activePage);
         emitter.emitSystemStatus(
@@ -1281,9 +1264,37 @@ export class ExplorationEngine {
             ? 'Re-authenticated after a session synchronization fault.'
             : 'Could not re-authenticate; exploration continues unauthenticated (no restart).',
         });
+        recovery = ok
+          ? ' Automatic re-authentication succeeded; exploration resumed on the authenticated surface.'
+          : ' Automatic re-authentication FAILED — the authenticated surface was left and exploration continued unauthenticated, so findings behind the login wall may be incomplete.';
+        if (!ok) emitter.emitMilestone(' Re-authentication failed — the authenticated surface was left; results behind the login wall may be incomplete.');
       } else {
         emitter.emitSystemStatus('Session lost and no restore available — continuing unauthenticated.');
+        recovery = ' No re-authentication was available — exploration continued unauthenticated.';
       }
+
+      const reason = `${descriptor.reason}${recovery}`;
+      emitter.gateway.emitIncidentReport({
+        bugId,
+        timestamp,
+        reason,
+        url: to,
+        steps: this.breadcrumbsToActionRecords(this.actions.snapshot()),
+        advice: definition.remediation,
+        attribution,
+        severity: definition.defaultSeverity,
+      });
+      this.registerConfirmedBug({
+        bugId,
+        type: 'SESSION_SYNC_FAULT',
+        message: reason,
+        selector: '',
+        payloadUsed: '',
+        advice: definition.remediation,
+        attribution,
+        severity: definition.defaultSeverity,
+        timestamp: new Date(),
+      });
     };
 
     // Page-agnostic observation sinks. TabWindowManager owns which page's events reach

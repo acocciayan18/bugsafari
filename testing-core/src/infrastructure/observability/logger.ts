@@ -37,10 +37,18 @@ function serializeError(err: Error): LogFields {
   return { name: err.name, message: cleanMessage(err.message), stack: err.stack ? cleanMessage(err.stack) : undefined };
 }
 
-// Coerce an arbitrary log argument into something JSON-safe and redacted.
-function serializeArg(value: unknown): unknown {
+// Depth ceiling for recursive redaction — guards against deep/cyclic structures.
+const MAX_FIELD_DEPTH = 6;
+
+// Coerce an arbitrary log argument into something JSON-safe and redacted, recursing
+// into nested objects/arrays so a secret key or bearer token buried below the top
+// level is still caught (a top-level-only pass leaks `{ user: { password } }`).
+function serializeArg(value: unknown, depth = 0): unknown {
   if (value instanceof Error) return serializeError(value);
   if (typeof value === 'string') return redactSecrets(value);
+  if (depth >= MAX_FIELD_DEPTH) return '[REDACTED_DEPTH]';
+  if (Array.isArray(value)) return value.map((item) => serializeArg(item, depth + 1));
+  if (isPlainFields(value)) return cleanFields(value, depth + 1);
   return value;
 }
 
@@ -49,13 +57,13 @@ function isPlainFields(value: unknown): value is LogFields {
   return typeof value === 'object' && value !== null && !Array.isArray(value) && !(value instanceof Error);
 }
 
-// Redact field values by key and content.
-function cleanFields(fields: LogFields): LogFields {
+// Redact field values by key and content, recursing into nested structures.
+function cleanFields(fields: LogFields, depth = 0): LogFields {
   const out: LogFields = {};
   for (const [key, value] of Object.entries(fields)) {
     if (value === undefined) continue;
     if (SECRET_KEY.test(key)) { out[key] = '[REDACTED]'; continue; }
-    out[key] = serializeArg(value);
+    out[key] = serializeArg(value, depth);
   }
   return out;
 }
@@ -67,7 +75,7 @@ function normalize(args: unknown[]): { message: string; fields?: LogFields } {
   if (rest.length === 0) return { message };
   if (rest.length === 1 && rest[0] instanceof Error) return { message, fields: cleanFields({ err: rest[0] }) };
   if (rest.length === 1 && isPlainFields(rest[0])) return { message, fields: cleanFields(rest[0]) };
-  return { message, fields: { args: rest.map(serializeArg) } };
+  return { message, fields: { args: rest.map((arg) => serializeArg(arg)) } };
 }
 
 function safeStringify(value: unknown): string {

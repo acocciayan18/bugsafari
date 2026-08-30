@@ -74,30 +74,41 @@ export async function requireAuth(
 
 /**
  * Middleware that allows optional authentication
- * Extracts user info if token present, but allows guests to proceed
+ * Extracts user info if token present, but allows genuine guests to proceed.
+ *
+ * A present-but-invalid/expired Bearer token is NOT downgraded to guest: doing so
+ * silently mis-attributes a real user's run to `guest` (session-isolation break) and
+ * loses their run. It returns 401 TOKEN_EXPIRED so the client's refresh-and-retry
+ * re-authenticates and keeps the real identity. Only a missing token means guest.
  */
 export function optionalAuth(
   request: AuthRequest,
-  _response: Response,
+  response: Response,
   next: NextFunction,
 ): void {
   const authHeader = request.headers.authorization;
 
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
-    const decoded = verifyTokenSync(token);
+    const decoded = token ? verifyTokenSync(token) : null;
 
     if (decoded) {
       request.userId = decoded.userId;
       request.userEmail = decoded.email;
       request.isGuest = false;
-    } else {
-      request.isGuest = true;
+      next();
+      return;
     }
-  } else {
-    request.isGuest = true;
+
+    obsLog.warn('[AUTH] optionalAuth - rejected: token present but invalid/expired');
+    response.status(401).json({
+      error: 'Invalid or expired token. Please log in again.',
+      code: 'TOKEN_EXPIRED',
+    });
+    return;
   }
 
+  request.isGuest = true;
   next();
 }
 

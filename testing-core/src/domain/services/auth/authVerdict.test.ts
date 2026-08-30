@@ -23,6 +23,7 @@ const NONE: CredentialVerifySignals = {
   hasAuthError: false,
   passwordGone: false,
   urlMoved: false,
+  pageStillSettling: false,
 };
 const sig = (over: Partial<CredentialVerifySignals>): CredentialVerifySignals => ({ ...NONE, ...over });
 
@@ -75,6 +76,32 @@ check('form still present, no signal, final attempt is invalid-credentials', () 
   assert.equal(v.status, 'failed');
   assert.equal(v.category, 'invalid-credentials');
   assert.equal(isRetryableAuthFailure(v.category), false);
+});
+
+console.log('\nauthVerdict — FIX-4: a slow login on the final attempt is not blamed on the credentials');
+
+check('final attempt, form present but page still loading, is transient not invalid-credentials', () => {
+  const v = classifyCredentialVerdict(sig({ pageStillSettling: true }), true);
+  assert.equal(v.status, 'failed');
+  assert.equal(v.category, 'transient', 'a slow/unsettled page is transient, not a rejection');
+  assert.ok(/slow|unresponsive|time/i.test(v.reason), 'reason names slowness, not bad credentials');
+});
+
+check('final attempt, page settled with form still present, remains invalid-credentials', () => {
+  const v = classifyCredentialVerdict(sig({ pageStillSettling: false }), true);
+  assert.equal(v.category, 'invalid-credentials');
+});
+
+check('a decisive auth error outranks pageStillSettling', () => {
+  const v = classifyCredentialVerdict(sig({ hasAuthError: true, pageStillSettling: true }), true);
+  assert.equal(v.category, 'invalid-credentials');
+});
+
+console.log('\nauthVerdict — FIX-5: unsupported-auth-method contract');
+
+check('unsupported-auth-method is a non-retryable terminal category', () => {
+  // Produced by TargetAuthenticator when only OAuth/SSO is offered; must never re-submit.
+  assert.equal(isRetryableAuthFailure('unsupported-auth-method'), false);
 });
 
 check('the two invalid-credentials reasons read differently', () => {

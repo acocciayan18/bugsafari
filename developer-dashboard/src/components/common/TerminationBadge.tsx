@@ -27,21 +27,25 @@ interface TerminationBadgeProps {
   status?: string;
   /** Engine-supplied detail, surfaced as the tooltip. */
   reason?: string;
+  /** 'mono' forces a neutral black/white badge, dropping status color. */
+  variant?: 'default' | 'mono';
   className?: string;
 }
 
 // Every surface renders the termination through this component, so Telemetry,
 // Live Feed, History, and Reports can never disagree about why a run ended.
-export function TerminationBadge({ outcome, status, reason, className = '' }: TerminationBadgeProps) {
+export function TerminationBadge({ outcome, status, reason, variant = 'default', className = '' }: TerminationBadgeProps) {
   const resolved = outcome ?? outcomeFromStatus(status);
   if (!resolved) return null;
 
   const copy = TERMINATION_COPY[resolved];
-  const tone = isCleanTermination(resolved)
-    ? 'border-[var(--status-stable-border)] text-[var(--status-stable-fg)]'
-    : resolved === 'graceful-shutdown' || resolved === 'abandoned' || resolved === 'engine-error'
-      ? 'border-[var(--status-warning-border)] text-[var(--status-warning-fg)]'
-      : 'border-[var(--status-critical-border)] text-[var(--status-critical-fg)]';
+  const tone = variant === 'mono'
+    ? 'border-[var(--border-hairline)] bg-[var(--surface-inset)] text-[var(--text-primary)]'
+    : isCleanTermination(resolved)
+      ? 'border-[var(--status-stable-border)] text-[var(--status-stable-fg)]'
+      : resolved === 'graceful-shutdown' || resolved === 'abandoned' || resolved === 'engine-error'
+        ? 'border-[var(--status-warning-border)] text-[var(--status-warning-fg)]'
+        : 'border-[var(--status-critical-border)] text-[var(--status-critical-fg)]';
 
   return (
     <span

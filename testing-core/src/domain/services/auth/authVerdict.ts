@@ -17,6 +17,9 @@ export interface CredentialVerifySignals {
   hasAuthError: boolean;
   passwordGone: boolean;
   urlMoved: boolean;
+  // The page was still loading/navigating when probed — distinguishes a genuinely
+  // slow-but-correct login from a rejection when the form is still present.
+  pageStillSettling: boolean;
 }
 
 // Operator-facing, credential-free, mutually distinct reason copy for every
@@ -28,6 +31,7 @@ const REASON = {
   invalidError: 'the login form reported invalid credentials',
   invalidRepeated: 'the login form is still present after submitting — the credentials appear to have been rejected',
   transient: 'the target has not confirmed the sign-in yet — it may be slow or still loading',
+  transientTimeout: 'the target did not finish signing in within the time allowed — it appears slow or unresponsive, not that the credentials were rejected',
   cleared: 'login form cleared',
   navigated: 'the app navigated off the login page',
 } as const;
@@ -49,7 +53,10 @@ export function classifyCredentialVerdict(signals: CredentialVerifySignals, isFi
   if (signals.hasAuthError) return failed('invalid-credentials', REASON.invalidError);
   if (signals.passwordGone) return { status: 'authenticated', reason: REASON.cleared };
   if (signals.urlMoved) return { status: 'authenticated', reason: REASON.navigated };
-  return isFinalAttempt
-    ? failed('invalid-credentials', REASON.invalidRepeated)
-    : failed('transient', REASON.transient);
+  if (!isFinalAttempt) return failed('transient', REASON.transient);
+  // Final attempt, form still present, no decisive signal: a page still loading is a
+  // slow login (transient), not a credential rejection — don't falsely blame the creds.
+  return signals.pageStillSettling
+    ? failed('transient', REASON.transientTimeout)
+    : failed('invalid-credentials', REASON.invalidRepeated);
 }

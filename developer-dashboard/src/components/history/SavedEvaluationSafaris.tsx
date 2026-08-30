@@ -525,25 +525,24 @@ export default function SavedEvaluationSafaris() {
                       <div className="truncate text-base font-medium text-[var(--text-primary)]">
                         {evalItem.targetUrl}
                       </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-[var(--text-secondary)] sm:gap-x-3">
-                       <span className="inline-flex items-center truncate font-mono">
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[13px] text-[var(--text-secondary)]">
+                        {/* Session ID, Date, and Status each sit in a subtle neutral badge so they read as distinct chips, not a run-on line. */}
+                        <span className="inline-flex min-h-6 items-center truncate rounded border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-2 py-0.5 font-mono text-[var(--text-secondary)]">
                           <Hash className="mr-1 h-3 w-3 shrink-0 text-[var(--text-tertiary)]" aria-hidden="true" />
-                          <span>{evalItem.runId ?? evalItem.id}</span>
+                          <span className="truncate">{evalItem.runId ?? evalItem.id}</span>
                         </span>
-                        <span className="inline-flex items-center truncate font-mono">
+                        <span className="inline-flex min-h-6 items-center truncate rounded border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-2 py-0.5 font-mono text-[var(--text-secondary)]">
                           <Calendar className="mr-1 h-3 w-3 shrink-0 text-[var(--text-tertiary)]" aria-hidden="true" />
-                          <span>{evalItem.date}</span>
+                          <span className="truncate">{evalItem.date}</span>
                         </span>
 
                         {/* Which profile produced these findings — absent on rows saved before it was recorded. */}
                         {profileLabel(evalItem.infiltrationProfile) && (
-                          <>
-                            <span aria-hidden="true">•</span>
-                            <span className="truncate">{profileLabel(evalItem.infiltrationProfile)}</span>
-                          </>
+                          <span className="inline-flex min-h-6 items-center truncate rounded border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-2 py-0.5 text-[var(--text-secondary)]">
+                            {profileLabel(evalItem.infiltrationProfile)}
+                          </span>
                         )}
-                        <span aria-hidden="true">•</span>
-                        <TerminationBadge outcome={evalItem.outcome} status={evalItem.status} reason={evalItem.endedReason} />
+                        <TerminationBadge variant="mono" outcome={evalItem.outcome} status={evalItem.status} reason={evalItem.endedReason} />
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-3 sm:gap-4">
