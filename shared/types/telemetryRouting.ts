@@ -8,16 +8,17 @@
 //
 // The rule, in order:
 //   1. Static-asset chatter                       → Network tab only.
-//   2. Chaos-injected failure                     → Finding (the app's handling is under test).
-//   3. Failure that broke the UI / threw at runtime → Finding.
-//   4. Cancelled/aborted request                  → Network tab only.
-//   5. Infrastructure & environment (DNS, offline, TLS/cert, proxy, CORS,
+//   2. Request superseded by an engine navigation → Network tab only (self-caused cancel).
+//   3. Chaos-injected failure                     → Finding (the app's handling is under test).
+//   4. Failure that broke the UI / threw at runtime → Finding.
+//   5. Cancelled/aborted request                  → Network tab only.
+//   6. Infrastructure & environment (DNS, offline, TLS/cert, proxy, CORS,
 //      driver timeouts, extension noise)          → Network tab only.
-//   6. HTTP 5xx, or an error payload masked behind a 2xx → Finding.
-//   7. Everything else (4xx, redirects, successes, plain transport failures)
+//   7. HTTP 5xx, or an error payload masked behind a 2xx → Finding.
+//   8. Everything else (4xx, redirects, successes, plain transport failures)
 //                                                 → Network tab only.
 // Provenance (faultOrigin) answers a DIFFERENT question — whose code is at fault —
-// and feeds step 5 here; it never decides the surface on its own.
+// and feeds step 6 here; it never decides the surface on its own.
 
 /** Where an observation belongs. */
 export type TelemetrySurface = 'NETWORK_ONLY' | 'FINDING';
@@ -89,6 +90,8 @@ export interface NetworkRoutingInput {
   chaosInjected?: boolean;
   /** A UI/runtime exception was correlated with this failure. */
   causedRuntimeFault?: boolean;
+  /** The request was in flight when BugSafari navigated away — a self-caused cancel, not a defect. */
+  supersededByNavigation?: boolean;
   /** Provenance verdict, when the caller has one (engine only). */
   origin?: string;
 }
@@ -324,6 +327,18 @@ export function routeNetworkEvent(input: NetworkRoutingInput): NetworkRoutingVer
   // armed saboteur. Genuine mishandling still promotes below — a 5xx, an error payload, a
   // transport failure, or actual UI breakage (BROKE_UI).
   const defensiveClientStatus = status !== undefined && status >= 400 && status < 500;
+
+  // A request the engine cancelled by navigating away (page unmounted mid-flight) is a harness
+  // artifact, never an app defect — even if a runtime fault (setState-after-unmount) correlated.
+  // Checked before BROKE_UI so a self-caused cancel is never mis-promoted as a UI break.
+  if (input.supersededByNavigation && failed) {
+    return verdict(
+      'NETWORK_ONLY',
+      'INFORMATIONAL',
+      'CANCELLED',
+      'Request cancelled by an in-run navigation — BugSafari left the page before it completed.',
+    );
+  }
 
   // A failed request that broke the UI (unhandled error / stuck view) is the real defect — and it
   // also covers a chaos-injected fault the app FAILED to absorb. Checked before the chaos branch so

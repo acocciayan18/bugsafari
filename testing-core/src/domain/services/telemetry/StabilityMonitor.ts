@@ -2110,14 +2110,22 @@ export class StabilityMonitor {
       // These should be demoted to informational ACTION instead of EXCEPTION to prevent dashboard clutter
       const isAborted = isNetworkAbortedError(reason);
 
+      const failedResource = request.resourceType();
+      const failedAtMs = this.requestSettledAtMs(request);
+      // A first-party request in flight when BugSafari navigated away was cancelled by that
+      // navigation (page unmounted) — a self-caused net::ERR_FAILED, not an app defect. Routed
+      // CANCELLED below so it stays a Network row and is never parked/promoted as BROKE_UI.
+      const supersededByNavigation =
+        this.isTargetOriginUrl(url) &&
+        this.deps.wasRequestSupersededByEngineNav?.(this.requestStartTimes.get(request), failedAtMs) === true;
+
       // A genuine (non-abort) fetch/XHR failure arms an infinite-loading check — a dropped call
       // that leaves the spinner up with no error fallback is exactly the fault we want to catch.
-      const failedResource = request.resourceType();
-      if (!isAborted && (failedResource === 'xhr' || failedResource === 'fetch')) {
+      // A nav-superseded request is skipped: the page unmounted, so any spinner it left is gone.
+      if (!isAborted && !supersededByNavigation && (failedResource === 'xhr' || failedResource === 'fetch')) {
         void this.confirmStuckLoading(page, { trigger: 'REQUEST_FAILED', url, method, failureDetail: reason, pageUrl: page.url(), startMs: this.requestStartTimes.get(request) });
       }
 
-      const failedAtMs = this.requestSettledAtMs(request);
       const chaosMode = this.chaosModeForRequest(request, url, failedAtMs);
       const routing = routeNetworkEvent({
         kind: 'TRANSPORT_FAILURE',
@@ -2125,6 +2133,7 @@ export class StabilityMonitor {
         resourceType: failedResource,
         failureText: reason,
         chaosInjected: chaosMode !== undefined,
+        supersededByNavigation,
       });
 
       // Static-asset chatter never reaches the Network tab or the failure counters.

@@ -302,13 +302,13 @@ function AiInsightsPanel({
         )}
         {rootCause && (
           <div>
-            <span className="text-[11px] font-semibold uppercase text-(--text-tertiary)">Root cause</span>
+            <span className="text-[12px] font-semibold uppercase text-(--text-tertiary)">Root cause</span>
             <p className="mt-1 text-[13px] leading-relaxed text-(--text-primary)">{rootCause}</p>
           </div>
         )}
         {recommendations.length > 0 && (
           <div className={rootCause ? 'mt-3 border-t border-(--border-hairline) pt-2.5' : ''}>
-            <span className="text-[11px] font-semibold uppercase text-(--text-tertiary)">Recommendations</span>
+            <span className="text-[12px] font-semibold uppercase text-(--text-tertiary)">Recommendations</span>
             <ul className="mt-1.5 space-y-1.5">
               {recommendations.map((recommendation, idx) => (
                 <li key={idx} className="flex gap-2 text-[13px] leading-relaxed text-(--text-secondary)">
@@ -705,7 +705,7 @@ function VerifyFixControl({
 function ResultStat({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
     <div className="rounded-lg border border-(--border-hairline) bg-(--surface-inset) px-3 py-2.5">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-(--text-tertiary)">{label}</div>
+      <div className="text-[12px] font-semibold uppercase tracking-wide text-(--text-tertiary)">{label}</div>
       <div className="mt-1 truncate text-sm font-bold text-(--text-primary)" title={title ?? value}>{value}</div>
     </div>
   );
@@ -715,7 +715,7 @@ function ReproducedSignal({ signal }: { signal: RegressionSignal }) {
   return (
     <li className="rounded-lg border border-(--status-critical-border) bg-(--status-critical-bg) p-3.5">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-md bg-(--status-critical-fg) px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-(--text-oninvert)">
+        <span className="rounded-md bg-(--status-critical-fg) px-2 py-0.5 text-[12px] font-bold uppercase tracking-wide text-(--text-oninvert)">
           {signal.faultType}
         </span>
         {typeof signal.statusCode === 'number' && (
@@ -785,7 +785,7 @@ function VerificationResultModal({
           {meta.icon('h-6 w-6')}
         </span>
         <div className="min-w-0">
-          <div className="text-[11px] font-semibold uppercase tracking-wide opacity-90">Verification Result</div>
+          <div className="text-[12px] font-semibold uppercase tracking-wide opacity-90">Verification Result</div>
           <h2 id={titleId} className="text-lg font-bold leading-tight">{meta.label}</h2>
         </div>
       </div>

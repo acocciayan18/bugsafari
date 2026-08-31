@@ -198,6 +198,9 @@ export interface StabilityMonitorDeps {
   /** True when two-or-more DISTINCT controls were acted near `atMs` (a concurrent burst), so a
    *  network fault at that instant cannot be blamed on one control. Optional: absent ⇒ never ambiguous. */
   isConcurrentBurstAt?(atMs: number): boolean;
+  /** True when a request in flight over [startMs, endMs] was cancelled by a BugSafari navigation
+   *  (page unmounted mid-flight) — a self-caused net::ERR_FAILED, not an app defect. Optional. */
+  wasRequestSupersededByEngineNav?(startMs: number | undefined, endMs: number): boolean;
   /** Origin of the app under test — provenance uses it to separate first- from third-party failures. */
   getTargetOrigin(): string;
   /** Operator escape hatch: cancel every native dialog instead of confirming it, so a

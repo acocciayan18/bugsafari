@@ -130,6 +130,26 @@ check('an injected transport abort that broke the UI IS a finding (BROKE_UI)', (
   assert.equal(v.promote, true);
 });
 
+check('a request superseded by an engine navigation is a self-caused cancel, never a finding', () => {
+  const v = routeNetworkEvent({ kind: 'TRANSPORT_FAILURE', url: 'https://app.io/api/products', resourceType: 'xhr', failureText: 'net::ERR_FAILED', supersededByNavigation: true });
+  assert.equal(v.surface, 'NETWORK_ONLY');
+  assert.equal(v.promote, false);
+  assert.equal(v.reasonCode, 'CANCELLED');
+});
+
+check('self-caused navigation cancel outranks a correlated runtime fault (no BROKE_UI)', () => {
+  // The unmount-cancelled fetch and the setState-after-unmount fault are the SAME self-caused
+  // event; navigation-cancellation must win so it is not mis-promoted as a UI break.
+  const v = routeNetworkEvent({ kind: 'TRANSPORT_FAILURE', url: 'https://app.io/api/products', resourceType: 'xhr', failureText: 'net::ERR_FAILED', supersededByNavigation: true, causedRuntimeFault: true });
+  assert.equal(v.reasonCode, 'CANCELLED');
+  assert.equal(v.promote, false);
+});
+
+check('supersededByNavigation only suppresses an actual failure, not a healthy response', () => {
+  const v = routeNetworkEvent({ kind: 'HTTP_RESPONSE', statusCode: 200, resourceType: 'xhr', supersededByNavigation: true });
+  assert.equal(v.reasonCode, 'SUCCESS');
+});
+
 check('a DEFENSIVE 4xx under an armed saboteur is correct handling, never a chaos finding', () => {
   // Regression: a Delayed sabotage preserves the app's real 401 login rejection. That is the
   // app handling the request correctly, not "failing to handle the simulated failure".

@@ -1,5 +1,12 @@
+Boundary Stress Failure
+Medium
+
+CWE
+CWE-400
+Status
+INCONCLUSIVE 34%
 Message
-TypeError: Cannot read properties of null (reading 'name')
+Network request failed: GET /api/products (net::ERR_FAILED) · The failed request left the interface broken (unhandled error or stuck UI).
 Element
 <input[Newsletter email]>
 input[aria-label="Newsletter email"]
@@ -7,30 +14,9 @@ Reproduction Guide
 
 1
 open
-Navigate to /
+Navigate to /products?category=electronics&sort=rating
 2
 rapid
-Click 5 controls at the same time: the "Add" button, the "Subscribe" button, the "Sign in" link, the "Cart" link and the "☕" link
+Click 5 controls at the same time: the "Add" button, the "Add" button, the "Add" button, the "Add" button and the "home" button
 Route
-/
-
-
-
-------------------
-
-Verification Result
-Still Active
-Bug still active: RUNTIME_STABILITY_EXCEPTION reproduced after replaying 2 recorded step(s).
-
-Bug Class
-Runtime Stability Exception
-Steps Run
-2/2
-Timeline
-Finding
-Duration
-4s
-Reproduced Signals (1)
-EXCEPTION
-Original RUNTIME_STABILITY_EXCEPTION signature present in replayed page content
-https://scott-smooth-configuration-breakdown.trycloudflare.com/cart
+/products?category=electronics&sort=rating

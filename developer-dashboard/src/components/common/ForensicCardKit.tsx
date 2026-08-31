@@ -12,6 +12,10 @@ import type { BugCategory, RemediationFailureReason, SuggestFixRequest, SuggestF
 import { BUG_CATEGORY_META } from '../../../../shared/types.js';
 import { requestSuggestedFix } from '../../services/historyService';
 import { Skeleton } from '../ui/Skeleton';
+import InfoNotice from './InfoNotice';
+
+const SUGGESTED_FIX_NOTICE =
+  'Suggested Fix offers possible recommendations for addressing this finding. These are suggestions and may sometimes be incomplete, inaccurate, or irrelevant, so review and verify the recommendation before applying it.';
 
 // Operator-facing cause for a fallback. Shared by the per-finding fix block and the
 // session-level AI Insights panel so both explain the same failure the same way.
@@ -186,7 +190,12 @@ export const SuggestedFixBlock = ({ advice, context, savedAiAdvice }: { advice: 
     <div>
       {/* Heading row: label on the left, AI action + copy on the right, all one line. */}
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-caption font-bold uppercase text-(--text-secondary)">Suggested Fix</span>
+        <span className="inline-flex items-center gap-1.5 text-caption font-bold uppercase text-(--text-secondary)">
+          Suggested Fix
+          <InfoNotice ariaLabel="About the suggested fix" title="About the suggested fix">
+            {SUGGESTED_FIX_NOTICE}
+          </InfoNotice>
+        </span>
         <div className="flex items-center gap-2">
           {/* Generate once per finding: the button is hidden the moment a genuine AI
               fix exists (source === 'ai', incl. a persisted one seeded on load) so we

@@ -10,6 +10,7 @@ import { AccessibilityAuditor } from '../../heuristics/AccessibilityAuditor.js';
 import { BrokenNavigationFinder } from '../../heuristics/BrokenNavigationFinder.js';
 import type { InteractionContext } from '../../heuristics/DuplicateActionFinder.js';
 import { isConcurrentBurstAt } from './culpritAmbiguity.js';
+import { NavigationTrail } from './navigationTrail.js';
 import type { DefectCulprit, NavHop, NavigationDefect } from '../../heuristics/BrokenNavigationFinder.js';
 import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenarioCatalog.js';
 import { normalizeFaultType, isSecurityBugClass } from '../../../bugs/knowledgeBase/FaultClassifier.js';
@@ -111,6 +112,9 @@ const MAX_NETWORK_REWARDS_PER_ACTION = 3;
 // Depth of the acted-element history for time-keyed fault attribution. A fault's causal
 // window is 2s, so a handful of recent actions is ample; bounded so it never grows.
 const ACTED_HISTORY_CAP = 32;
+// A navigation within this window of the last engine action is attributed to that action —
+// i.e. BugSafari's click/goto caused the route change (used to suppress self-cancelled requests).
+const NAV_CAUSE_WINDOW_MS = 1200;
 // Buffered forensic errors flush once this many accumulate (mirrors the log-batch path).
 const FORENSIC_FLUSH_THRESHOLD = 50;
 // Cadence of the mid-run finding checkpoint. The write is dirty-gated and replaces one
@@ -238,6 +242,9 @@ export class ExplorationEngine {
   private authenticatedRun = false;
   // Timestamp + counter bounding causal network-signal attribution to the current action.
   private lastActedAtMs = 0;
+  // Timestamp of the last deliberate engine navigation (recovery/target goto) — attributes a
+  // route change to BugSafari even when no click preceded it, so its cancelled requests suppress.
+  private lastEngineNavAtMs = 0;
   private networkRewardsThisAction = 0;
   // State Graph Navigator for directed path finding and loop prevention (Task 2)
   // Initialised in the constructor after mode is derived from selectedScenarios.
@@ -1016,6 +1023,10 @@ export class ExplorationEngine {
     // Last navigated URL — shared via closure with the stability monitor and loop.
     let lastKnownUrl = '';
 
+    // Run-scoped trail of BugSafari-initiated navigations, so the stability monitor can
+    // tell a self-cancelled request (page unmounted mid-flight) from a real network defect.
+    const navTrail = new NavigationTrail();
+
     // Latest MAIN-FRAME document response status, keyed by its normalized route
     // path. Lets the loop's error-route detector see a real HTTP ≥400 hard
     // navigation; null for pure client-side SPA renders (no top-level response).
@@ -1131,6 +1142,7 @@ export class ExplorationEngine {
       recordNetworkFailure: () => this.networkFailureCascade.recordFailure(),
       getInteractionContext: (atMs) => this.interactionContextAt(atMs),
       isConcurrentBurstAt: (atMs) => isConcurrentBurstAt(this.actedHistory.map((h) => ({ selector: h.target.selector, actedAtMs: h.actedAtMs })), atMs),
+      wasRequestSupersededByEngineNav: (startMs, endMs) => navTrail.supersededInFlight(startMs, endMs),
       getTargetOrigin: () => this.canonicalOrigin,
       dialogReadOnly: () => this.dialogReadOnly,
       isEngineStopping: () => this.isStopRequested || this.isPaused || this.timeboxExceeded,
@@ -1305,8 +1317,13 @@ export class ExplorationEngine {
       lastKnownUrl = url;
       // Phase 3: Track page count when navigating
       this.runtimeMetrics.pageCount++;
+      // A navigation closely following an engine action was caused by it — record it so a
+      // request torn down by this route change is suppressed instead of promoted as a defect.
+      const navAtMs = Date.now();
+      const engineActedAtMs = Math.max(this.lastActedAtMs, this.lastEngineNavAtMs);
+      navTrail.record({ url, atMs: navAtMs, engineInitiated: navAtMs - engineActedAtMs <= NAV_CAUSE_WINDOW_MS });
       emitter.gateway.emitUrlChanged(url);
-      void reportNavigationDefects(navigationFinder.observeUrlChange({ url, timestampMs: Date.now() }));
+      void reportNavigationDefects(navigationFinder.observeUrlChange({ url, timestampMs: navAtMs }));
       // Session guard: an authenticated run that lands on an auth page (and wasn't
       // already there) lost its session. Skipped while a restore is in flight so
       // the restore navigation can't re-trigger itself.
@@ -1453,6 +1470,7 @@ export class ExplorationEngine {
       recreatePage: () => tabs.recreateFocused(),
       recordRecovery: (url, strategy) => {
         navigationFinder.noteEngineNavigation();
+        this.lastEngineNavAtMs = Date.now();
         return this.recordActionTrace(
           { timestamp: new Date().toISOString(), selector: url, action: `recover-${strategy}` },
           { actionType: 'NAVIGATE', humanIdentifier: `recovery via ${strategy}`, url },
