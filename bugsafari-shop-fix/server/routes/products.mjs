@@ -27,6 +27,21 @@ export function registerProducts(app) {
     res.json({ product, reviews: reviewsFor(product.id) });
   });
 
+  // related items: same category, excluding self
+  app.get('/api/products/:id/related', (req, res) => {
+    const product = findProduct(req.params.id);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    const related = products.filter((p) => p.category === product.category && p.id !== product.id).slice(0, 4);
+    res.json({ related });
+  });
+
+  // price-drop alert signup; email optional, product must exist
+  app.post('/api/products/:id/price-alert', (req, res) => {
+    const product = findProduct(req.params.id);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    res.status(201).json({ ok: true, productId: product.id });
+  });
+
   app.get('/api/categories', (_req, res) => {
     const cats = [...new Set(products.map((p) => p.category))];
     res.json({ categories: cats });

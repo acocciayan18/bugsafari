@@ -10,6 +10,7 @@ import type {
   ReplayStepStats,
 } from '../../../../../shared/types.js';
 import { runReplaySession, type ReplaySessionResult } from './ReplaySession.js';
+import { pathOf } from './FaultCollector.js';
 import { normalizeRunCode } from '../../../../../shared/runCode.js';
 import { isReplayVerifiable } from './replayProbes.js';
 import { decideVerdict, confirmResolution, summarize, type VerdictDecision } from './verdict.js';
@@ -101,6 +102,11 @@ export class RegressionPlaybookVerifier {
     try {
       browser = await this.launchBrowser();
 
+      // Location gate is the non-network analogue of the endpoint gate: for a runtime/UI fault
+      // the recorded page URL is the fault location, so pass it only for non-network faults
+      // (network is already covered by faultEndpoint). Undefined disables the gate.
+      const faultUrlPath = originalFaultType !== 'NETWORK' ? pathOf(finding.bug.url ?? undefined) : undefined;
+
       const decide = (p: ReplaySessionResult): VerdictDecision =>
         decideVerdict({
           strong: p.matchedSignals,
@@ -110,6 +116,8 @@ export class RegressionPlaybookVerifier {
           faultEndpoint: this.faultEndpoint(finding),
           seenEndpoints: p.seenEndpoints,
           replayIncomplete: p.replayIncomplete,
+          faultUrlPath,
+          finalUrlPath: pathOf(p.finalUrl),
         });
 
       const probe = await this.attempt(browser, finding, originalBugClass, originalFaultType, emit);
@@ -202,6 +210,9 @@ export class RegressionPlaybookVerifier {
       viewport: { width: 1440, height: 900 },
       ignoreHTTPSErrors: true,
       deviceScaleFactor: 1,
+      // Block service workers so a stale cached bundle can't be re-served — the replay must
+      // run the CURRENT build, else the verdict measures the wrong code.
+      serviceWorkers: 'block',
     });
     try {
       return await runReplaySession(context, {

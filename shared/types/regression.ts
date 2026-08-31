@@ -20,6 +20,7 @@ export type VerifyFixReason =
   | 'CLEAN_REPLAY' // executed timeline, no recurrence
   | 'INSUFFICIENT_REPLAY' // too few recorded steps actually executed
   | 'FAULT_TRIGGER_NOT_EXERCISED' // replay never re-hit the request that defined the fault
+  | 'FAULT_LOCATION_NOT_REACHED' // replay ended on a different route than the recorded fault page (non-network)
   | 'UNVERIFIABLE_BUG_CLASS' // class has no replay-time detector
   | 'WEAK_MATCH_ONLY' // same-class faults seen but uncorroborated
   | 'NO_REPLAY_STEPS' // finding has no recorded timeline — nothing to replay, no fault is attributable

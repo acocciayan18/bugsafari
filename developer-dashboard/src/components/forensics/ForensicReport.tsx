@@ -126,7 +126,7 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
   <Globe
-    className="w-3.5 h-3.5 shrink-0 text-(--text-tertiary)"
+    className="w-4 h-4 shrink-0 text-(--text-tertiary)"
     aria-hidden="true"
   />
   <div
@@ -448,6 +448,9 @@ const REASON_TEXT: Record<VerifyFixReason, string> = {
   FAULT_TRIGGER_NOT_EXERCISED:
     'The replay did not reach the request or action that originally caused the error. The result cannot confirm that the issue has been fixed.',
 
+  FAULT_LOCATION_NOT_REACHED:
+    'The replay ended on a different page than the one this finding was recorded on, so the faulty state was never reached. A clean result there cannot confirm that the issue is fixed.',
+
   UNVERIFIABLE_BUG_CLASS:
     'This type of issue cannot be reliably confirmed through automated replay because it may depend on live conditions or timing. Run a new exploration and test the issue manually.',
 
@@ -506,6 +509,11 @@ const NEXT_STEPS: Record<VerifyFixReason, string[]> = {
     'The action that caused the original error was never reached during replay.',
     'Manually perform the original action in the app to check the fix directly.',
     'Run a new exploration so a fresh timeline can re-trigger the fault.',
+  ],
+  FAULT_LOCATION_NOT_REACHED: [
+    'The replay finished on a different page than the one the finding was recorded on.',
+    'Run a fresh exploration to capture an up-to-date path to the affected page, then verify.',
+    'Or reproduce the original steps manually to check the fix on the right page.',
   ],
   WEAK_MATCH_ONLY: [
     'Treat the issue as unresolved until a test can confirm it either way.',
@@ -665,7 +673,7 @@ function VerifyFixControl({
         type="button"
         onClick={onOpenResult}
         title="View verification result"
-        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors ${meta.badge}`}
+        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1 text-[13px] font-medium capitalize transition-colors ${meta.badge}`}
       >
         {meta.icon('h-3.5 w-3.5')}
         {meta.label}

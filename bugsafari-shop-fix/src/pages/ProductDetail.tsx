@@ -36,16 +36,24 @@ export default function ProductDetail() {
   const { add } = useCart();
   const [product, setProduct] = useState<Product | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [related, setRelated] = useState<Product[]>([]);
   const [qty, setQty] = useState(1);
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
+  const [alertMsg, setAlertMsg] = useState('');
+  const [alerting, setAlerting] = useState(false);
 
   useEffect(() => {
     setLoading(true);
+    setAlertMsg('');
     api<{ product: Product; reviews: Review[] }>(`/products/${id}`)
       .then((r) => { setProduct(r.product); setReviews(Array.isArray(r.reviews) ? r.reviews : []); })
       .catch(() => setMissing(true))
       .finally(() => setLoading(false));
+    // best-effort related rail; a failure just leaves it empty
+    api<{ related: Product[] }>(`/products/${id}/related`)
+      .then((r) => setRelated(Array.isArray(r.related) ? r.related : []))
+      .catch(() => setRelated([]));
   }, [id]);
 
   if (loading) return <div className="loader"><span className="spinner" /> Loading…</div>;
@@ -53,6 +61,19 @@ export default function ProductDetail() {
 
   const out = product.stock <= 0;
   const addToCart = () => add({ id: product.id, name: product.name, price: product.price, image: product.image, stock: product.stock }, qty);
+  // guarded against re-entry; surfaces both success and failure to the user
+  const priceAlert = async () => {
+    if (alerting) return;
+    setAlerting(true);
+    try {
+      await api(`/products/${product.id}/price-alert`, { method: 'POST', body: JSON.stringify({ productId: product.id }) });
+      setAlertMsg('We will email you when the price drops.');
+    } catch {
+      setAlertMsg('Could not set the alert. Please try again.');
+    } finally {
+      setAlerting(false);
+    }
+  };
 
   return (
     <div className="detail">
@@ -74,9 +95,20 @@ export default function ProductDetail() {
             <input type="number" min={1} max={product.stock} value={qty} onChange={(e) => setQty(clampQty(Number(e.target.value), product.stock))} aria-label="Quantity" />
             <button className="btn btn-lg" disabled={out} onClick={addToCart}>{out ? 'Sold out' : 'Add to cart'}</button>
             <button className="btn btn-lg btn-ghost" disabled={out} onClick={() => { addToCart(); nav('/cart'); }}>Buy now</button>
+            <button className="btn btn-lg btn-ghost" disabled={alerting} onClick={priceAlert}>{alerting ? 'Setting…' : '🔔 Price-drop alert'}</button>
           </div>
+          {alertMsg && <p className="muted">{alertMsg}</p>}
         </div>
       </div>
+
+      {related.length > 0 && (
+        <section className="detail-related">
+          <h2>You may also like</h2>
+          <div className="grid">
+            {related.map((r) => <Link key={r.id} to={`/products/${r.id}`} className="line-name">{r.name}</Link>)}
+          </div>
+        </section>
+      )}
 
       <section className="detail-reviews">
         <h2>Customer reviews</h2>

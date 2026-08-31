@@ -25,6 +25,20 @@ export function registerProducts(app) {
     res.json({ product, reviews: reviewsFor(product.id) });
   });
 
+  // SEEDED DEFECT D1: relatedIds never exists on a product, so .map throws -> 500 + leaked stack
+  app.get('/api/products/:id/related', (req, res) => {
+    const product = findProduct(req.params.id);
+    const related = product.relatedIds.map((rid) => findProduct(rid));
+    res.json({ related });
+  });
+
+  // SEEDED DEFECT D3: alert signup requires an email the client never sends -> 422
+  app.post('/api/products/:id/price-alert', (req, res) => {
+    const { email } = req.body || {};
+    if (!email) return res.status(422).json({ error: 'Email is required for alerts' });
+    res.status(201).json({ ok: true });
+  });
+
   app.get('/api/categories', (_req, res) => {
     const cats = [...new Set(products.map((p) => p.category))];
     res.json({ categories: [...cats, 'clearance'] });

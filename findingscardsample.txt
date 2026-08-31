@@ -1,51 +1,36 @@
-Runtime Stability Exception
-Critical
-Verify Fix
-
-CWE
-CWE-248
-Status
-CONFIRMED 90%
 Message
-Maximum call stack size exceeded
+TypeError: Cannot read properties of null (reading 'name')
 Element
-Stack overflow
-Payload Used
-EXCEPTION
-Reproduction Playbook
+<input[Newsletter email]>
+input[aria-label="Newsletter email"]
+Reproduction Guide
 
 1
 open
 Navigate to /
 2
-click
-Click the "JavaScript Runtime Errors" link. Result: the app moved to /js-runtime-errors
+rapid
+Click 5 controls at the same time: the "Add" button, the "Subscribe" button, the "Sign in" link, the "Cart" link and the "☕" link
 Route
 /
-·
-Section
-"Runtime"
-·
-Element
-"JavaScript Runtime Errors" link
-3
-click
-Click the "JavaScript Runtime Errors" link
-Route
-/js-runtime-errors
-·
-Section
-"Runtime"
-·
-Element
-"JavaScript Runtime Errors" link
-4
-rapid
-Click 10 points spread evenly across the visible area of the 1440×900 window
-Route
-/js-runtime-errors
-5
-rapid
-Click 5 controls at the same time: the "SQL Injection" link, the "Main-thread Freeze" link, the "JavaScript Runtime Errors" link, the "Network & Backend Failures" link and the "Infinite Loading / API Hang" link
-Route
-/js-runtime-errors
+
+
+
+------------------
+
+Verification Result
+Still Active
+Bug still active: RUNTIME_STABILITY_EXCEPTION reproduced after replaying 2 recorded step(s).
+
+Bug Class
+Runtime Stability Exception
+Steps Run
+2/2
+Timeline
+Finding
+Duration
+4s
+Reproduced Signals (1)
+EXCEPTION
+Original RUNTIME_STABILITY_EXCEPTION signature present in replayed page content
+https://scott-smooth-configuration-breakdown.trycloudflare.com/cart

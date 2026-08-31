@@ -238,6 +238,9 @@ export class ReproductionProbe {
       context = await this.browser.newContext({
         viewport: { width: 1440, height: 900 },
         ignoreHTTPSErrors: true,
+        // Block service workers so a stale cached bundle can't be re-served — parity with
+        // the post-hoc verifier. SW registrations aren't part of storageState, so additive.
+        serviceWorkers: 'block',
         // Inherit the live session so an authenticated run replays past the login wall.
         storageState: await this.liveContext.storageState().catch(() => undefined),
       });

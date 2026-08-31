@@ -11,6 +11,7 @@ import { Copy, Check, Sparkles, Loader2, Info } from 'lucide-react';
 import type { BugCategory, RemediationFailureReason, SuggestFixRequest, SuggestFixSource } from '../../../../shared/types.js';
 import { BUG_CATEGORY_META } from '../../../../shared/types.js';
 import { requestSuggestedFix } from '../../services/historyService';
+import { Skeleton } from '../ui/Skeleton';
 
 // Operator-facing cause for a fallback. Shared by the per-finding fix block and the
 // session-level AI Insights panel so both explain the same failure the same way.
@@ -189,21 +190,19 @@ export const SuggestedFixBlock = ({ advice, context, savedAiAdvice }: { advice: 
         <div className="flex items-center gap-2">
           {/* Generate once per finding: the button is hidden the moment a genuine AI
               fix exists (source === 'ai', incl. a persisted one seeded on load) so we
-              never spend an API call regenerating a successful response. It reappears
+              never spend an API call regenerating a successful response. It also hides
+              while loading — the skeleton below carries the progress — and reappears
               only when generation failed or fell back to the knowledge-base fix. */}
-          {context && source !== 'ai' && (
+          {context && source !== 'ai' && status !== 'loading' && (
             <button
               type="button"
               onClick={generate}
-              disabled={status === 'loading'}
-              className="inline-flex items-center cursor-pointer gap-1.5 rounded border border-(--border-hairline) bg-(--surface-inset) px-2 py-1 text-xs font-semibold text-(--text-secondary) hover:text-(--text-primary) disabled:opacity-60"
+              className="inline-flex items-center cursor-pointer gap-1.5 rounded border border-(--border-hairline) bg-(--surface-inset) px-2 py-1 text-xs font-semibold text-(--text-secondary) hover:text-(--text-primary)"
             >
-              {status === 'loading'
-                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Generating…</>
-                : <><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {status === 'error' || source === 'fallback' ? 'Retry' : 'See More Suggestions'}</>}
+              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {status === 'error' || source === 'fallback' ? 'Retry' : 'See More Suggestions'}
             </button>
           )}
-          {displayed && <CopyButton text={displayed} label="Suggested Fix" />}
+          {displayed && status !== 'loading' && <CopyButton text={displayed} label="Suggested Fix" />}
         </div>
       </div>
 
@@ -213,11 +212,23 @@ export const SuggestedFixBlock = ({ advice, context, savedAiAdvice }: { advice: 
         </div>
       )}
 
-      {/* Content container: the fix text alone, boxed below the heading. */}
+      {/* Content container: skeleton loader while generating, otherwise the fix text. */}
       <div className="rounded-md border border-(--border-hairline) bg-(--surface-raised) p-3">
-        {displayed
-          ? <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-(--text-primary)">{displayed}</pre>
-          : <div className="text-[13px] italic text-(--text-tertiary)">{context ? 'No suggested fix yet. Generate one above.' : 'No suggested fix for this finding yet.'}</div>}
+        {status === 'loading'
+          ? (
+            <div role="status" aria-live="polite" className="flex flex-col gap-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-(--text-secondary)">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                Finding more suggestions…
+              </div>
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-11/12" />
+              <Skeleton className="h-3 w-4/5" />
+            </div>
+          )
+          : displayed
+            ? <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-(--text-primary)">{displayed}</pre>
+            : <div className="text-[13px] italic text-(--text-tertiary)">{context ? 'No suggested fix yet. Generate one above.' : 'No suggested fix for this finding yet.'}</div>}
       </div>
     </div>
   );

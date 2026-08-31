@@ -12,6 +12,7 @@ import Profile from './pages/Profile';
 import Orders from './pages/Orders';
 import Track from './pages/Track';
 import NotFound from './pages/NotFound';
+import NewsletterSignup from './components/NewsletterSignup';
 
 export default function App() {
   return (
@@ -36,6 +37,7 @@ export default function App() {
       </main>
       <footer className="foot">
         <span>☁ Nimbus Store — demo shop</span>
+        <NewsletterSignup />
         <span className="muted">Free returns · Secure checkout · 24/7 support</span>
       </footer>
     </div>

@@ -71,6 +71,8 @@ export interface ReplaySessionResult {
   seenEndpoints: string[];
   /** True when a page navigation aborted mid-replay — the faulting state may never have loaded. */
   replayIncomplete: boolean;
+  /** URL the replay ended on — compared to the recorded fault page to prove the fault location was reached. */
+  finalUrl: string;
   error?: string;
   /** Typed failure kind when ok=false — lets the caller explain WHY the replay could not run. */
   failureReason?: VerifyFixReason;
@@ -123,6 +125,7 @@ export async function runReplaySession(
     otherSignals: [],
     seenEndpoints: [],
     replayIncomplete: false,
+    finalUrl: '',
     error,
     failureReason,
   });
@@ -188,6 +191,13 @@ export async function runReplaySession(
     // serializes the whole document, and an app's own `obsLog.error("TypeError…")` literal
     // would otherwise match as a reproduced fault the replay never actually executed.
     const pageContent = stripNonRendered(await page.content().catch(() => ''));
+    // Where the replay actually ended — proves whether it stood on the recorded fault page.
+    let finalUrl = '';
+    try {
+      finalUrl = page.url();
+    } catch {
+      // page torn down; leave empty so the location gate self-disables.
+    }
     await probes.drain();
     await collector.drainBodies();
     collector.detach();
@@ -209,6 +219,7 @@ export async function runReplaySession(
       otherSignals: buckets.other,
       seenEndpoints: collector.exercisedEndpoints(),
       replayIncomplete: collector.hadNavigationFailure(),
+      finalUrl,
     };
   } catch (error) {
     if (browserCrashed) return failed('The browser process crashed or ran out of memory during replay.', 'BROWSER_CRASH');

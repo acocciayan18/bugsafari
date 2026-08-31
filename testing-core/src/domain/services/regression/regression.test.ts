@@ -154,6 +154,84 @@ check('reproduction still wins over the endpoint gate (strong signal → STILL_A
   assert.equal(d.verdict, 'STILL_ACTIVE');
 });
 
+console.log('decideVerdict — fault-location gate (non-network faults must reach the fault page)');
+
+check('clean replay that ended on a different route → INCONCLUSIVE, not RESOLVED', () => {
+  const d = decideVerdict({
+    strong: [], weak: [], stats: stats(), timelineSource: 'finding',
+    faultUrlPath: '/checkout', finalUrlPath: '/login',
+  });
+  assert.equal(d.verdict, 'INCONCLUSIVE');
+  assert.equal(d.reason, 'FAULT_LOCATION_NOT_REACHED');
+});
+
+check('clean replay that ended on the recorded fault page → RESOLVED', () => {
+  const d = decideVerdict({
+    strong: [], weak: [], stats: stats(), timelineSource: 'finding',
+    faultUrlPath: '/checkout', finalUrlPath: '/checkout',
+  });
+  assert.equal(d.verdict, 'RESOLVED');
+  assert.equal(d.reason, 'CLEAN_REPLAY');
+});
+
+// A deep-link fault page whose SPA shell shares the path prefix is the SAME surface —
+// the prefix rule must not flag it as a different location.
+check('a path that is a prefix of the recorded page counts as reached → RESOLVED', () => {
+  const d = decideVerdict({
+    strong: [], weak: [], stats: stats(), timelineSource: 'finding',
+    faultUrlPath: '/products/42', finalUrlPath: '/products',
+  });
+  assert.equal(d.verdict, 'RESOLVED');
+});
+
+check('reproduction still wins over the location gate (strong signal → STILL_ACTIVE)', () => {
+  const d = decideVerdict({
+    strong: [signal], weak: [], stats: stats(), timelineSource: 'finding',
+    faultUrlPath: '/a', finalUrlPath: '/b',
+  });
+  assert.equal(d.verdict, 'STILL_ACTIVE');
+});
+
+// Network faults leave faultUrlPath undefined (they use the endpoint gate), so the location
+// gate self-disables and a clean re-exercised replay still resolves.
+check('undefined faultUrlPath (network fault) disables the location gate → RESOLVED', () => {
+  const d = decideVerdict({
+    strong: [], weak: [], stats: stats(), timelineSource: 'finding',
+    finalUrlPath: '/somewhere-else',
+  });
+  assert.equal(d.verdict, 'RESOLVED');
+});
+
+check('a root fault/landing path never trips the location gate → RESOLVED', () => {
+  assert.equal(decideVerdict({
+    strong: [], weak: [], stats: stats(), timelineSource: 'finding',
+    faultUrlPath: '/', finalUrlPath: '/dashboard',
+  }).verdict, 'RESOLVED');
+  assert.equal(decideVerdict({
+    strong: [], weak: [], stats: stats(), timelineSource: 'finding',
+    faultUrlPath: '/dashboard', finalUrlPath: '/',
+  }).verdict, 'RESOLVED');
+});
+
+check('endpoint gate precedes the location gate when both would fire', () => {
+  const d = decideVerdict({
+    strong: [], weak: [], stats: stats(), timelineSource: 'finding',
+    faultEndpoint: '/api/x', seenEndpoints: ['/'],
+    faultUrlPath: '/a', finalUrlPath: '/b',
+  });
+  assert.equal(d.reason, 'FAULT_TRIGGER_NOT_EXERCISED');
+});
+
+check('summarize(FAULT_LOCATION_NOT_REACHED) states the wrong-page cause, not the generic fallback', () => {
+  const d = decideVerdict({
+    strong: [], weak: [], stats: stats(), timelineSource: 'finding',
+    faultUrlPath: '/checkout', finalUrlPath: '/login',
+  });
+  const text = summarize(d, 'RUNTIME_STABILITY_EXCEPTION', stats()).toLowerCase();
+  assert.ok(text.includes('different page'));
+  assert.ok(!text.includes('could not conclude'));
+});
+
 console.log('confirmResolution — a clean replay must be confirmed by a second');
 
 const resolved = { verdict: 'RESOLVED' as const, reason: 'CLEAN_REPLAY' as const, matchedSignals: [] };
@@ -202,6 +280,8 @@ console.log('FaultCollector.evaluate — tri-bucket layered matching');
 
 const fakePage = { url: () => 'http://target.test/', on() {}, off() {} } as unknown as Page;
 const collect = (): FaultCollector => new FaultCollector(fakePage);
+// scanBodies=true: leak classes whose evidence is legitimately content/body-borne.
+const collectBody = (): FaultCollector => new FaultCollector(fakePage, true);
 
 check('signal-backed exact recurrence → strong', () => {
   const c = collect();
@@ -408,6 +488,53 @@ check('content scan on a page whose only signature lives in script source → no
     pageContent,
   });
   assert.equal(b.strong.length, 0);
+});
+
+console.log('FaultCollector — content scan is gated to leak classes (no false positives from rendered DOM text)');
+
+// The core false-STILL_ACTIVE fix: for a non-leak class, error-like words RENDERED into the
+// visible DOM ("is not a function", null/NaN/undefined) must never fabricate a strong signal —
+// evidence for these classes is a real runtime fault, not page text.
+check('rendered DOM error text for a runtime class (scanBodies=false) → no strong match', () => {
+  const c = collect();
+  const pageContent = `<body><h1>Docs</h1><p>x.filter is not a function — a null / undefined / NaN guide</p></body>`;
+  const b = c.evaluate({
+    originalBugClass: 'RUNTIME_STABILITY_EXCEPTION',
+    originalFaultType: 'EXCEPTION',
+    originalMessage: 'allProducts.filter is not a function',
+    pageContent,
+  });
+  assert.equal(b.strong.length, 0);
+  assert.equal(b.weak.length, 0);
+});
+
+// A genuine leaked SQL/Mongo error reflected into the DOM IS the evidence for a leak class,
+// so body-scan classes must still scan content and reproduce.
+check('reflected datastore-error text for a leak class (scanBodies=true) → strong match', () => {
+  const c = collectBody();
+  const pageContent = `<body><pre>You have an error in your SQL syntax near '' at line 1</pre></body>`;
+  const b = c.evaluate({
+    originalBugClass: 'SQL_INJECTION',
+    originalFaultType: 'NETWORK',
+    originalMessage: 'HTTP 500 Internal Server Error',
+    scenario: 'DataFuzzer',
+    pageContent,
+  });
+  assert.equal(b.strong.length, 1);
+});
+
+// The gate only silences PASSIVE DOM text — a real runtime fault (pageerror) for the same
+// class is unaffected and still reproduces.
+check('a real pageerror for a runtime class still reproduces despite the content gate → strong', () => {
+  const c = collect();
+  c.addExternal({ faultType: 'EXCEPTION', message: 'allProducts.filter is not a function' });
+  const b = c.evaluate({
+    originalBugClass: 'RUNTIME_STABILITY_EXCEPTION',
+    originalFaultType: 'EXCEPTION',
+    originalMessage: 'allProducts.filter is not a function',
+    pageContent: `<body><p>is not a function</p></body>`,
+  });
+  assert.equal(b.strong.length, 1);
 });
 
 console.log('detectApiContractViolation — schema-level contract check');

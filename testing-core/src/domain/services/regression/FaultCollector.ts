@@ -210,22 +210,30 @@ export class FaultCollector {
       else buckets.weak.push(signal);
     }
 
-    const content = input.pageContent.slice(0, MAX_CONTENT_SCAN);
-    if (this.contentHasSignal(content)) {
-      const contentInput: FaultInput = {
-        faultType: originalFaultType,
-        message: '',
-        content,
-        url: this.safeUrl(),
-        scenario,
-      };
-      // Signal-gated content classification is hard evidence, never INFERRED noise.
-      if (classifyFault(contentInput).bugClass === originalBugClass) {
-        buckets.strong.push({
+    // The passive DOM/body content scan is a valid oracle ONLY for leak classes (the
+    // scanBodies set): a reflected Mongo/SQL/stack leak literally IS text. For runtime/
+    // server/boundary/api-contract/bypass classes the evidence is a real runtime fault
+    // (pageerror/console/network/probe), never rendered text — scanning content there
+    // lets a page that merely renders "is not a function"/"not found"/null/NaN fabricate
+    // a STRONG signal (false STILL_ACTIVE). Gate on the same flag that reads bodies.
+    if (this.scanBodies) {
+      const content = input.pageContent.slice(0, MAX_CONTENT_SCAN);
+      if (this.contentHasSignal(content)) {
+        const contentInput: FaultInput = {
           faultType: originalFaultType,
-          message: `Original ${originalBugClass} signature present in replayed page content`,
+          message: '',
+          content,
           url: this.safeUrl(),
-        });
+          scenario,
+        };
+        // Signal-gated content classification is hard evidence, never INFERRED noise.
+        if (classifyFault(contentInput).bugClass === originalBugClass) {
+          buckets.strong.push({
+            faultType: originalFaultType,
+            message: `Original ${originalBugClass} signature present in replayed page content`,
+            url: this.safeUrl(),
+          });
+        }
       }
     }
 

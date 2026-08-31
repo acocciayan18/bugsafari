@@ -20,6 +20,15 @@ export interface VerdictInput {
   seenEndpoints?: string[];
   /** True when a page navigation aborted mid-replay — the faulting state may never have loaded. */
   replayIncomplete?: boolean;
+  /** Pathname of the page the fault was recorded on (non-network faults only); undefined disables the gate. */
+  faultUrlPath?: string;
+  /** Pathname the replay actually ended on — compared to faultUrlPath to prove the fault page was reached. */
+  finalUrlPath?: string;
+}
+
+/** Two pathnames name the SAME surface unless they differ AND neither contains the other (SPA shell vs deep link). */
+function samePath(a: string, b: string): boolean {
+  return a === b || a.startsWith(b) || b.startsWith(a);
 }
 
 export interface VerdictDecision {
@@ -56,6 +65,16 @@ export function decideVerdict(input: VerdictInput): VerdictDecision {
   // the endpoint, the failure condition was never re-tested — clean proves nothing.
   if (input.faultEndpoint && !(input.seenEndpoints ?? []).includes(input.faultEndpoint)) {
     return { verdict: 'INCONCLUSIVE', reason: 'FAULT_TRIGGER_NOT_EXERCISED', matchedSignals: [] };
+  }
+  // Non-network analogue of the endpoint gate: a runtime/UI fault is only "resolved" if the
+  // replay stood on the page it was recorded on. If the replay ended on a clearly different
+  // route (redirect, moved/removed route, changed SPA flow), a clean run proves nothing about
+  // that page. Both paths must be known and non-root; the caller leaves faultUrlPath undefined
+  // for network faults (already covered above) so the gate self-disables there.
+  const faultPath = input.faultUrlPath;
+  const finalPath = input.finalUrlPath;
+  if (faultPath && finalPath && faultPath !== '/' && finalPath !== '/' && !samePath(faultPath, finalPath)) {
+    return { verdict: 'INCONCLUSIVE', reason: 'FAULT_LOCATION_NOT_REACHED', matchedSignals: [] };
   }
   if (timelineSource === 'session') {
     return { verdict: 'INCONCLUSIVE', reason: 'LEGACY_TIMELINE', matchedSignals: [] };
@@ -99,6 +118,8 @@ export function summarize(decision: VerdictDecision, bugClass: string, stats: Re
       return `Only ${stats.executed} of ${stats.total} recorded step(s) executed (${stats.skipped} skipped, ${stats.failed} failed) — not enough of the reproduction ran to prove the fix.`;
     case 'FAULT_TRIGGER_NOT_EXERCISED':
       return `The recorded steps replayed without re-triggering the request that produced the original ${bugClass} fault, so a clean run cannot prove it is fixed.`;
+    case 'FAULT_LOCATION_NOT_REACHED':
+      return `The replay ended on a different page than the one the ${bugClass} fault was recorded on, so a clean run there cannot prove this defect is fixed. Re-test against a stable build.`;
     case 'LEGACY_TIMELINE':
       return `Replay used the legacy session-wide timeline, which may never reach the faulting state; a clean run cannot prove this specific defect is fixed.`;
     default:
