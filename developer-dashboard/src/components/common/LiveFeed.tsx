@@ -140,8 +140,16 @@ function LiveFeed({
     if (last) {
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(last, 0, 0, canvas.width, canvas.height);
+        // Draw BEFORE clearing — a detached/closed bitmap throws in drawImage, and a
+        // pre-clear would leave the canvas white until the next (backpressured) frame.
+        // The frame is opaque and covers the full canvas, so no clearRect is needed.
+        try {
+          ctx.drawImage(last, 0, 0, canvas.width, canvas.height);
+        } catch {
+          // Retained frame is unusable — drop it so the next decode repaints cleanly.
+          closeIfBitmap(last);
+          lastPaintedRef.current = null;
+        }
       }
     }
   }, [calculateCoverDimensions]);
