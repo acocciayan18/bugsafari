@@ -8,6 +8,7 @@ import {
   generateShareToken,
   isReusableLink,
   isShareSnapshotServable,
+  resolveSharedReport,
   computeExpiresAt,
   createOrReuseShareLink,
   MAX_ACTIVE_SHARE_LINKS,
@@ -116,6 +117,42 @@ async function main(): Promise<void> {
     assert.equal(isShareSnapshotServable({ revokedAt: T0, expiresAt: future }, T0), false, 'revoked never serves, expiry in the future notwithstanding');
     assert.equal(isShareSnapshotServable({ revokedAt: null, expiresAt: new Date(T0.getTime() - 1) }, T0), false, 'expired never serves');
     assert.equal(isShareSnapshotServable({ expiresAt: future }, T0), true, 'absent revokedAt is treated as live');
+  });
+
+  await check('resolveSharedReport serves the LIVE report over the frozen snapshot (no stale share)', async () => {
+    const future = new Date(T0.getTime() + SHARE_TTL_MS['30d']);
+    const link = { snapshot: { report: 'frozen', verifyStatus: 'red' }, expiresAt: future, revokedAt: null };
+    const live = { report: 'live', verifyStatus: 'green' };
+    const outcome = await resolveSharedReport(link, T0, async () => live);
+    assert.equal(outcome.gone, false);
+    assert.deepEqual(!outcome.gone && outcome.report, live, 'later edits (verify green) reach the shared view');
+  });
+
+  await check('resolveSharedReport falls back to the snapshot when the origin session is gone', async () => {
+    const future = new Date(T0.getTime() + SHARE_TTL_MS['30d']);
+    const link = { snapshot: { report: 'frozen' }, expiresAt: future, revokedAt: null };
+    const outcome = await resolveSharedReport(link, T0, async () => null);
+    assert.equal(outcome.gone, false);
+    assert.deepEqual(!outcome.gone && outcome.report, link.snapshot, 'deleted-session link stays servable via snapshot');
+  });
+
+  await check('resolveSharedReport degrades a live-rebuild error to the snapshot, never breaking a valid link', async () => {
+    const future = new Date(T0.getTime() + SHARE_TTL_MS['30d']);
+    const link = { snapshot: { report: 'frozen' }, expiresAt: future, revokedAt: null };
+    const outcome = await resolveSharedReport(link, T0, async () => { throw new Error('db down'); });
+    assert.equal(outcome.gone, false);
+    assert.deepEqual(!outcome.gone && outcome.report, link.snapshot);
+  });
+
+  await check('resolveSharedReport gates revoked/expired links BEFORE any live rebuild runs', async () => {
+    const future = new Date(T0.getTime() + SHARE_TTL_MS['30d']);
+    let loads = 0;
+    const load = async () => { loads += 1; return { report: 'live' }; };
+    const revoked = await resolveSharedReport({ snapshot: {}, expiresAt: future, revokedAt: T0 }, T0, load);
+    assert.equal(revoked.gone, true, 'revoked never serves');
+    const expired = await resolveSharedReport({ snapshot: {}, expiresAt: new Date(T0.getTime() - 1), revokedAt: null }, T0, load);
+    assert.equal(expired.gone, true, 'expired never serves');
+    assert.equal(loads, 0, 'no live rebuild attempted for a gated link');
   });
 
   await check('repeated create with the same ttl reuses one row and rebuilds no snapshot', async () => {

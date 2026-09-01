@@ -14,7 +14,7 @@ import { verifyShareToken } from '../authentication/shareToken.js';
 import { startTestLimiter, guestStartWindowLimiter, guestStartCooldownLimiter, analyzeLimiter, writeLimiter, readLimiter, shareCreateLimiter } from '../middleware/rateLimiter.js';
 import {
   createOrReuseShareLink,
-  isShareSnapshotServable,
+  resolveSharedReport,
   MAX_ACTIVE_SHARE_LINKS,
   ShareLinkLimitError,
   SnapshotUnavailableError,
@@ -1918,25 +1918,30 @@ obsLog.info('[API] Saved to sessions:', result.message, '| runId:', result.runId
   });
 
   // Public, view-only forensic report behind an opaque share token. No requireAuth:
-  // the token IS the credential. The primary path serves the FROZEN snapshot persisted
-  // at share time — self-contained, so it is immune to later edits and outlives the
-  // origin session's deletion. A legacy stateless JWT (minted before the migration)
-  // falls back to a user-agnostic live rebuild until it expires. No mutation ever runs.
+  // the token IS the credential. The primary path serves the LIVE report rebuilt from
+  // the owned session, so a shared view reflects later edits (suggested fix, verify
+  // verdict, severity, repro) exactly as the owner sees them. The frozen snapshot is
+  // the fallback for when the origin session no longer exists (deleted before reap).
+  // Revoke/expiry gate first, on the row, regardless of report source. A legacy
+  // stateless JWT (minted before the migration) rebuilds live until it expires.
   app.get('/api/public/report/:token', readLimiter, async (request: Request, response: Response): Promise<void> => {
     obsLog.info('[API] GET /api/public/report/:token called');
     try {
       const token = extractStringParam(request.params.token) ?? '';
       if (!token) { response.status(401).json({ error: 'This share link is invalid or has expired.' }); return; }
 
-      // Primary: persisted snapshot. Reject revoked or expired (defensive — Mongo
-      // TTL-reaps at expiresAt, but the window between expiry and reap is guarded here).
-      const link = await ShareLinkModel.findOne({ token }).select('snapshot expiresAt revokedAt').lean();
+      // Row carries the security gate (revoke/expiry) plus the owner scope the live
+      // rebuild reads under, and the snapshot as deletion fallback.
+      const link = await ShareLinkModel.findOne({ token }).select('snapshot expiresAt revokedAt sessionId userId').lean();
       if (link) {
-        if (!isShareSnapshotServable(link, new Date())) {
+        const outcome = await resolveSharedReport(link, new Date(), () =>
+          buildForensicReport({ _id: link.sessionId, userId: link.userId }),
+        );
+        if (outcome.gone) {
           response.status(401).json({ error: 'This share link is invalid or has expired.' });
           return;
         }
-        response.json({ report: link.snapshot });
+        response.json({ report: outcome.report });
         return;
       }
 

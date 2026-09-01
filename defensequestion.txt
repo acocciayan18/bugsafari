@@ -1,0 +1,249 @@
+1. About the Problem
+
+Question: What problem does your system solve?
+Answer: BugSafari solves the problem of shallow, brittle, and expensive test coverage for modern Single-Page Applications. Traditional automated tests only check the exact paths a human wrote a script for, so untested flows and unexpected states ship untested. BugSafari removes the scripting step entirely: it explores the running app on its own, interacts with real controls, fuzzes inputs, and surfaces crashes, broken UI states, and backend loopholes that scripted suites usually never reach.
+
+Question: Why did you choose this problem?
+Answer: SPAs shift most application logic into the browser, where state changes without page reloads and the DOM is highly dynamic. This makes them hard to cover with static scripts, which break the moment a selector or flow changes. Autonomous exploration is a good fit because it adapts to whatever the app currently shows instead of assuming a fixed layout, so it stays useful as the app evolves.
+
+Question: Why is this problem important?
+Answer: Undetected UI crashes, unhandled exceptions, and backend logic gaps reach real users and cost teams money and trust. Writing and maintaining scripted end-to-end tests is slow and requires skilled effort, so coverage gaps are common in practice. A tool that finds real defects without a human writing scripts lowers the cost of catching regressions early.
+
+Question: Who experiences this problem?
+Answer: Web developers, QA engineers, and small teams or students who build SPAs but do not have the time or headcount to write and maintain deep automated test suites. Anyone shipping a browser app under time pressure feels the gap between what they tested and what users actually do.
+
+Question: What happens if this problem is not solved?
+Answer: Defects that no script covers slip into production, get reported by users instead of caught internally, and cost more to fix. Teams either accept the risk or spend large amounts of manual and scripting effort chasing coverage, which does not scale as the app grows.
+
+Question: How did you know that this problem actually exists?
+Answer: The gap is visible in how scripted testing works: it only checks predefined paths, and SPAs change state constantly. Inside this project it is demonstrated by the bundled target apps (bugsafari-target-app, bugsafari-shop / Nimbus Store) that contain deliberate, subtle bugs which scripted assertions would miss but BugSafari's exploration reaches. Beyond the codebase, broad survey evidence is a research-side claim and is not something the code itself proves.
+
+Question: What makes your proposed solution different from existing solutions?
+Answer: Instead of replaying recorded scripts, BugSafari makes its own decisions at each step. It rates every visible element with a single-layer perceptron, uses structural DOM hashing to avoid revisiting the same state, fuzzes inputs heuristically, and keeps a rolling buffer of recent actions so any crash comes with reproduction context. It combines adaptive exploration, loop prevention, fuzzing, and forensic capture in one engine aimed specifically at SPAs.
+
+2. About BugSafari
+
+Question: What is BugSafari in simple terms?
+Answer: BugSafari is a robot tester for web apps. You point it at a running SPA and it clicks, types, and navigates on its own, trying to break things, and it reports the crashes and broken states it finds along with the steps that caused them. No test script is required.
+
+Question: How does BugSafari work from start to finish?
+Answer: A user starts a run from the dashboard. The backend launches a Playwright-driven Chromium browser and loads the target. It scans the page for interactive elements, builds a feature vector for each, and scores them with the perceptron to pick the most promising action. It performs the action, watches for DOM changes, network activity, console errors, and unhandled exceptions, and fingerprints the new state with a structural DOM hash to know if it is new or already seen. It fuzzes form inputs to probe boundaries, records every action in a circular buffer, and streams live decisions, screenshots, and findings to the dashboard over Socket.IO. Confirmed findings are persisted to MongoDB (for logged-in users), and the run ends on stop, time budget, or exhaustion.
+
+Question: Why did you choose autonomous exploratory testing?
+Answer: Because it does not need a script and adapts to the app as it actually behaves. Scripted tests only cover what someone anticipated; autonomous exploration keeps trying new states and inputs, which is how it reaches the unexpected paths where defects hide. It also stays useful when the UI changes, since it re-scans rather than relying on fixed selectors.
+
+Question: Why focus on Single-Page Applications (SPAs)?
+Answer: SPAs are where scripted testing struggles most: state changes in place without full page loads, the DOM is dynamic, and flows are interaction-driven. That is exactly the environment where an adaptive, DOM-aware explorer with structural state hashing has the most advantage over static scripts.
+
+Question: What types of bugs can BugSafari detect?
+Answer: Based on the implementation, it detects unhandled JavaScript exceptions, console errors, broken UI states, network/API faults (including error status codes tied to a triggered action), input-handling failures found through fuzzing, and certain backend loopholes gated behind behavioral evidence (for example a bypass proven by an observed response, not just guessed). It also captures freeze/unresponsiveness conditions via its health and memory watchdogs.
+
+Question: What types of bugs can it NOT detect?
+Answer: It does not reliably detect visual or styling defects, business-logic errors that look correct on the surface, or issues that require human judgment about intended behavior. It cannot test anything it cannot reach or is blocked from (CAPTCHA, MFA), and it does not test mobile or desktop native apps. Anything requiring an oracle of "what the app was supposed to do" is outside its evidence-based detection.
+
+Question: How does BugSafari know that something is a bug?
+Answer: It relies on observable, behavioral signals rather than opinion: an unhandled exception, a console error, an error-level network response tied to an action, a UI that broke, or a security bypass proven by the response. Security findings in particular pass an evidence gate (securityEvidenceGate) that requires a structured marker such as a status code, endpoint, signal, or bypass proof before promotion. If there is no behavioral proof, it is not promoted.
+
+Question: How do you prevent false positives?
+Answer: Several layers. Self-caused network errors from BugSafari's own navigation/unmount are recognized and suppressed instead of reported (nav-superseded routing). Security findings require behavioral evidence at both promotion chokepoints. The Verify Fix path is hardened so DOM text alone does not produce a false "still active" verdict, and it checks that the fault location was actually reached. Findings are also deduplicated on a canonical signature so the same defect is not counted many times.
+
+Question: Can BugSafari detect a completely new or unknown type of bug?
+Answer: Only to the extent that the new bug produces one of the behavioral signals it watches for (an exception, a console error, a bad network response, a broken/frozen UI, or a proven bypass). It has no script telling it what to expect, so a novel crash that throws is catchable, but a novel defect that produces no observable fault signal would not be flagged. It detects symptoms, not categories.
+
+Question: What happens when BugSafari cannot confirm a finding?
+Answer: Unconfirmed or unproven candidates are not promoted into the reported findings. The evidence gate drops security candidates that lack a structured marker, and network errors that are explained by BugSafari's own navigation are routed away as non-findings. In short, without behavioral proof the candidate is silently discarded rather than shown as a bug.
+
+Question: Can BugSafari fix the bugs automatically? Why or why not?
+Answer: No. BugSafari finds and documents defects, it does not modify the target application's source. Fixing requires understanding intended behavior and editing code the tool has no access to. It does provide a Verify Fix flow that re-runs a scenario to check whether a previously found issue still reproduces after the developer fixes it, but the fix itself is the developer's job.
+
+3. Technical Questions
+
+Question: Why did you use Playwright?
+Answer: Playwright drives a real Chromium browser with a reliable API for clicking, typing, navigation, network interception, and screenshots, and it handles modern SPA timing well. It also lets BugSafari intercept and abort requests (used to block media/fonts and to enforce the domain lock), read console and page errors, and capture frames for the live view, which are all core to how the engine observes faults.
+
+Question: What is Chromium, and what is its relationship with Playwright?
+Answer: Chromium is the open-source browser engine that Chrome is built on. It is the actual browser that renders and runs the target app. Playwright is the automation library that launches and controls that Chromium instance programmatically. BugSafari uses Playwright as the driver and Chromium as the browser it drives.
+
+Question: Why did you separate the frontend and backend?
+Answer: They have different jobs and lifecycles. The backend (testing-core) runs heavy, long-lived browser automation and the ML engine; the frontend (developer-dashboard) is a light real-time operator console. Separating them lets the engine run and scale independently of the UI, keeps a clean contract between them via the shared package, and follows the clean-architecture boundaries the project is built on.
+
+Question: Why did you use REST API and WebSocket instead of only one communication method?
+Answer: They serve different needs. REST handles request/response actions like login, starting or stopping a run, and loading history, where a clear one-shot call and status code fit. Socket.IO WebSockets handle the continuous live stream of exploration decisions, screenshots, and findings, where pushing many updates as they happen is essential. Using only REST would mean constant polling; using only sockets would complicate simple transactional calls. Each is used where it is the right tool.
+
+Question: Why did you use MongoDB?
+Answer: Findings, forensic traces, and session history are semi-structured and vary in shape from run to run, which fits a document database better than rigid tables. MongoDB Atlas stores per-user sessions and their nested findings/traces naturally as documents, with multi-tenant isolation by user. The flexible schema also makes it easy to evolve the finding format as new fields are added.
+
+Question: Why did you use Redis?
+Answer: Redis backs BullMQ, the job queue that manages exploration runs across workers. It coordinates queued/running jobs, tracks fleet availability (waiting jobs), and supports the admission and concurrency controls. This lets BugSafari run work on background workers, handle multiple users, and reconcile stuck or ghost jobs rather than doing everything inline in the web process.
+
+Question: Why did you use Clean Architecture?
+Answer: The engine has many moving parts (navigation, scoring, fuzzing, forensics, persistence) and a long life. Clean architecture keeps domain logic (the exploration engine and scoring) independent from infrastructure (Playwright, MongoDB, Redis), which makes the core testable in isolation and the infrastructure swappable. The monorepo splits into domain, infrastructure, and shared contracts to keep those boundaries enforced.
+
+Question: Why did you use React/Vite/Node.js/Express?
+Answer: React with Vite gives a fast, modern dashboard with quick dev builds and good real-time UI ergonomics. Node.js/Express on the backend shares the same TypeScript language and types as the frontend through the shared package, and Node pairs naturally with Playwright and Socket.IO. Using one language across the stack reduces friction and lets the strict shared data contracts bridge both sides.
+
+Question: How does BugSafari handle multiple users running tests at the same time?
+Answer: Runs are admitted through a queue (BullMQ on Redis) with concurrency limits and a fleet-availability gate that refuses to start when no worker is available. Each user's data is isolated per-tenant in MongoDB. Guests get a restricted envelope (a single short synchronous run, reduced scope, tighter rate limits, no persistence). Slot release on clean stop frees worker capacity immediately so queued runs are not stuck.
+
+Question: How do you prevent BugSafari from leaving the target website's domain?
+Answer: A strict URL lock guard (StrictUrlLockGuard) is installed on the browser context and enforces that navigation and requests stay within the allowed target domain, which also serves as an SSRF/boundary control. Any route handler that intercepts requests must register after this guard and fall back non-owned requests, or it would disable the boundary guard. Off-domain navigation is blocked rather than followed.
+
+Question: How do you protect user information and credentials?
+Answer: Sessions are stateless and token-based. The refresh token lives in an httpOnly cookie (bugsafari_rt) so scripts cannot read it, while the access token is used with a CSRF header. Sensitive fields are masked in logs (credentialMask plus nested-redaction in the logger), and repro/persistence paths redact credentials so captured evidence does not leak secrets. Per-user data is isolated in the database, and the user's email is used only for identity.
+
+Question: What happens if the network connection is lost during a test?
+Answer: On the operator side, the dashboard uses Socket.IO which reconnects automatically, so a dropped UI connection does not kill the run; the engine keeps working on the backend/worker. On the target side, self-caused request cancellations from navigation are recognized and not reported as bugs. If the engine itself stalls, a worker heartbeat/liveness signal marks it as stalled for visibility, and stop watchdogs force-release hung stops so slots are not leaked. A genuine target-side network fault tied to an action can itself be recorded as a network finding.
+
+4. Testing and Validation
+
+Question: How did you test your system?
+Answer: The codebase includes unit and integration tests (for example perceptron.test.ts, circularBuffer.test.ts, domHasher tests, RiskScorer tests, verify-fix and telemetry tests) plus benchmark target apps under testing-core/testing/benchmark and an accuracy/ranking corpus. Dedicated buggy target apps (bugsafari-target-app, Nimbus Store) are used to confirm the engine actually reproduces the intended bug classes end to end.
+
+Question: What testing methods did you use?
+Answer: From what is in the repo: automated unit tests for individual components, integration tests for engine behavior, benchmark/seeded apps with known planted bugs to measure detection, and an accuracy bench for scoring/ranking quality. Any human-subject or survey-based evaluation would be research-side and is not something the code demonstrates.
+
+Question: How did you verify that BugSafari actually detects bugs?
+Answer: By running it against target apps that contain known, intentional defects and confirming it finds them. The benchmark seeded apps and the standalone target apps exist precisely so that every bug class the engine claims to catch can be reproduced on demand and checked against expected results.
+
+Question: How did you verify that the reported bugs are real?
+Answer: Findings are backed by behavioral evidence (exceptions, console errors, network status codes, proven bypasses) rather than guesses, and security findings pass an evidence gate. False-positive sources like self-caused navigation errors are suppressed, findings are deduplicated on a canonical signature, and the Verify Fix flow can re-run a scenario to confirm a defect still reproduces. Together these reduce the chance a reported bug is spurious.
+
+Question: How did you handle false positives?
+Answer: Nav-superseded network errors are routed away as non-findings, security candidates without structured behavioral proof are dropped, the Verify Fix verdict was hardened so DOM text alone cannot produce a false "still active" and it checks the fault location was reached, and findings collapse to families on one canonical signature so duplicates are not overcounted.
+
+Question: Did you encounter flaky or inconsistent results?
+Answer: Yes, in known places. One documented example is that a screencast/telemetry frame-rate test is environment and CPU bound and can fail on slow hosts (about 17fps versus a 20fps assert) without being a real regression, so it is meant to run inside the container. Media-heavy pages could also cause freeze/OOM, which was addressed with autoplay blocking, bounded evaluates, a memory watchdog, and forced disposal. Per-run fuzz salting was added so payload choices vary across runs.
+
+Question: What factors can affect BugSafari's performance?
+Answer: Host CPU and available RAM (the run uses a host-aware adaptive memory budget with degrade/abort tiers), the target app's weight (media-heavy or content-heavy pages pull more memory), network latency to the target, worker/fleet availability, and the time budget of the run. Guest runs are deliberately capped and reduced in scope.
+
+Question: How long does a typical test run take?
+Answer: Run length is bounded by the configured time/step budget and by stop conditions such as state exhaustion, so it is configurable rather than fixed. Guest runs are explicitly limited to a short synchronous single run (about a five-minute cap). A precise "typical" duration for authenticated runs is a configuration and evaluation detail, not a fixed constant in the code.
+
+Question: How does the testing duration affect the number of bugs found?
+Answer: In general, longer runs let the explorer reach more states and try more inputs, so more of the reachable defect surface gets covered, up to the point where the app's states are exhausted or the engine stops finding anything new (stagnation). After that point, extra time yields diminishing returns. An exact quantified relationship is an evaluation result, not something the code asserts.
+
+Question: Why did you use 176 respondents?
+Answer: This is a research/survey design decision and cannot be confirmed from the codebase. The repository contains no respondent data or survey instrument, so the sample size and its justification live in the thesis documentation, not in the implementation.
+
+Question: Why did you use ISO/IEC 25010 for evaluation?
+Answer: This is a research-methodology choice and is not defined in the code. ISO/IEC 25010 is a standard software-quality model whose characteristics are commonly used to structure capstone evaluations, but the specific rationale and the questionnaire mapping are part of the thesis write-up, not the implementation.
+
+Question: What were the results of your evaluation?
+Answer: The concrete evaluation scores cannot be confirmed from the codebase; they belong to the thesis document. The code only demonstrates that the engine detects its intended bug classes on the benchmark and target apps. Any numeric ISO 25010 or respondent results should be quoted from the research paper, not claimed from the source.
+
+Question: Which quality characteristic received the lowest score?
+Answer: This cannot be confirmed from the codebase, as no evaluation scores are stored in the repository. The answer must come from the thesis evaluation results.
+
+Question: What do those results tell you about your system?
+Answer: Since the numeric results are not in the code, this must be answered from the thesis. What the implementation itself supports is a narrower statement: the engine reliably reaches and reports its targeted defect classes on apps with known bugs, with false-positive controls in place. Broader interpretation depends on the documented evaluation.
+
+Question: What do those results tell you about your system?
+Answer: Same as above: interpretation of survey/ISO scores belongs to the thesis. From the code's perspective, the strongest evidence is reproducible detection of planted bugs plus deliberate false-positive suppression, which supports a claim of usefulness within the tested scope rather than a claim of exhaustive coverage.
+
+5. Limitations
+
+Question: What are the limitations of BugSafari?
+Answer: It only tests web SPAs it can reach in a browser, not mobile or desktop native apps. It detects observable fault signals, so it misses visual defects and business-logic bugs that look correct. It cannot pass CAPTCHA or MFA. It depends on host CPU/RAM and can degrade or abort on heavy pages. It does not fix bugs. And a clean run does not prove the app is bug-free.
+
+Question: Why can't it test mobile or desktop applications?
+Answer: The engine is built on Playwright driving Chromium against web content over the DOM. Native mobile and desktop apps do not expose a browser DOM and need entirely different automation stacks, which BugSafari does not implement. Its whole detection model assumes a web page it can scan and interact with.
+
+Question: Why can't it bypass CAPTCHA or MFA?
+Answer: These are deliberate human-verification and second-factor barriers designed to stop automated agents, and defeating them would be both out of scope and inappropriate for a testing tool. BugSafari has no mechanism to solve them, so flows locked behind CAPTCHA or MFA are simply not reachable by the explorer.
+
+Question: Why does BugSafari depend on CPU and RAM?
+Answer: It runs a full Chromium browser and renders the real target app, which is memory and CPU intensive, especially on media- or content-heavy pages that pull large image buffers. Because of this it uses an adaptive, host-aware memory budget with degrade and abort tiers and a memory watchdog; on constrained hosts it must reduce scope or stop to avoid freezing or being killed.
+
+Question: What types of bugs might BugSafari miss?
+Answer: Visual/styling issues, business-logic errors that produce no fault signal, defects behind CAPTCHA/MFA or otherwise unreachable states, bugs that only appear on inputs the fuzzer did not generate, and anything that requires knowing the app's intended behavior. It also may miss issues in states it did not reach within the time or memory budget.
+
+Question: Does a successful test mean the application has no bugs?
+Answer: No. A successful BugSafari run does not mean that the application has no bugs. It only means that no detectable defect was found within the tested scope, time, and available evidence.
+
+6. Research Questions
+
+Question: What is your main research question?
+Answer: The exact wording is defined in the thesis, not the code, so it should be quoted from the paper. In substance it asks whether an autonomous, scriptless exploratory testing engine can effectively discover real defects in SPAs without human-written test scripts. The implementation is the artifact built to answer that question.
+
+Question: Were your objectives achieved?
+Answer: From the implementation's standpoint, the core engineering objectives are met: autonomous DOM exploration, perceptron-based element scoring, structural-hash loop prevention, heuristic fuzzing, forensic capture with reproduction, and evidence-gated findings all exist and are tested. Whether the formal research objectives were achieved to the thesis's stated criteria is answered by the documented evaluation, not the code alone.
+
+Question: Which objective was the hardest to achieve?
+Answer: Judging by where the most engineering effort and hardening went, reliably separating real findings from noise was the hardest part: suppressing self-caused navigation errors, gating security findings on behavioral proof, hardening the Verify Fix verdict, and keeping counts consistent through canonical signatures. Managing memory on heavy pages (freeze/OOM) was a close second. Both are visible in the layered fixes across the codebase.
+
+Question: How do your findings answer your research questions?
+Answer: The engine demonstrably explores SPAs on its own and reports real, evidence-backed defects on apps with known bugs, which supports the claim that scriptless autonomous testing can find genuine issues. The precise mapping of results to each research question belongs to the thesis; the code supplies the working artifact and reproducible detection behind it.
+
+Question: What is the significance of your study?
+Answer: It shows that adaptive, scriptless exploration can meaningfully test SPAs, lowering the human cost of catching defects and reaching states scripted suites miss. It also packages several techniques (perceptron scoring, structural state hashing, fuzzing, forensic reproduction, evidence gating) into one coherent engine aimed at a real gap in SPA testing.
+
+Question: Who benefits from your study?
+Answer: SPA developers and QA engineers who want deeper coverage without writing scripts, small teams and students without QA headcount, and the software-testing research area interested in search-based and autonomous testing. Educationally, the reproduction/playbook output also helps learners understand how a given defect was triggered.
+
+Question: What is the contribution of your study?
+Answer: A working autonomous exploratory testing engine for SPAs that combines machine-learning element scoring, structural DOM hashing for loop prevention, heuristic fuzzing, real-time operator telemetry, and forensic, evidence-gated defect reporting with reproduction. The integration of these parts into a reliable, false-positive-aware system is the practical contribution.
+
+Question: What is the contribution of your study?
+Answer: As above: the main contribution is the integrated, scriptless SPA testing engine itself and its design choices (adaptive scoring, state hashing, fuzzing, forensic reproduction, evidence gating). Its value is that these techniques work together on real apps rather than existing only as separate ideas.
+
+7. Recommendations and Future Work
+
+Question: What would you improve if you had more time?
+Answer: Deeper detection of business-logic and visual defects, broader input generation, smarter path planning to reach deep states faster, and stronger performance on constrained hosts so heavy pages degrade less. More automated evaluation harnesses to quantify detection rate over time would also strengthen the evidence.
+
+Question: What features should be added in the future?
+Answer: Visual-regression detection, richer authentication support for gated flows, mobile/native coverage, more scenario types and attack surfaces, and possibly assisted fix suggestions. Better analytics on the dashboard summarizing coverage and defect trends over runs would also help operators.
+
+Question: Can BugSafari be used in a real software development company?
+Answer: The architecture is built for it (queue-based multi-user runs, per-tenant isolation, auth hardening, observability/metrics, container deployment), so it is realistic as a complementary tool in a CI or QA workflow. It would complement, not replace, scripted and manual testing, since it finds fault-signal bugs but not logic or visual correctness. Production adoption would still need hardening and validation beyond a capstone scope.
+
+Question: How could the system be scaled for more users?
+Answer: It already uses BullMQ on Redis with worker concurrency, admission control, and a fleet-availability gate, so scaling means adding more workers behind the queue and scaling MongoDB Atlas and Redis. Because each run is isolated per user and coordinated through the queue rather than run inline, horizontal worker scaling is the primary lever.
+
+Question: Can it eventually support mobile applications?
+Answer: Not with the current design, which depends on a browser DOM via Playwright/Chromium. Supporting native mobile would require a different automation layer (a mobile driver) and a different way to observe faults, so it is a substantial future extension rather than a small addition. Mobile web pages, however, are already within reach as web content.
+
+Question: Can it detect visual or business-logic bugs in the future?
+Answer: Potentially, but both need new capabilities the engine does not have today. Visual bugs would need image/layout comparison (visual regression). Business-logic bugs would need some notion of expected behavior (an oracle, assertions, or model), because they produce no crash signal. These are meaningful future directions, not current features.
+
+Question: What would you change if you were to develop the project again?
+Answer: This is a reflective question best answered in your own words for the panel. Grounded in the code, reasonable answers include: invest earlier in the false-positive controls and memory budgeting that later needed heavy retrofitting, design the finding signature and forensic contract up front so counts and persistence stay consistent, and build the evaluation harness sooner to measure detection continuously.
+
+8. Questions That Often Catch Students Off Guard
+
+Question: "Why should we believe your system actually works?"
+Answer: Because it is demonstrated against apps with known, intentional bugs and reproducibly finds them, and every reported finding is backed by an observable signal (exception, console error, network status, or proven bypass) rather than a guess, with explicit suppression of common false positives. You can watch it explore live and inspect the reproduction steps for each finding.
+
+Question: "What is the strongest evidence that your project is successful?"
+Answer: Reproducible end-to-end detection of planted defects on the benchmark and target apps, combined with the layered false-positive controls (evidence gating, nav-superseded suppression, hardened Verify Fix, canonical dedup) that show findings are real and not noise. The working, testable engine with passing component tests is the concrete artifact.
+
+Question: "What is the weakest part of your system?"
+Answer: Detection depth for defects that produce no fault signal, meaning visual and business-logic bugs, plus its dependence on host CPU/RAM which can force degrade or abort on heavy pages. It reports symptoms it can observe, so anything requiring an oracle of intended behavior is a genuine weak spot.
+
+Question: "What is the biggest limitation of your study?"
+Answer: That a clean run cannot prove absence of bugs; it only proves no detectable defect was found within the tested scope, time, and evidence. Coupled with the fact that it targets only web SPAs and observable fault signals, this bounds how strong any success claim can be.
+
+Question: "What happens if your system reports something incorrectly?"
+Answer: The design tries to prevent that with evidence gating, self-caused-error suppression, and canonical deduplication, but if a false finding slips through, the operator has the forensic reproduction steps and telemetry to check it, and the Verify Fix flow to re-test whether it actually reproduces. A wrong report costs some developer time to dismiss but does not affect the target app, since BugSafari never modifies it.
+
+Question: "What happens if BugSafari misses a real bug?"
+Answer: A missed bug (false negative) means the defect either produced no signal it watches for, sat in a state it did not reach, or needed an input it did not generate. That is why BugSafari is positioned as a complement to, not a replacement for, scripted and manual testing; a clean run is not a guarantee of correctness.
+
+Question: "What makes this a capstone project rather than just a software application?"
+Answer: It applies and integrates non-trivial computer-science techniques toward a research question: a single-layer perceptron with delta-rule learning for element scoring, structural DOM hashing for state deduplication, search-based exploration with novelty and stagnation scoring, heuristic fuzzing, and forensic reproduction, all evaluated against known-bug targets. It is engineering plus applied method plus evaluation, not just a CRUD app.
+
+Question: "What did you personally contribute to the project?"
+Answer: This is yours to answer honestly to the panel; the codebase cannot attest to individual contribution. Point to the specific parts you designed and implemented (for example the scoring model, the exploration loop, the forensic pipeline, the dashboard, or the auth/queue infrastructure) and the problems you personally solved.
+
+Question: "What was the most difficult technical problem you encountered?"
+Answer: Based on the code, the strongest candidates are keeping findings trustworthy (suppressing self-caused navigation errors, gating security findings on behavioral proof, and hardening the Verify Fix verdict against false "still active") and controlling browser memory so media/content-heavy pages did not freeze or trigger OOM. Both required multi-layer fixes rather than a single change.
+
+Question: "If we remove one major component from your system, what happens?"
+Answer: It depends which. Remove structural DOM hashing and the explorer loops on the same states and stops making progress. Remove the perceptron scoring and it clicks blindly instead of prioritizing risky, high-value controls. Remove the evidence gate and forensic layer and findings become noisy and unreproducible. Each major component removes a distinct capability that the others depend on.
+
+Question: "Why should developers use BugSafari instead of existing testing tools?"
+Answer: Not instead of, but alongside. Scripted tools only cover what you wrote; BugSafari needs no script, adapts to the live app, and reaches unexpected states automatically, surfacing crashes and backend faults with reproduction steps. It lowers the cost of broad exploratory coverage that would otherwise be manual, while scripted tests still handle exact expected-behavior checks.
+
+Question: "If you had another six months, what would you improve?"
+Answer: Add visual-regression and some form of business-logic checking so it catches defects that produce no crash signal, broaden input generation and path planning to reach deeper states, improve performance and stability on constrained hosts, expand authentication support for gated flows, and build a continuous evaluation harness to quantify detection rate over time.

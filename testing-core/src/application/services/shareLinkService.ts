@@ -71,10 +71,36 @@ export function computeExpiresAt(ttl: ShareTtl, now: Date): Date {
   return new Date(now.getTime() + SHARE_TTL_MS[ttl]);
 }
 
-// Read-side guard for the public route: a snapshot is servable only while the link
-// is unrevoked AND unexpired. Revoked kills access immediately, even before expiry.
+// Read-side guard for the public route: a link is servable only while it is
+// unrevoked AND unexpired. Revoked kills access immediately, even before expiry.
 export function isShareSnapshotServable(link: { revokedAt?: Date | null; expiresAt: Date }, now: Date): boolean {
   return !link.revokedAt && link.expiresAt.getTime() > now.getTime();
+}
+
+// Minimal read-side shape of a persisted link the public route resolves.
+export interface ServableShareLink {
+  snapshot: Record<string, unknown>;
+  expiresAt: Date;
+  revokedAt?: Date | null;
+}
+
+export type ShareReadOutcome =
+  | { gone: true }
+  | { gone: false; report: Record<string, unknown> };
+
+// Live-first read policy: after the security gate passes, serve the freshly-rebuilt
+// report so a shared view reflects later edits (suggested fix, verify verdict,
+// severity, repro) exactly as the owner sees them. Fall back to the frozen snapshot
+// only when the origin session no longer exists (deleted before TTL reap). loadLive
+// errors degrade to the snapshot rather than break a valid link.
+export async function resolveSharedReport(
+  link: ServableShareLink,
+  now: Date,
+  loadLive: () => Promise<Record<string, unknown> | null>,
+): Promise<ShareReadOutcome> {
+  if (!isShareSnapshotServable(link, now)) return { gone: true };
+  const live = await loadLive().catch(() => null);
+  return { gone: false, report: live ?? link.snapshot };
 }
 
 // Reuse an active same-ttl link; else cap-check, freeze a snapshot, and atomically

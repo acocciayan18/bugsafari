@@ -1,16 +1,15 @@
 import { Schema, model, Document, Types } from 'mongoose';
 import type { ShareTtl } from '../../../../../shared/types.js';
 
-// A persisted view-only share link. Unlike the legacy stateless JWT, this carries
-// a FROZEN report snapshot so a shared link stays byte-stable even if the origin
-// session is later edited (verify/insights), archived, trashed, or deleted — and
-// it can be revoked before its expiry. Mongo TTL-reaps the row at expiresAt.
+// A persisted view-only share link. The public read rebuilds the report LIVE from
+// the owned session so a shared view reflects later edits (verify/insights/severity);
+// the FROZEN snapshot here is the fallback for when that session no longer exists
+// (deleted before reap). Revocable before expiry. Mongo TTL-reaps the row at expiresAt.
 export interface IShareLink extends Document {
   // Opaque high-entropy URL credential (base64url). Unguessable; the only key a
   // public viewer presents. Stored as-is so the owner's management UI can re-copy it.
   token: string;
-  // Origin session — for owner-scoped grouping/listing only; the read path never
-  // touches it (the snapshot is self-contained and survives the session's deletion).
+  // Origin session — owner scope for the live read rebuild, and grouping/listing.
   sessionId: Types.ObjectId;
   // Public RUN- code copied at share time, for display in the management list.
   runId: string;
@@ -20,8 +19,8 @@ export interface IShareLink extends Document {
   // Set on manual revoke — an unexpired-but-revoked row is retained (and rejected
   // on read) until its expiry, then TTL-reaped like any other.
   revokedAt?: Date | null;
-  // Frozen ForensicReportResponse captured at share time — the only source the
-  // public read returns. Mixed: an already-assembled, sanitized report object.
+  // Frozen ForensicReportResponse captured at share time — the deletion fallback for
+  // the live read. Mixed: an already-assembled, sanitized report object.
   snapshot: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
