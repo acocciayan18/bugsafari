@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "Bugsafari.vercel.app CSP warning"
+git commit -m "added a lock in frontend"
 git push origin HEAD:dev --force
 
 
