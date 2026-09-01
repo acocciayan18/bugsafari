@@ -43,3 +43,26 @@ test('valid input returns a 200 with the computed total', async () => {
     assert.equal(body.total, 3);
   });
 });
+
+const postProfile = (base, body) =>
+  fetch(`${base}/api/profile`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+test('profile accepts a value within the client caps (200)', async () => {
+  await withServer(async (base) => {
+    const r = await postProfile(base, { username: 'alice', bio: 'hi' });
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).ok, true);
+  });
+});
+
+test('profile crashes when a stripped-constraint over-length value is submitted (500)', async () => {
+  await withServer(async (base) => {
+    const r = await postProfile(base, { username: 'A'.repeat(40), bio: 'hi' });
+    assert.equal(r.status, 500);
+    assert.match((await r.json()).error, /too long for column/);
+  });
+});

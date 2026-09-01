@@ -194,9 +194,9 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "added a lock in frontend"
-git checkout -b 9-2-Ayan
-git push --set-upstream origin 9-2-Ayan
+git commit -m "improved bugsafari-target-app"
+git checkout -b 9-2-Ayan-1
+git push --set-upstream origin 9-2-Ayan-1
 
 
 

@@ -44,6 +44,14 @@ export function registerInjection(app) {
     res.status(200).json({ ok: true, total: qty });
   });
 
-  // vulnerable: no server-side re-validation; accepts whatever the client sends (CWE-602)
-  app.post('/api/profile', (_req, res) => res.status(200).json({ ok: true }));
+  // vulnerable: trusts the browser to enforce the length caps, so a stripped-constraint
+  // over-length value overflows the fixed-width column and crashes the write (CWE-602).
+  app.post('/api/profile', (req, res) => {
+    const username = String(req.body?.username ?? '');
+    const bio = String(req.body?.bio ?? '');
+    if (username.length === 0 || username.length > 8 || bio.length > 20) {
+      return res.status(500).json({ error: 'profile write failed: value too long for column "username"' });
+    }
+    res.status(200).json({ ok: true });
+  });
 }
