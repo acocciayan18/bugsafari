@@ -1,22 +1,32 @@
-Boundary Stress Failure
+Client Side Constraint Bypass
 Medium
 
-CWE
-CWE-400
+CWE-602
 Status
-INCONCLUSIVE 34%
+CONFIRMED 90%
 Message
-Network request failed: GET /api/products (net::ERR_FAILED) · The failed request left the interface broken (unhandled error or stuck UI).
+The "pass" field enforces maxlength=999999 only in the browser. After that check was removed and "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA..." was submitted, POST /api/graphql/ returned HTTP 200 instead of rejecting it, so the server did not re-apply this rule on this request.
 Element
-<input[Newsletter email]>
-input[aria-label="Newsletter email"]
+pass
+#_R_1hmkqsqppb6amH1_
 Reproduction Guide
 
 1
 open
-Navigate to /products?category=electronics&sort=rating
+Navigate to /
 2
-rapid
-Click 5 controls at the same time: the "Add" button, the "Add" button, the "Add" button, the "Add" button and the "home" button
+bypass
+Remove the maxlength=999999 validation from the "pass" field, enter "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA…(1000031 chars total, full value preserved for replay)", then submit the form
 Route
-/products?category=electronics&sort=rating
+/
+·
+Element
+"pass" field
+Suggested Fix
+
+
+Suggested fix: re-check every rule on the server
+1. Re-validate every field rule on the server and never trust what the browser sends
+2. Reject any request whose values break the documented rules
+3. Add a test that submits with the browser rules removed and expects a 4xx response

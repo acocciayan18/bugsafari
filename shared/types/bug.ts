@@ -174,6 +174,10 @@ export interface ConstraintBypassDetail {
   method: string;
   /** HTTP status the server answered with. */
   status: number;
+  /** Observable adverse effect the accepted value caused — the proof of impact; absent ⇒ not a finding. */
+  effect?: 'server-error' | 'client-error';
+  /** Human phrase describing the observed effect, rendered on the finding card. */
+  effectDetail?: string;
 }
 
 export interface IncidentReport {

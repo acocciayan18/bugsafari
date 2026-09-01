@@ -15,6 +15,7 @@ export const PROOF_REQUIRED_CLASSES: ReadonlySet<BugClass> = new Set<BugClass>([
   'FUZZ_VULNERABILITY_LEAK',
   'SECURITY_VULNERABILITY_LEAK',
   'CLIENT_TRUST_BOUNDARY_VIOLATION',
+  'CLIENT_SIDE_CONSTRAINT_BYPASS',
 ]);
 
 // True ⇒ this class demands behavioral proof before it may be reported.
@@ -23,8 +24,10 @@ export function requiresBehavioralProof(bugClass: BugClass): boolean {
 }
 
 // Real proof: a correlated server response (status/endpoint), a matched runtime signal
-// signature, or a structured bypass. Excludes payload/selector/message; those are input
-// characteristics, not proof of impact.
+// signature, or a structured bypass carrying a proven adverse effect. Excludes
+// payload/selector/message; those are input characteristics, not proof of impact. A bare
+// bypass (constraint stripped, value merely accepted) counts ONLY with an effect marker —
+// acceptance alone is not impact.
 export function hasBehavioralProof(finding: Pick<BugFinding, 'evidence'>): boolean {
   const e = finding.evidence;
   if (!e) return false;
@@ -33,7 +36,7 @@ export function hasBehavioralProof(finding: Pick<BugFinding, 'evidence'>): boole
     typeof e.specifics?.statusCode === 'number' ||
     Boolean(e.specifics?.endpoint) ||
     (e.signals?.length ?? 0) > 0 ||
-    Boolean(e.bypass)
+    Boolean(e.bypass?.effect)
   );
 }
 

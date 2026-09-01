@@ -22,7 +22,7 @@ function f(bugClass: BugClass, evidence?: BugFinding['evidence']): BugFinding {
 console.log('securityEvidenceGate — which classes demand proof');
 
 check('the named vuln classes require behavioral proof', () => {
-  const gated: BugClass[] = ['NOSQL_INJECTION', 'SQL_INJECTION', 'FUZZ_VULNERABILITY_LEAK', 'SECURITY_VULNERABILITY_LEAK', 'CLIENT_TRUST_BOUNDARY_VIOLATION'];
+  const gated: BugClass[] = ['NOSQL_INJECTION', 'SQL_INJECTION', 'FUZZ_VULNERABILITY_LEAK', 'SECURITY_VULNERABILITY_LEAK', 'CLIENT_TRUST_BOUNDARY_VIOLATION', 'CLIENT_SIDE_CONSTRAINT_BYPASS'];
   for (const c of gated) assert.equal(requiresBehavioralProof(c), true, c);
 });
 
@@ -60,9 +60,14 @@ check('a matched runtime signal signature is proof', () => {
   assert.equal(hasBehavioralProof(f('NOSQL_INJECTION', { signals: ['NOSQL_ERROR'] })), true);
 });
 
-check('a structured constraint bypass is proof', () => {
+check('a bare constraint bypass (value merely accepted, no effect) is NOT proof', () => {
   const bypass = { element: 'Input: "q" (id: #q)', payload: 'x', strippedAttribute: 'required', endpoint: '/api/save', method: 'POST', status: 200 };
-  assert.equal(hasBehavioralProof(f('CLIENT_TRUST_BOUNDARY_VIOLATION', { bypass })), true);
+  assert.equal(hasBehavioralProof(f('CLIENT_SIDE_CONSTRAINT_BYPASS', { bypass })), false);
+});
+
+check('a constraint bypass carrying a proven effect is proof', () => {
+  const bypass = { element: 'Input: "q" (id: #q)', payload: 'x', strippedAttribute: 'required', endpoint: '/api/save', method: 'POST', status: 500, effect: 'server-error' as const, effectDetail: 'errored (HTTP 500)' };
+  assert.equal(hasBehavioralProof(f('CLIENT_SIDE_CONSTRAINT_BYPASS', { bypass })), true);
 });
 
 console.log('\nsecurityEvidenceGate — reportable = non-vuln class OR a proven vuln');
@@ -73,6 +78,12 @@ check('a vuln finding with no proof is not reportable (the policy case)', () => 
 
 check('a non-vuln finding is always reportable regardless of evidence', () => {
   assert.equal(isReportableSecurityFinding(f('SPA_STATE_RACE_CONDITION', {})), true);
+});
+
+check('a constraint bypass is reportable only with a proven effect', () => {
+  const bare = { element: 'e', payload: 'x', strippedAttribute: 'maxlength=8', endpoint: '/api/save', method: 'POST', status: 200 };
+  assert.equal(isReportableSecurityFinding(f('CLIENT_SIDE_CONSTRAINT_BYPASS', { bypass: bare })), false);
+  assert.equal(isReportableSecurityFinding(f('CLIENT_SIDE_CONSTRAINT_BYPASS', { bypass: { ...bare, status: 500, effect: 'server-error' } })), true);
 });
 
 check('every real finder shape survives the gate (no legit finding is dropped)', () => {

@@ -4,7 +4,8 @@ import type { BugFinder, BugContext, BugFinding } from '../types.js';
 import { triggerFormSubmission } from '../../domain/services/exploration/formSubmitter.js';
 import { humanizeElement, resolveElementLabel } from '../../../../shared/reproduction.js';
 import { ActiveScenarioTracker } from '../../infrastructure/monitoring/activeScenarioTracker.js';
-import { detectSoftFailBody, isExpectedRejectionEnvelope, MAX_SOFT_FAIL_BODY_BYTES } from '../../domain/services/verification/softFailBody.js';
+import { resolveMaskedFailure, isProxyGatewayArtifact, MAX_SOFT_FAIL_BODY_BYTES } from '../../domain/services/verification/softFailBody.js';
+import { matchesCategory } from '../knowledgeBase/signalPatterns.js';
 
 // Rapid-click / concurrency stress windows. While one runs, a state-changing 2xx firing
 // in the observation window is far more likely a burst-provoked autosave/telemetry write
@@ -19,6 +20,12 @@ function isBurstScenarioActive(): boolean {
 
 // Window (ms) to let the submitted request settle so its response can be judged.
 const OBSERVE_WINDOW_MS = 1200;
+
+// A maxlength is only an ENFORCEABLE gate within a plausible range. A nominal placeholder
+// like maxlength=999999 caps nothing real, so exceeding it proves nothing — probing it
+// manufactured a CWE-602 out of a free-text field. At/above this bound the constraint is
+// treated as absent and the field is never probed.
+const MAX_ENFORCEABLE_MAXLENGTH = 10000;
 
 interface ViolationPlan {
   violating: string;
@@ -43,9 +50,17 @@ function relativeEndpoint(url: string): string {
   }
 }
 
-// Prose form of the submitted value — empty string reads as an explicit phrase.
-function describePayload(value: string): string {
-  return value === '' ? 'an empty value' : `"${value}"`;
+// Longest payload rendered inline in the finding MESSAGE prose. An amplification blob (a
+// near-cap maxlength value is thousands of chars) must not bloat the sentence — the full
+// value stays in the bypass detail grid and the reproduction step.
+const MAX_MESSAGE_PAYLOAD = 80;
+
+// Prose form of the submitted value — empty string reads as an explicit phrase; an
+// over-long value is truncated with a factual length note, never rendered in full.
+export function describePayload(value: string): string {
+  if (value === '') return 'an empty value';
+  if (value.length <= MAX_MESSAGE_PAYLOAD) return `"${value}"`;
+  return `"${value.slice(0, MAX_MESSAGE_PAYLOAD)}…" (${value.length} chars, full value in evidence)`;
 }
 
 function sameOrigin(url: string, origin: string): boolean {
@@ -99,17 +114,62 @@ export function correlatesToSubmission(body: string, url: string, payload: strin
   return target.actionPath !== null && safePathname(url) === target.actionPath;
 }
 
+// The observable adverse effect a stripped-constraint submission produced. Absent ⇒ the
+// value was accepted harmlessly (or correctly rejected), which is NOT a reportable bypass.
+interface ProvenEffect {
+  kind: 'server-error' | 'client-error';
+  detail: string;
+  status: number;
+  url: string;
+  method: string;
+}
+
+interface CorrelatedHit {
+  status: number;
+  url: string;
+  method: string;
+  response: Response;
+}
+
 /**
- * A correlated 2xx only proves a bypass when its body shows the value was SILENTLY accepted:
- * no soft-fail envelope ({"error":true}, "success":false, …) and no auth/validation rejection
- * ("invalid credentials", "required", …). A 200 carrying either is the server enforcing the rule
- * with the wrong status code, not a bypass — the same body signal the API-contract oracle uses,
- * so the two oracles can never disagree about the same response.
+ * Impact oracle. A bypass is reportable ONLY when the invalid value caused a meaningful
+ * effect, never because the server merely returned 2xx. Effects, in order:
+ *  - a correlated 5xx (server crash/error from the value; edge/tunnel 5xx excluded),
+ *  - a correlated 2xx masking a backend failure (leaked stack / declared error, minus the
+ *    normal-GraphQL and expected-rejection suppressions — see resolveMaskedFailure),
+ *  - a correlated 2xx (server accepted it) paired with an unhandled client exception the
+ *    value then triggered (crash/freeze).
+ * A silent benign 2xx, a correlated 4xx (correct rejection), or a lone client error with no
+ * server acceptance yields null → the finding is discarded as a false positive.
  */
-export function acceptedSilently(url: string, body: string): boolean {
-  if (detectSoftFailBody(body).softFail) return false;
-  if (isExpectedRejectionEnvelope(url, body)) return false;
-  return true;
+// Pure server-effect classifier for a correlated response body. A 5xx (server crash from the
+// value; edge/tunnel 5xx excluded) or a <400 body masking a backend failure (leaked stack /
+// declared error, minus the normal-GraphQL and expected-rejection suppressions) returns the
+// human detail. A benign 2xx or a 4xx rejection returns null — the server handled it safely.
+export function serverEffectDetail(status: number, url: string, body: string): string | null {
+  if (status >= 500 && !isProxyGatewayArtifact(status, body)) return `errored (HTTP ${status})`;
+  if (status < 400) {
+    const serverSignature = body.length <= MAX_SOFT_FAIL_BODY_BYTES && matchesCategory('SERVER_ERROR', body);
+    const masked = resolveMaskedFailure({ url, body, serverSignature });
+    if (masked.softFail) return `masked a backend failure (${masked.matched})`;
+  }
+  return null;
+}
+
+async function resolveEffect(hit: CorrelatedHit | null, clientError: string | null): Promise<ProvenEffect | null> {
+  if (!hit) return null; // no correlated server response ⇒ not attributable to a server-side bypass
+  let body = '';
+  try {
+    body = (await hit.response.text()).slice(0, MAX_SOFT_FAIL_BODY_BYTES);
+  } catch {
+    body = '';
+  }
+  const base = { status: hit.status, url: hit.url, method: hit.method };
+  const serverDetail = serverEffectDetail(hit.status, hit.url, body);
+  if (serverDetail) return { kind: 'server-error', detail: serverDetail, ...base };
+  // A server-accepted (2xx) value that then crashed the client is a client-side effect.
+  if (hit.status < 400 && clientError) return { kind: 'client-error', detail: clientError, ...base };
+  return null; // accepted harmlessly, or a correlated 4xx = correct rejection
 }
 
 // Data-type constraint from the parse-time snapshot, so it survives an earlier action
@@ -143,15 +203,19 @@ export interface ConstraintSnapshot {
 // prove it instead.
 async function readConstraintSnapshot(page: Page, selector: string): Promise<ConstraintSnapshot | null> {
   return page
-    .$eval(selector, (node) => {
-      if (!(node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement)) return null;
-      const maxLen = parseInt(node.getAttribute('maxlength') || '', 10);
-      return {
-        maxLength: Number.isFinite(maxLen) && maxLen > 0 ? maxLen : null,
-        pattern: node.getAttribute('pattern'),
-        required: node.hasAttribute('required'),
-      };
-    })
+    .$eval(
+      selector,
+      (node, cap) => {
+        if (!(node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement)) return null;
+        const maxLen = parseInt(node.getAttribute('maxlength') || '', 10);
+        return {
+          maxLength: Number.isFinite(maxLen) && maxLen > 0 && maxLen < cap ? maxLen : null,
+          pattern: node.getAttribute('pattern'),
+          required: node.hasAttribute('required'),
+        };
+      },
+      MAX_ENFORCEABLE_MAXLENGTH,
+    )
     .catch(() => null);
 }
 
@@ -159,7 +223,8 @@ async function readConstraintSnapshot(page: Page, selector: string): Promise<Con
 // value the field HAD even after a preceding fuzz action strips the live DOM (the sweep
 // runs post-action). Returns null when the element carries no such constraint.
 export function snapshotFromElement(element: InteractiveElement): ConstraintSnapshot | null {
-  const maxLength = typeof element.maxLength === 'number' && element.maxLength > 0 ? element.maxLength : null;
+  const maxLength =
+    typeof element.maxLength === 'number' && element.maxLength > 0 && element.maxLength < MAX_ENFORCEABLE_MAXLENGTH ? element.maxLength : null;
   const pattern = element.pattern && element.pattern !== '' ? element.pattern : null;
   const required = element.required === true;
   if (maxLength === null && pattern === null && !required) return null;
@@ -220,12 +285,12 @@ async function stripAndInject(page: Page, selector: string, violating: string): 
 }
 
 /**
- * Confirms client-only validation: strips a field's client constraint, submits a
- * value the browser would reject, and reports ONLY when the backend accepts it
- * (a 2xx on a state-changing same-origin request that CORRELATES to this
- * submission — see {@link correlatesToSubmission}). A server that rejects the value
- * (4xx / error) is correctly enforcing the rule and yields no finding — so a silent
- * acceptance, the most common form of this bug, is no longer invisible.
+ * Confirms client-only validation is unsafe: strips a field's client constraint, submits a
+ * value the browser would reject, and reports ONLY when that value causes a meaningful
+ * effect on a same-origin state-changing request that CORRELATES to this submission
+ * (see {@link correlatesToSubmission} and {@link resolveEffect}) — a server error/crash, a
+ * masked backend failure, or an unhandled client crash. A value merely accepted with a
+ * benign 2xx, or correctly rejected (4xx), is NOT a finding — acceptance is not impact.
  */
 // Fields already probed this run — one submit-and-confirm attempt per field is
 // enough, so a re-visited control is a cheap skip instead of re-submitting.
@@ -269,71 +334,80 @@ export const constraintBypassFinder: BugFinder = {
     // name are read while the DOM still reflects the untouched control.
     const target = await resolveSubmissionTarget(ctx.page, element.selector);
     // Holder object (not a bare let) so TS doesn't narrow the closure-mutated value. The
-    // Response is kept so its body can be judged after the window — a 2xx alone never proves
-    // acceptance, since an error/rejection body is a server rejection wearing a 200.
-    const captured: { hit: { status: number; url: string; method: string; response: Response } | null } = { hit: null };
+    // correlated response is captured at ANY status (not just 2xx) so a 5xx — the server
+    // crashing on the invalid value — is observable, not filtered away as noise.
+    const captured: { hit: CorrelatedHit | null } = { hit: null };
     const onResponse = (response: Response): void => {
       if (captured.hit) return;
       try {
         const request = response.request();
         const method = request.method();
         const stateChanging = method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
-        if (!stateChanging || response.status() >= 400 || !sameOrigin(response.url(), origin)) return;
+        if (!stateChanging || !sameOrigin(response.url(), origin)) return;
         if (!correlatesToSubmission(request.postData() ?? '', response.url(), plan.violating, target)) return;
         captured.hit = { status: response.status(), url: response.url(), method, response };
       } catch {
         // response detached — ignore
       }
     };
+    // An unhandled client exception the injected value triggers is a client-side effect
+    // (crash/freeze). Only counted alongside a server-accepted (2xx) submission below.
+    const clientError: { message: string | null } = { message: null };
+    const onPageError = (err: Error): void => {
+      if (clientError.message === null) clientError.message = err.message || 'unhandled client exception';
+    };
 
     ctx.page.on('response', onResponse);
+    ctx.page.on('pageerror', onPageError);
     try {
       await stripAndInject(ctx.page, element.selector, plan.violating);
       await triggerFormSubmission(ctx.page, element.selector);
       await ctx.page.waitForTimeout(OBSERVE_WINDOW_MS);
     } finally {
       ctx.page.off('response', onResponse);
+      ctx.page.off('pageerror', onPageError);
     }
 
-    const accepted = captured.hit;
-    if (!accepted) return []; // server rejected/errored or nothing submitted → not confirmed
-
-    // A correlated 2xx is only a bypass when its body shows silent acceptance. An unreadable
-    // body yields no positive proof, so it is not reported (the finder reports on evidence only).
-    let body: string;
-    try {
-      body = (await accepted.response.text()).slice(0, MAX_SOFT_FAIL_BODY_BYTES);
-    } catch {
-      return [];
-    }
-    if (!acceptedSilently(accepted.url, body)) return []; // 200+error/rejection body = server enforced the rule
+    // Require proof the accepted value caused a meaningful effect. Mere acceptance (a silent
+    // benign 2xx) is not impact and is discarded as a false positive.
+    // Out of reach on this single-submission path: "invalid data stored" / "wrong transaction
+    // result" need a re-fetch or baseline differential, so they are conservatively dropped
+    // rather than falsely reported.
+    const effect = await resolveEffect(captured.hit, clientError.message);
+    if (!effect) return [];
 
     const label = resolveElementLabel(element);
-    const endpoint = relativeEndpoint(accepted.url);
+    const endpoint = relativeEndpoint(effect.url);
+    const consequence =
+      effect.kind === 'server-error'
+        ? `${effect.method} ${endpoint} ${effect.detail}`
+        : `${effect.method} ${endpoint} accepted it (HTTP ${effect.status}) and the client then crashed: ${effect.detail}`;
     const message =
       `The "${label}" field enforces ${plan.constraint} only in the browser. ` +
-      `After that check was removed and ${describePayload(plan.violating)} was submitted, ` +
-      `${accepted.method} ${endpoint} returned HTTP ${accepted.status} instead of rejecting it, ` +
-      `so the server did not re-apply this rule on this request.`;
+      `After that check was removed and ${describePayload(plan.violating)} was submitted, ${consequence}, ` +
+      `so the server did not safely re-apply this rule on this request.`;
 
     return [
       {
         bugClass: 'CLIENT_SIDE_CONSTRAINT_BYPASS',
-        title: 'Server accepted a value the browser was supposed to block',
+        title: 'Server mishandled a value the browser was supposed to block',
         severity: 'MEDIUM',
         evidence: {
           message,
           selector: element.selector,
           actionExecuted: 'form-constraint-bypass',
           stateHash: ctx.stateHash,
-          statusCode: accepted.status,
+          statusCode: effect.status,
+          signals: [effect.kind === 'server-error' ? 'SERVER_ERROR' : 'CLIENT_CRASH'],
           bypass: {
             element: humanizeElement(element),
             payload: plan.violating,
             strippedAttribute: plan.constraint,
             endpoint,
-            method: accepted.method,
-            status: accepted.status,
+            method: effect.method,
+            status: effect.status,
+            effect: effect.kind,
+            effectDetail: effect.detail,
           },
         },
       },

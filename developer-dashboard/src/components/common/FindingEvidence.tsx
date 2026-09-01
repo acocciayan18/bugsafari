@@ -127,8 +127,15 @@ function BypassDetails({ bypass }: { bypass: NonNullable<FindingView['bypass']> 
           <Chip text={`${bypass.method} ${bypass.endpoint}`} />
         </BypassRow>
         <BypassRow label="Response">
-          <span className="font-mono text-(--status-critical-fg)">HTTP {bypass.status}</span>, and the value was accepted
+          <span className="font-mono text-(--status-critical-fg)">HTTP {bypass.status}</span>
+          {bypass.effect === 'client-error' ? ', accepted' : ''}
         </BypassRow>
+        {bypass.effectDetail && (
+          <BypassRow label="Observed effect">
+            {bypass.effect === 'server-error' ? 'Server ' : 'Client '}
+            {bypass.effectDetail}
+          </BypassRow>
+        )}
       </div>
     </div>
   );

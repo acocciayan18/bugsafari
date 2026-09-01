@@ -194,9 +194,9 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "Bugsafari.vercel.app CSP warning"
-git checkout -b 8-31-Ayan-1
-git push --set-upstream origin 8-31-Ayan-1
+git commit -m "added a lock in frontend"
+git checkout -b 9-2-Ayan
+git push --set-upstream origin 9-2-Ayan
 
 
 

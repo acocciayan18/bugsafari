@@ -3,7 +3,7 @@
 // Exits non-zero on the first failed assertion.
 
 import assert from 'node:assert/strict';
-import { planFromType, planFromSnapshot, snapshotFromElement, correlatesToSubmission, acceptedSilently } from './constraintBypass.js';
+import { planFromType, planFromSnapshot, snapshotFromElement, correlatesToSubmission, serverEffectDetail, describePayload } from './constraintBypass.js';
 import type { InteractiveElement } from '../../domain/entities/InteractiveElement.js';
 
 let passed = 0;
@@ -146,38 +146,70 @@ function main(): void {
     assert.equal(snapshotFromElement(withConstraints({ maxLength: 0, pattern: '', required: false })), null);
   });
 
-  // acceptedSilently gates the correlated 2xx on its BODY: a bypass is confirmed only when the
-  // value was silently accepted. A 200 carrying an error/rejection body is a server rejection
-  // wearing a 200 — the false positive that contradicted the API-contract oracle on one endpoint.
+  // Nominal-constraint cap: a maxlength that caps nothing real (e.g. 999999, the facebook.com
+  // false positive) is treated as absent so the field is never probed. Bound is 10000.
+  check('an absurd maxlength (999999) is not an enforceable constraint', () => {
+    assert.equal(snapshotFromElement(withConstraints({ maxLength: 999999 })), null);
+    assert.equal(snapshotFromElement(withConstraints({ maxLength: 10000 })), null);
+  });
+
+  check('a maxlength just under the cap is still a real constraint', () => {
+    assert.deepEqual(snapshotFromElement(withConstraints({ maxLength: 9999 })), { maxLength: 9999, pattern: null, required: false });
+  });
+
+  check('an absurd maxlength with no other constraint yields no plan', () => {
+    assert.equal(planFromSnapshot(snapshotFromElement(withConstraints({ maxLength: 999999 }))), null);
+  });
+
+  // serverEffectDetail is the impact oracle: a bypass promotes ONLY when the accepted value
+  // caused a meaningful effect. A benign 2xx acceptance is NOT impact — the false-positive class.
   const login = 'https://t/backend/C4F3_login.php';
 
-  check('a clean 2xx body is a genuine silent acceptance (still reported)', () => {
-    assert.equal(acceptedSilently('https://t/api/save', '{"id":42,"ok":true}'), true);
+  check('a benign 2xx acceptance is NOT a meaningful effect (discarded)', () => {
+    assert.equal(serverEffectDetail(200, 'https://t/api/save', '{"id":42,"ok":true}'), null);
+    assert.equal(serverEffectDetail(200, 'https://t/api/save', ''), null);
   });
 
-  check('an empty 2xx body counts as acceptance (no rejection signal)', () => {
-    assert.equal(acceptedSilently('https://t/api/save', ''), true);
+  check('a normal GraphQL 200 error response is NOT a meaningful effect (discarded)', () => {
+    const body = '{"data":null,"errors":[{"message":"Field \\"x\\" is not defined"}]}';
+    assert.equal(serverEffectDetail(200, 'https://t/graphql', body), null);
   });
 
-  check('a declared error envelope ({"error":true}) is NOT acceptance', () => {
-    assert.equal(acceptedSilently(login, '{"error":true,"code":401}'), false);
+  check('an expected auth/validation rejection at 200 is NOT a meaningful effect', () => {
+    assert.equal(serverEffectDetail(200, login, '{"success":false,"message":"Invalid credentials"}'), null);
+    assert.equal(serverEffectDetail(200, login, '{"success":false,"message":"email is required"}'), null);
   });
 
-  check('a JSON auth rejection is NOT acceptance', () => {
-    assert.equal(acceptedSilently(login, '{"success":false,"message":"Invalid credentials"}'), false);
+  check('a correlated 5xx is a server-error effect', () => {
+    assert.match(serverEffectDetail(500, 'https://t/api/save', 'Internal Server Error') ?? '', /HTTP 500/);
   });
 
-  check('a plain-text auth rejection is NOT acceptance', () => {
-    assert.equal(acceptedSilently(login, 'Invalid credentials'), false);
+  check('an edge/tunnel 5xx is excluded (infrastructure noise, not the app)', () => {
+    assert.equal(serverEffectDetail(521, 'https://t/api/save', 'cloudflare web server is down'), null);
   });
 
-  check('a validation rejection ("email is required") is NOT acceptance', () => {
-    assert.equal(acceptedSilently(login, '{"success":false,"message":"email is required"}'), false);
+  check('a 2xx body leaking a backend stack/error is a masked-failure effect', () => {
+    const detail = serverEffectDetail(200, 'https://t/api/save', 'Error: database error near "SELECT *" (500 internal server error)');
+    assert.match(detail ?? '', /masked a backend failure/);
   });
 
-  // Over-suppression guard: a body that merely MENTIONS error without an envelope stays acceptance.
-  check('a non-envelope body mentioning "error" stays acceptance', () => {
-    assert.equal(acceptedSilently('https://t/api/save', '{"error":null,"active":true}'), true);
+  check('a correlated 4xx (server correctly rejects) is NOT a bypass', () => {
+    assert.equal(serverEffectDetail(400, 'https://t/api/save', '{"error":"too long"}'), null);
+  });
+
+  // describePayload keeps the finding MESSAGE short: a short value renders in full, an
+  // amplification blob is truncated with a length note (full value stays in the evidence grid).
+  check('a short payload renders verbatim in the message', () => {
+    assert.equal(describePayload('x-not-a-number'), '"x-not-a-number"');
+    assert.equal(describePayload(''), 'an empty value');
+  });
+
+  check('an over-long payload is truncated in the message with a length note', () => {
+    const blob = 'A'.repeat(9999 + 32);
+    const out = describePayload(blob);
+    assert.ok(out.length < 200, 'message payload must be bounded');
+    assert.match(out, /^"A{80}…" \(10031 chars, full value in evidence\)$/);
+    assert.ok(!out.includes('A'.repeat(81)), 'must not embed the full blob');
   });
 
   console.log(`\nconstraintBypass: ${passed} checks passed.`);

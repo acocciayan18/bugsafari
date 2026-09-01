@@ -14,9 +14,12 @@ import {
   detectSoftFailBody,
   isBodyReadableResourceType,
   isExpectedRejectionEnvelope,
+  isProxyGatewayArtifact,
+  resolveMaskedFailure,
   MAX_SOFT_FAIL_BODY_BYTES,
 } from '../verification/softFailBody.js';
 import { detectApiContractViolation } from '../verification/apiContractBody.js';
+import { matchesCategory } from '../../../bugs/knowledgeBase/signalPatterns.js';
 
 // Main-thread heartbeat ceiling for the one-shot freeze probe.
 const FREEZE_PROBE_TIMEOUT_MS = 5_000;
@@ -41,8 +44,8 @@ export const REPLAY_VERIFIABLE_CLASSES: ReadonlySet<string> = new Set([
   'ROUTE_MUTATION_FAILURE',
   'STRUCTURAL_NAVIGATION_LOGIC',
   // The replay re-runs the recorded bypass (strip client validation → submit the invalid
-  // value) and observes the fault endpoint: still 2xx ⇒ the server accepted it, constraint
-  // still bypassable (STILL_ACTIVE); 4xx ⇒ the server now rejects it (RESOLVED).
+  // value) and observes the fault endpoint: a still-effecting response (5xx, or a 2xx masking
+  // a backend failure) ⇒ STILL_ACTIVE; a benign 2xx or a 4xx now ⇒ RESOLVED.
   'CLIENT_SIDE_CONSTRAINT_BYPASS',
 ]);
 
@@ -217,22 +220,48 @@ export class ReplayProbes {
     );
   };
 
-  // Constraint-bypass oracle: the recorded steps strip the client validation and submit
-  // the invalid value. If the fault endpoint still returns a 2xx, the server accepted it
-  // without re-checking — the bypass is still live. A 4xx means the server now rejects it
-  // (handled by the absence of this signal ⇒ RESOLVED).
+  // Constraint-bypass oracle: the recorded steps strip the client validation and re-submit
+  // the invalid value. Reproduced ONLY when it still causes a meaningful effect at the fault
+  // endpoint — a 5xx (server crash; edge/tunnel 5xx excluded) or a 2xx masking a backend
+  // failure — kept in parity with the live finder so a value merely accepted (benign 2xx) or
+  // rejected (4xx) reads RESOLVED rather than a false STILL_ACTIVE.
   private readonly onConstraintResponse = (response: Response): void => {
     if (!this.faultEndpoint || pathOf(response.url()) !== this.faultEndpoint) return;
     const status = response.status();
-    if (status < 200 || status >= 300) return;
+    const serverError = status >= 500;
+    const accepted = status >= 200 && status < 300;
+    if (!serverError && !accepted) return; // 4xx now rejects it ⇒ RESOLVED
+    if (!isBodyReadableResourceType(response.request().resourceType())) {
+      if (serverError) this.emitConstraintReproduced(status, response.url(), `errored (HTTP ${status})`);
+      return;
+    }
+    this.bodyScans.push(
+      response
+        .text()
+        .then((body) => {
+          if (body.length > MAX_SOFT_FAIL_BODY_BYTES) return;
+          if (serverError) {
+            if (isProxyGatewayArtifact(status, body)) return; // edge/tunnel 5xx, not the app
+            this.emitConstraintReproduced(status, response.url(), `errored (HTTP ${status})`);
+            return;
+          }
+          const serverSignature = matchesCategory('SERVER_ERROR', body);
+          const masked = resolveMaskedFailure({ url: response.url(), body, serverSignature });
+          if (masked.softFail) this.emitConstraintReproduced(status, response.url(), `masked a backend failure (${masked.matched})`);
+        })
+        .catch(() => undefined),
+    );
+  };
+
+  private emitConstraintReproduced(status: number, url: string, detail: string): void {
     this.collector.addExternal({
       faultType: 'NETWORK',
       statusCode: status,
-      message: `Constraint bypass reproduced: ${this.faultEndpoint} accepted the invalid value (HTTP ${status}) with client validation stripped`,
-      url: response.url(),
+      message: `Constraint bypass reproduced: ${this.faultEndpoint} ${detail} with client validation stripped`,
+      url,
       bugClassOverride: 'CLIENT_SIDE_CONSTRAINT_BYPASS',
     });
-  };
+  }
 
   private safeUrl(): string | undefined {
     try {

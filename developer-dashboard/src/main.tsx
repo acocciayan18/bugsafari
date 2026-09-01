@@ -7,6 +7,7 @@ import './infrastructure/notifications/customToast.css'
 import './index.css'
 import App from './App.tsx'
 import RouteErrorBoundary from './components/common/RouteErrorBoundary'
+import DemoAccessGate from './components/common/DemoAccessGate'
 import { logger } from './utils/logger'
 import { initThemeStore } from './stores/themeStore'
 import { initAuthStore } from './stores/authStore'
@@ -46,7 +47,10 @@ createRoot(document.getElementById('root')!).render(
           {/* Top-level boundary: any render throw an inner route boundary misses lands
               here as a recovery card instead of a blank-screen unmount. */}
           <RouteErrorBoundary label="App">
-            <App />
+            {/* TEMPORARY demo password gate — remove before real deployment */}
+            <DemoAccessGate>
+              <App />
+            </DemoAccessGate>
           </RouteErrorBoundary>
         </ToastProvider>
       </MotionConfig>
