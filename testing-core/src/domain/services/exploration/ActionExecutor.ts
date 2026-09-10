@@ -877,7 +877,10 @@ export class ActionExecutor {
         timestamp: new Date().toISOString(),
         selector: target.selector,
         action: mode === 'fuzz' ? 'data-fuzzer-injection' : 'payload-injection',
-        payload: mode === 'fuzz' ? category : payload,
+        // The real synthesized vector — never the internal FieldCategory name, which leaked
+        // into repro steps as e.g. 'Enter "DATABASE_AUTH" …'. redactValue is false, so the
+        // engine-authored value is safe and reproducible.
+        payload,
         score: Number(target.riskScore.toFixed(4)),
       },
       {

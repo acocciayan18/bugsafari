@@ -41,4 +41,20 @@ check('the comparator is a total order (never depends on argument order)', () =>
   assert.ok(compareFaultRepresentatives(x, y) < 0 && compareFaultRepresentatives(y, x) > 0);
 });
 
+// findings.txt: /api/products/p1/related appeared under BOTH CWE-200 (leak) and CWE-755
+// (server failure). When those twins collapse, the security verdict must survive.
+check('a security member wins over an equally-severe non-security member', () => {
+  const security: RepresentativeFault = { reproductionSteps: ['a'], timestamp: 50, bugClass: 'SECURITY_VULNERABILITY_LEAK', severity: 'HIGH' };
+  const server: RepresentativeFault = { reproductionSteps: ['a', 'b', 'c'], timestamp: 10, bugClass: 'SERVER_API_FAILURE', severity: 'HIGH' };
+  assert.strictEqual(pickFaultRepresentative([server, security], id), security);
+  assert.strictEqual(pickFaultRepresentative([security, server], id), security);
+});
+
+check('higher severity wins over a richer-repro lower-severity member', () => {
+  const high: RepresentativeFault = { reproductionSteps: ['a'], timestamp: 1, severity: 'HIGH' };
+  const med: RepresentativeFault = { reproductionSteps: ['a', 'b', 'c'], timestamp: 1, severity: 'MEDIUM' };
+  assert.strictEqual(pickFaultRepresentative([med, high], id), high);
+  assert.strictEqual(pickFaultRepresentative([high, med], id), high);
+});
+
 console.log(`\nfaultRepresentative.test.ts: ${passed} checks passed`);

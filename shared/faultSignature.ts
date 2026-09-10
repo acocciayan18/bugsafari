@@ -13,6 +13,9 @@ export function normalizeFaultText(text: string | undefined): string {
     .replace(/https?:\/\/[^\s)'"]+/g, '#url')
     .replace(/0x[0-9a-f]+/g, '#hex')
     .replace(/:\d+:\d+/g, '')
+    // A path-embedded id (/p3/, /order12, /123) — only after a slash, so free-text tokens
+    // (utf8, sha1) are untouched — so the same endpoint across ids collapses to one family.
+    .replace(/\/[a-z]{0,4}\d+(?=[/?#]|$|\s)/g, '/#id')
     .replace(/\b\d+\b/g, '#n')
     .replace(/\s+/g, ' ')
     .trim();
@@ -34,6 +37,7 @@ export function faultStackTop(stackTrace: string | undefined): string {
 // never masked, so distinct routes stay distinct.
 function isVolatileSegment(seg: string): boolean {
   if (/^\d+$/.test(seg)) return true;                             // numeric id
+  if (/^[a-z]{1,4}\d+$/i.test(seg)) return true;                  // short-prefixed id (p3, sku12, u7)
   if (/^[0-9a-f]{12,}$/.test(seg)) return true;                   // hex hash / ObjectId
   if (/^[0-9a-f-]{8,}$/.test(seg) && /\d/.test(seg)) return true; // mixed hex / uuid id
   return false;
@@ -66,10 +70,14 @@ export interface FaultSignatureInput {
 // Stable fault identity shared across live grouping, ingest-collapse, and saved
 // dedup. Stack disambiguates JS faults; statusCode disambiguates network faults.
 export function buildFaultSignature(fault: FaultSignatureInput): string {
+  // A network fault's "stack" is a response-body artifact, not a JS call-site: two 500s on
+  // one endpoint (one leaking a stack, one not) are the SAME defect, so drop it there and
+  // let the status code disambiguate. JS faults keep the stack top to split shared messages.
+  const isNetworkFault = fault.statusCode !== undefined && fault.statusCode !== null;
   return [
     normalizeFaultText(fault.reason),
     normalizeFaultUrl(fault.url),
-    faultStackTop(fault.stackTrace),
+    isNetworkFault ? '' : faultStackTop(fault.stackTrace),
     fault.statusCode ?? '',
   ].join('|');
 }

@@ -139,6 +139,9 @@ const GENERIC_FALLBACK = '<element>';
 export function semanticFallbackFromSelector(selector?: string): string {
   const raw = collapse(selector);
   if (!raw) return GENERIC_FALLBACK;
+  // A URL recorded in a selector slot (navigation records store the page URL there) is
+  // not a DOM path — distilling it yields a phantom control like <https.trycloudflare>.
+  if (/^[a-z][\w+.-]*:\/\//i.test(raw) || raw.startsWith('//')) return GENERIC_FALLBACK;
   const last = raw.split('>').pop()!.trim().replace(/:nth-[a-z-]+\([^)]*\)/gi, '');
   const tag = (/^[a-z][a-z0-9-]*/i.exec(last)?.[0] ?? '').toLowerCase();
   const id = /#([\w-]+)/.exec(last)?.[1];

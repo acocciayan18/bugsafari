@@ -3,7 +3,10 @@
 // when no recorded label exists it collapses to a concise semantic fallback
 // (`<button#submit>`), never a full DOM path.
 import type { ActionBreadcrumb, ActionRecord, ForensicCrashReport } from '../types';
-import { describeTarget, isSelectorLike, semanticFallbackFromSelector } from '../../../shared/reproduction.js';
+import { describeRouteStep, describeTarget, isSelectorLike, semanticFallbackFromSelector } from '../../../shared/reproduction.js';
+
+// A URL recorded in a selector/target slot — a navigation destination, not a DOM path.
+const isUrlShaped = (value?: string): boolean => !!value && (/^[a-z][\w+.-]*:\/\//i.test(value) || value.startsWith('//'));
 
 export type PlaybookStep = {
   stepNumber: number;
@@ -41,6 +44,7 @@ function buildStep(
   payload: string | undefined,
   label: string | undefined,
   index: number,
+  url?: string,
 ): PlaybookStep {
   const a = (action ?? '').toUpperCase();
   const value = payload ? safeSlice(payload, 60) : undefined;
@@ -50,7 +54,10 @@ function buildStep(
     const target = targetPhrase(selector, label, 'field');
     instruction = value ? `Enter "${value}" into ${target}` : `Enter a value into ${target}`;
   } else if (a === 'NAVIGATION' || a === 'NAVIGATE') {
-    instruction = `Navigate using ${targetPhrase(selector, label, 'control')}`;
+    // A navigation records its destination URL (in `url`, or older breadcrumbs put it in
+    // `selector`), never a DOM control — render the route, never a distilled selector.
+    const dest = url ?? (isUrlShaped(selector) ? selector : undefined);
+    instruction = dest ? describeRouteStep(dest) : 'Navigate to the next page';
   } else if (a === 'SUBMIT') {
     instruction = `Submit via ${targetPhrase(selector, label, 'control')}`;
   } else if (a === 'HOVER') {
@@ -73,7 +80,7 @@ export function mapForensicBreadcrumbsToPlaybook(breadcrumbs: readonly ActionBre
 export function mapIncidentStepsToPlaybook(steps: readonly ActionRecord[] | undefined): PlaybookStep[] {
   if (!steps || steps.length === 0) return [];
   return steps.map((s, idx) =>
-    buildStep(s.type, s.selector, decodePayload(s.payload), s.elementLabel ?? s.fallbackLabel, idx),
+    buildStep(s.type, s.selector, decodePayload(s.payload), s.elementLabel ?? s.fallbackLabel, idx, s.url),
   );
 }
 

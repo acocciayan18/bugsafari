@@ -80,4 +80,25 @@ check('same-route id-variant JS faults stay distinct when stack tops differ', ()
   assert.notEqual(one, two);
 });
 
+// findings.txt: one broken endpoint /api/products/:id/related surfaced as ~6 findings
+// across p1,p2,p3,p6,p7. Short letter+digit ids are opaque ids, not route names.
+check('the same endpoint across letter+digit ids collapses to one family', () => {
+  assert.equal(normalizeFaultUrl('https://x/api/products/p3/related'), '/api/products/#id/related');
+  const p3 = buildFaultSignature({ reason: 'HTTP 500 GET /api/products/p3/related · server error', url: 'https://x/api/products/p3/related', statusCode: 500 });
+  const p6 = buildFaultSignature({ reason: 'HTTP 500 GET /api/products/p6/related · server error', url: 'https://x/api/products/p6/related', statusCode: 500 });
+  assert.equal(p3, p6, 'p3 and p6 are one endpoint family');
+});
+
+// A 500 that leaked a stack (→ CWE-200) and a plain 500 (→ CWE-755) on ONE endpoint are the
+// same defect: the network "stack" is a response-body artifact, so it must not split them.
+check('a leaked-stack 500 and a plain 500 on the same endpoint share one signature', () => {
+  const leaked = buildFaultSignature({ reason: 'HTTP 500 GET /api/products/p1/related', url: 'https://x/api/products/p1/related', statusCode: 500, stackTrace: 'at db (server.js:9:1)' });
+  const plain = buildFaultSignature({ reason: 'HTTP 500 GET /api/products/p1/related', url: 'https://x/api/products/p1/related', statusCode: 500 });
+  assert.equal(leaked, plain);
+});
+
+check('free-text alnum tokens are never masked (only path-embedded ids)', () => {
+  assert.equal(normalizeFaultText('utf8 sha1 h1 base64 error'), 'utf8 sha1 h1 base64 error');
+});
+
 console.log(`\n${passed} faultSignature assertion group(s) passed.`);

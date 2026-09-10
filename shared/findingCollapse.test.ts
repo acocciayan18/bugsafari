@@ -146,4 +146,39 @@ check('identityKeys unions on bugId OR signature, origin contract intact', () =>
   assert.equal(distinct.length, 2);
 });
 
+// End-to-end for findings.txt: the /api/products/:id/related 500 appeared as ~6 findings
+// across p1,p2,p3,p6,p7 — split between CWE-200 (leak) and CWE-755 (server failure). They
+// must collapse into ONE family whose verdict is the security one, with counts aggregated.
+check('per-id /related 500s collapse into one family carrying the security verdict', () => {
+  interface N {
+    reason: string; url: string; statusCode: number;
+    bugClass: string; severity: string;
+    origin: 'server' | 'client'; occ: number; steps?: string[]; ts?: number;
+  }
+  const netAdapter: CollapseAdapter<N> = {
+    signatureInput: (n) => ({ reason: n.reason, url: n.url, statusCode: n.statusCode }),
+    representative: (n) => ({ reproductionSteps: n.steps, timestamp: n.ts, bugClass: n.bugClass, severity: n.severity }),
+    origin: (n) => n.origin,
+    occurrences: (n) => n.occ,
+    withOccurrences: (n, occ) => ({ ...n, occ }),
+  };
+  const rec = (id: string, bugClass: string, occ: number, ts: number, steps: string[]): N => ({
+    reason: `HTTP 500 GET /api/products/${id}/related · server error`,
+    url: `https://x/api/products/${id}/related`,
+    statusCode: 500, bugClass, severity: 'HIGH', origin: 'server', occ, ts, steps,
+  });
+  const members: N[] = [
+    rec('p1', 'SECURITY_VULNERABILITY_LEAK', 17, 1, ['a']),          // leak twin, thinner repro
+    rec('p1', 'SERVER_API_FAILURE', 10, 2, ['a', 'b', 'c']),         // plain 500, richer repro
+    rec('p2', 'SERVER_API_FAILURE', 13, 3, ['a', 'b', 'c']),
+    rec('p3', 'SERVER_API_FAILURE', 20, 4, ['a', 'b', 'c']),
+    rec('p6', 'SERVER_API_FAILURE', 10, 5, ['a', 'b', 'c']),
+    rec('p7', 'SERVER_API_FAILURE', 2, 6, ['a', 'b', 'c']),
+  ];
+  const out = collapseFindings<N>(members, netAdapter);
+  assert.equal(out.length, 1, 'all /related 500s are ONE family');
+  assert.equal(out[0].bugClass, 'SECURITY_VULNERABILITY_LEAK', 'the leak verdict survives, richer repro notwithstanding');
+  assert.equal(out[0].occ, 72, 'server-origin occurrences sum (17+10+13+20+10+2)');
+});
+
 console.log(`\nfindingCollapse.test.ts: ${passed} checks passed`);

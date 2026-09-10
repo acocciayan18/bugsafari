@@ -172,7 +172,14 @@ export function resolveCulpritPair(
   explicitSelector: string | undefined,
   steps: LabelledStep[] | undefined,
 ): { label?: string; selector?: string } {
-  const selector = resolveCulprit(explicitSelector, steps);
+  const named = (explicitLabel ?? '').trim();
+  const hasExplicitLabel = !!named && !isSelectorLike(named) && !isApiEndpointLabel(named);
+  // An explicit label with no explicit selector must NOT borrow a back-filled timeline
+  // selector describing a different node (the "books" label beside an unrelated Search
+  // selector). Show the label alone; only pair a selector that was explicitly resolved.
+  const selector = hasExplicitLabel && !isRealSelector(explicitSelector)
+    ? undefined
+    : resolveCulprit(explicitSelector, steps);
   const label = resolveCulpritLabel(explicitLabel, selector ?? explicitSelector, steps);
   return { label, selector };
 }

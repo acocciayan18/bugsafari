@@ -58,7 +58,7 @@ import { StateRestorer } from './StateRestorer.js';
 import { StrictUrlLockGuard, resolveUrlLockScope, type UrlLockScope } from './StrictUrlLockGuard.js';
 import { PageHealthGuard } from './PageHealthGuard.js';
 import { ExplorationLoop } from './ExplorationLoop.js';
-import { shouldTriggerSessionLoss, classifySessionLoss, SessionRestoreCoordinator, type SessionRestoreFn } from './SessionPreservationGuard.js';
+import { shouldTriggerSessionLoss, classifySessionLoss, sessionLossIsDefect, SessionRestoreCoordinator, type SessionRestoreFn, type SessionRestoreOutcome } from './SessionPreservationGuard.js';
 import { BUG_CATALOG } from '../../../bugs/knowledgeBase/bugCatalog.js';
 import { BugFinderRunner } from './BugFinderRunner.js';
 import { StateClusterRegistry } from './StateClusterRegistry.js';
@@ -963,13 +963,16 @@ export class ExplorationEngine {
   }
 
   private breadcrumbsToActionRecords(breadcrumbs: ActionBreadcrumb[]): ActionRecord[] {
-    return breadcrumbs.map((crumb) => ({
-      timestamp: crumb.timestamp,
-      type: this.mapActionVerbToType(crumb.action),
-      selector: crumb.selector,
-      url: this.targetOrigin || 'unknown',
-      payload: crumb.payload,
-    }));
+    return breadcrumbs.map((crumb) => {
+      const type = this.mapActionVerbToType(crumb.action);
+      // A NAVIGATE breadcrumb records its destination URL in `selector` (there is no DOM
+      // control). Route it into `url` and clear `selector` so narration renders
+      // 'Navigate to /path', not 'Navigate using <selector-as-url>'.
+      if (type === 'NAVIGATE') {
+        return { timestamp: crumb.timestamp, type, selector: '', url: crumb.selector || this.targetOrigin || 'unknown', payload: crumb.payload };
+      }
+      return { timestamp: crumb.timestamp, type, selector: crumb.selector, url: this.targetOrigin || 'unknown', payload: crumb.payload };
+    });
   }
 
   /** Map internal engine action verbs (e.g. 'payload-injection') to a clean ActionType. */
@@ -1140,7 +1143,7 @@ export class ExplorationEngine {
       getLastKnownUrl: () => lastKnownUrl,
       onApiFailure: () => { this.runtimeMetrics.requestsCount++; },
       recordNetworkFailure: () => this.networkFailureCascade.recordFailure(),
-      getInteractionContext: (atMs) => this.interactionContextAt(atMs),
+      getInteractionContext: (atMs, windowMs) => this.interactionContextAt(atMs, windowMs),
       isConcurrentBurstAt: (atMs) => isConcurrentBurstAt(this.actedHistory.map((h) => ({ selector: h.target.selector, actedAtMs: h.actedAtMs })), atMs),
       wasRequestSupersededByEngineNav: (startMs, endMs) => navTrail.supersededInFlight(startMs, endMs),
       getTargetOrigin: () => this.canonicalOrigin,
@@ -1246,22 +1249,14 @@ export class ExplorationEngine {
     const handleSessionLoss = async (from: string, to: string): Promise<void> => {
       const descriptor = classifySessionLoss(from, to);
       const definition = BUG_CATALOG.SESSION_SYNC_FAULT;
-      const bugId = `session-sync-fault-${Date.now()}`;
       const timestamp = new Date().toISOString();
-      const attribution: FindingAttribution = {
-        bugClass: 'SESSION_SYNC_FAULT',
-        cwe: definition.cwe,
-        ...resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName()),
-        origin: 'TARGET_APP',
-        confidence: 'SIGNAL',
-        verificationStatus: 'NEEDS_VERIFICATION',
-      };
       emitter.emitMilestone(` Session synchronization fault — ${descriptor.reason}`);
 
-      // Attempt re-auth BEFORE finalizing the finding so its record carries the
-      // recovery outcome: a failed/unavailable restore means the authenticated
-      // surface was left, which the operator must see — not just a status line.
-      let recovery: string;
+      // Attempt re-auth BEFORE deciding whether to record a finding: a bounce whose
+      // restore SUCCEEDED self-healed and is not a defect (recording it inflates the
+      // findings list with false positives). Only a loss that left the authenticated
+      // surface — restore failed or none available — is a genuine finding.
+      let outcome: SessionRestoreOutcome;
       if (restoreCoordinator.canRestore() && this.activePage) {
         const ok = await restoreCoordinator.restore(this.activePage);
         emitter.emitSystemStatus(
@@ -1276,15 +1271,31 @@ export class ExplorationEngine {
             ? 'Re-authenticated after a session synchronization fault.'
             : 'Could not re-authenticate; exploration continues unauthenticated (no restart).',
         });
-        recovery = ok
-          ? ' Automatic re-authentication succeeded; exploration resumed on the authenticated surface.'
-          : ' Automatic re-authentication FAILED — the authenticated surface was left and exploration continued unauthenticated, so findings behind the login wall may be incomplete.';
+        outcome = ok ? 'recovered' : 'restore-failed';
         if (!ok) emitter.emitMilestone(' Re-authentication failed — the authenticated surface was left; results behind the login wall may be incomplete.');
       } else {
         emitter.emitSystemStatus('Session lost and no restore available — continuing unauthenticated.');
-        recovery = ' No re-authentication was available — exploration continued unauthenticated.';
+        outcome = 'no-restore';
       }
 
+      // Self-healed bounce: a live telemetry event, never a finding.
+      if (!sessionLossIsDefect(outcome)) {
+        emitter.emitMilestone(' Session recovered automatically — no finding recorded.');
+        return;
+      }
+
+      const recovery = outcome === 'restore-failed'
+        ? ' Automatic re-authentication FAILED — the authenticated surface was left and exploration continued unauthenticated, so findings behind the login wall may be incomplete.'
+        : ' No re-authentication was available — exploration continued unauthenticated.';
+      const bugId = `session-sync-fault-${Date.now()}`;
+      const attribution: FindingAttribution = {
+        bugClass: 'SESSION_SYNC_FAULT',
+        cwe: definition.cwe,
+        ...resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName()),
+        origin: 'TARGET_APP',
+        confidence: 'SIGNAL',
+        verificationStatus: 'NEEDS_VERIFICATION',
+      };
       const reason = `${descriptor.reason}${recovery}`;
       emitter.gateway.emitIncidentReport({
         bugId,
@@ -1872,15 +1883,16 @@ export class ExplorationEngine {
     return null;
   }
 
-  private interactionContextAt(atMs: number): InteractionContext | null {
+  private interactionContextAt(atMs: number, windowMs: number = NETWORK_ATTRIBUTION_WINDOW_MS): InteractionContext | null {
     // Resolve the element actually being actuated AT the fault's instant: the newest
     // history entry acted at or before atMs and still inside the causal window. Scanning
     // the history (not just the latest slot) recovers a slow request's true culprit when
     // a later action has since replaced the "latest" pointer (async-lag attribution).
+    // `windowMs` defaults to the network window; runtime-fault callers pass a tighter one.
     for (let i = this.actedHistory.length - 1; i >= 0; i--) {
       const entry = this.actedHistory[i];
       if (entry.actedAtMs > atMs) continue;
-      if (atMs - entry.actedAtMs > NETWORK_ATTRIBUTION_WINDOW_MS) return null;
+      if (atMs - entry.actedAtMs > windowMs) return null;
       // Off-target scenarios (coordinate bombing / sibling concurrent clicks) drive
       // controls OTHER than this entry. Decline only when the fault is causally inside
       // such a span AND this entry did not supersede it (i.e. was acted during/before the

@@ -145,7 +145,20 @@ const caughtBugCollapseAdapter: CollapseAdapter<OriginBug> = {
   // so they collapse into ONE saved finding instead of two — the History>Live duplicate. The
   // origin tag still prevents a shared-events server/client twin from double-counting.
   identityKeys: (t) => [(t.bug.bugId ?? '').trim(), canonicalFindingSignature(t.bug)],
-  representative: (t) => ({ reproductionSteps: t.bug.reproductionSteps, timestamp: t.bug.timestamp }),
+  representative: (t) => ({
+    reproductionSteps: t.bug.reproductionSteps,
+    timestamp: t.bug.timestamp,
+    // A security/higher-severity member wins the family so the leak verdict survives a
+    // plain-500 twin it shares a signature with — the SAME pick the live buffer makes.
+    bugClass: t.bug.attribution?.bugClass,
+    severity: resolveSeverity({
+      severity: t.bug.severity,
+      bugClass: t.bug.attribution?.bugClass,
+      confidence: t.bug.attribution?.confidence,
+      verificationStatus: t.bug.attribution?.verificationStatus,
+      statusCode: t.bug.statusCode,
+    }),
+  }),
   origin: (t) => t.origin,
   occurrences: (t) => t.bug.occurrences ?? 1,
   withOccurrences: (t, occurrences) => ({ bug: { ...t.bug, occurrences }, origin: t.origin }),

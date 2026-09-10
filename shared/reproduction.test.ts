@@ -75,6 +75,14 @@ check('empty selector yields a generic fallback', () => {
   assert.equal(semanticFallbackFromSelector(undefined), '<element>');
 });
 
+// findings.txt: a navigation URL recorded in a selector slot rendered as the phantom
+// control <https.trycloudflare>. A URL is never a DOM path — it must not be distilled.
+check('a URL in a selector slot is not distilled into a phantom control', () => {
+  assert.equal(semanticFallbackFromSelector('https://sea-meal-airlines-cartoon.trycloudflare.com/profile'), '<element>');
+  assert.equal(semanticFallbackFromSelector('http://localhost:4700/products?category=books'), '<element>');
+  assert.equal(semanticFallbackFromSelector('//cdn.example.com/app.js'), '<element>');
+});
+
 check('resolveControlName prefers a human label', () => {
   assert.equal(
     resolveControlName({ label: 'Register', selector: 'body > div:nth-of-type(1) > a:nth-of-type(1)' }),

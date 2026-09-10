@@ -12,12 +12,25 @@
 import type { IncidentReport, ForensicCrashReport } from '../types';
 import { buildFaultSignature } from '../../../shared/faultSignature.js';
 import { compareFaultRepresentatives, type RepresentativeFault } from '../../../shared/faultRepresentative.js';
+import { resolveSeverity } from '../../../shared/severity.js';
 
 // Project a live fault onto the shared representative shape (the human playbook is the
 // live equivalent of a saved finding's reproductionSteps), so the buffer picks the same
-// representative the backend save collapse does — matching repro steps on both surfaces.
+// representative the backend save collapse does — matching repro steps AND verdict (a
+// security/higher-severity twin wins) on both surfaces.
 function representativeOf(fault: IncidentReport | ForensicCrashReport): RepresentativeFault {
-  return { reproductionSteps: fault.reproductionPlaybook, timestamp: fault.timestamp };
+  return {
+    reproductionSteps: fault.reproductionPlaybook,
+    timestamp: fault.timestamp,
+    bugClass: fault.attribution?.bugClass,
+    severity: resolveSeverity({
+      severity: fault.severity,
+      bugClass: fault.attribution?.bugClass,
+      confidence: fault.attribution?.confidence,
+      verificationStatus: fault.attribution?.verificationStatus,
+      statusCode: fault.statusCode,
+    }),
+  };
 }
 
 /**

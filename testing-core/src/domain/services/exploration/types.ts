@@ -193,8 +193,10 @@ export interface StabilityMonitorDeps {
   onApiFailure(): void;
   /** Record one raw network failure (>=400 response or non-aborted requestfailed) into the run-scoped cascade tracker, ahead of any reportability filtering. */
   recordNetworkFailure(): void;
-  /** Interaction the engine was executing at `atMs`, correlating a request to its triggering control. */
-  getInteractionContext(atMs: number): InteractionContext | null;
+  /** Interaction the engine was executing at `atMs`, correlating a request to its triggering
+   *  control. `windowMs` overrides the causal window — callers use a tighter one for runtime
+   *  faults so a stale persistent control isn't blamed for a background/async fault. */
+  getInteractionContext(atMs: number, windowMs?: number): InteractionContext | null;
   /** True when two-or-more DISTINCT controls were acted near `atMs` (a concurrent burst), so a
    *  network fault at that instant cannot be blamed on one control. Optional: absent ⇒ never ambiguous. */
   isConcurrentBurstAt?(atMs: number): boolean;

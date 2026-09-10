@@ -42,6 +42,8 @@ export interface LiveFinding {
 const representativeOf = (fault: LiveFault): RepresentativeFault => ({
   reproductionSteps: fault.reproductionPlaybook,
   timestamp: fault.timestamp,
+  bugClass: fault.attribution?.bugClass,
+  severity: severityOf(fault),
 });
 
 const severityOf = (fault: LiveFault): FaultSeverity =>

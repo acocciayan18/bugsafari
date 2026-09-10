@@ -102,6 +102,13 @@ const CONFIDENCE_RANK: Record<FaultConfidence, number> = { INFERRED: 0, SIGNAL: 
 // RUNTIME_STABILITY_EXCEPTION MEDIUM default.
 const CRITICAL_RUNTIME_SUBTYPES: ReadonlySet<RuntimeSubtype> = new Set<RuntimeSubtype>(['RENDERER_CRASH', 'STACK_OVERFLOW']);
 
+// A synchronous handler exception surfaces close to the action that triggered it, so a
+// runtime (EXCEPTION/CONSOLE) fault attributes to a control only within this tight window —
+// tighter than the network round-trip window. Beyond it the fault is background/async and
+// falls through to the stack culprit, instead of pinning a persistent (e.g. footer) control
+// that merely happened to be the last thing acted on.
+const RUNTIME_CULPRIT_WINDOW_MS = 1000;
+
 /** Maps the resolved 5-tier FaultSeverity to the persisted forensic-error scale. */
 const FAULT_TO_FORENSIC: Record<FaultSeverity, ForensicErrorSeverity> = {
   CRITICAL: ForensicErrorSeverity.CRITICAL,
@@ -508,9 +515,9 @@ export class StabilityMonitor {
 
   // The control that actually caused a fault: the interaction active at fault time.
   // Authoritative over the last timeline step, which lags an async fault.
-  private culpritSelectorAt(atMs: number): string | undefined {
+  private culpritSelectorAt(atMs: number, windowMs?: number): string | undefined {
     try {
-      return this.deps.getInteractionContext(atMs)?.selector || undefined;
+      return this.deps.getInteractionContext(atMs, windowMs)?.selector || undefined;
     } catch {
       return undefined;
     }
@@ -520,9 +527,9 @@ export class StabilityMonitor {
   // interaction context knows it, else a semantic descriptor distilled from the selector.
   // Never a raw CSS path (resolveControlName guarantees it). Absent when no control was
   // active, so the UI shows a specific label instead of a generic tag or a selector.
-  private culpritLabelAt(atMs: number): string | undefined {
+  private culpritLabelAt(atMs: number, windowMs?: number): string | undefined {
     try {
-      const ctx = this.deps.getInteractionContext(atMs);
+      const ctx = this.deps.getInteractionContext(atMs, windowMs);
       if (!ctx?.label && !ctx?.selector) return undefined;
       return resolveControlName({ label: ctx.label, selector: ctx.selector });
     } catch {
@@ -977,12 +984,12 @@ export class StabilityMonitor {
     // value). Prefer a descriptive acted control; otherwise attribute to the failing
     // handler from the stack, never a wrong last-clicked control. Selector stays empty
     // for a stack attribution — a frame is not a DOM selector.
-    const rawCulpritLabel = this.culpritLabelAt(faultAtMs);
+    const rawCulpritLabel = this.culpritLabelAt(faultAtMs, RUNTIME_CULPRIT_WINDOW_MS);
     const descriptiveLabel = isDescriptiveControlName(rawCulpritLabel) ? rawCulpritLabel : undefined;
     const { culpritLabel, culpritSelector } = resolveRuntimeCulprit({
       burstAmbiguous,
       descriptiveLabel,
-      selector: this.culpritSelectorAt(faultAtMs),
+      selector: this.culpritSelectorAt(faultAtMs, RUNTIME_CULPRIT_WINDOW_MS),
       stackCulprit,
     });
     t.gateway.emitIncidentReport({

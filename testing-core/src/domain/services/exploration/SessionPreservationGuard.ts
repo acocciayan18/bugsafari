@@ -101,6 +101,16 @@ export function classifySessionLoss(from: string, to: string): SessionLossDescri
   };
 }
 
+// Outcome of the in-place restore attempt following a detected session loss.
+export type SessionRestoreOutcome = 'recovered' | 'restore-failed' | 'no-restore';
+
+// A self-healed bounce is NOT a defect: only a loss that left the authenticated surface
+// (restore failed, or none was available) warrants a SESSION_SYNC_FAULT finding. A
+// recovered bounce stays a live telemetry event, keeping it out of the findings list.
+export function sessionLossIsDefect(outcome: SessionRestoreOutcome): boolean {
+  return outcome !== 'recovered';
+}
+
 // Restores an authenticated session in place. Returns true on success. Injected
 // by PlaywrightBrowserEngine (which holds the credentials/state); the engine
 // only ever sees this opaque callback, never the auth config (least privilege).
