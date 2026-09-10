@@ -43,4 +43,13 @@ check('empty history and a non-finite instant never throw or flag', () => {
   assert.equal(isConcurrentBurstAt([e('#a', 1000), e('#b', 1000)], Number.NaN), false);
 });
 
+// findings2.txt: an async exception surfaced ~400ms AFTER a burst — outside the tight 120ms
+// network window (so not ambiguous, wrongly pinned to a sibling), but inside the wider runtime
+// window the runtime-fault path passes, which correctly flags it ambiguous.
+check('a post-burst instant is ambiguous under the wide runtime window but not the tight one', () => {
+  const burst = [e('#add', 1000), e('#subscribe', 1010), e('#sold-out', 1020)];
+  assert.equal(isConcurrentBurstAt(burst, 1400), false, 'tight 120ms default: not flagged');
+  assert.equal(isConcurrentBurstAt(burst, 1400, 1000), true, 'wide 1000ms runtime window: flagged');
+});
+
 console.log(`\n${passed} passed`);

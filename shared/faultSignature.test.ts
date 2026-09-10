@@ -101,4 +101,21 @@ check('free-text alnum tokens are never masked (only path-embedded ids)', () => 
   assert.equal(normalizeFaultText('utf8 sha1 h1 base64 error'), 'utf8 sha1 h1 base64 error');
 });
 
+// findings2.txt: the same /related 500 fired from "/" and from "/cart" showed as two findings
+// because the signature keyed on the PAGE url. A network fault's identity is endpoint+status
+// (both in the reason), not which page triggered it.
+check('the same endpoint failing from different pages is one network family', () => {
+  const fromHome = buildFaultSignature({ reason: 'HTTP 500 GET /api/products/p9/related · server error', url: 'https://x/', statusCode: 500 });
+  const fromCart = buildFaultSignature({ reason: 'HTTP 500 GET /api/products/p9/related · server error', url: 'https://x/cart', statusCode: 500 });
+  assert.equal(fromHome, fromCart);
+});
+
+// A JS exception (no statusCode) still keys on its route — the same message on two routes is
+// two findings, so dropping url must be network-only.
+check('a JS exception still keys on its route (page url retained)', () => {
+  const onA = buildFaultSignature({ reason: 'TypeError x is null', url: 'https://x/a', stackTrace: 'at f (a.js:1:1)' });
+  const onB = buildFaultSignature({ reason: 'TypeError x is null', url: 'https://x/b', stackTrace: 'at f (a.js:1:1)' });
+  assert.notEqual(onA, onB);
+});
+
 console.log(`\n${passed} faultSignature assertion group(s) passed.`);

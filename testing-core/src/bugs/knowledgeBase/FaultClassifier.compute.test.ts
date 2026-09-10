@@ -43,10 +43,10 @@ check('a clean 500 is CONFIRMED and escalated to at least HIGH', () => {
   assert.equal(r.severity, 'HIGH');
 });
 
-check('a 500 that leaks a stack frame is still caught as SECURITY_VULNERABILITY_LEAK / CWE-200', () => {
+check('a 500 that leaks a stack frame is caught as SECURITY_VULNERABILITY_LEAK / CWE-209 (error-message info exposure)', () => {
   const r = compute500(LEAKY_500);
   assert.equal(r.bugClass, 'SECURITY_VULNERABILITY_LEAK');
-  assert.equal(r.cwe, 'CWE-200');
+  assert.equal(r.cwe, 'CWE-209');
 });
 
 console.log(`\n${passed} assertion group(s) passed.`);

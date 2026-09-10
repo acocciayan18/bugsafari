@@ -1144,7 +1144,7 @@ export class ExplorationEngine {
       onApiFailure: () => { this.runtimeMetrics.requestsCount++; },
       recordNetworkFailure: () => this.networkFailureCascade.recordFailure(),
       getInteractionContext: (atMs, windowMs) => this.interactionContextAt(atMs, windowMs),
-      isConcurrentBurstAt: (atMs) => isConcurrentBurstAt(this.actedHistory.map((h) => ({ selector: h.target.selector, actedAtMs: h.actedAtMs })), atMs),
+      isConcurrentBurstAt: (atMs, windowMs) => isConcurrentBurstAt(this.actedHistory.map((h) => ({ selector: h.target.selector, actedAtMs: h.actedAtMs })), atMs, windowMs),
       wasRequestSupersededByEngineNav: (startMs, endMs) => navTrail.supersededInFlight(startMs, endMs),
       getTargetOrigin: () => this.canonicalOrigin,
       dialogReadOnly: () => this.dialogReadOnly,

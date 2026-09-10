@@ -246,7 +246,7 @@ check('HTTP 5xx leaking a server stack frame → SECURITY_VULNERABILITY_LEAK / C
     scenario: 'Exploratory',
   });
   assert.equal(c.bugClass, 'SECURITY_VULNERABILITY_LEAK');
-  assert.equal(c.cwe, 'CWE-200');
+  assert.equal(c.cwe, 'CWE-209');
   assert.equal(c.confidence, 'CONFIRMED');
 });
 

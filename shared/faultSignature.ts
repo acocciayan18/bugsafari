@@ -70,13 +70,16 @@ export interface FaultSignatureInput {
 // Stable fault identity shared across live grouping, ingest-collapse, and saved
 // dedup. Stack disambiguates JS faults; statusCode disambiguates network faults.
 export function buildFaultSignature(fault: FaultSignatureInput): string {
-  // A network fault's "stack" is a response-body artifact, not a JS call-site: two 500s on
-  // one endpoint (one leaking a stack, one not) are the SAME defect, so drop it there and
-  // let the status code disambiguate. JS faults keep the stack top to split shared messages.
+  // A network fault's identity is its ENDPOINT + status, both already in the reason
+  // (`HTTP 500 GET /api/products/#id/related`). Its `url` is the PAGE that fired the call and
+  // its "stack" is a response-body artifact — so one broken endpoint hit from two pages, or a
+  // 500 that leaks a stack on one hit but not another, is ONE defect. Drop both for network
+  // faults and let the status disambiguate. JS faults keep url (route) and stack top, which
+  // legitimately split otherwise-identical messages.
   const isNetworkFault = fault.statusCode !== undefined && fault.statusCode !== null;
   return [
     normalizeFaultText(fault.reason),
-    normalizeFaultUrl(fault.url),
+    isNetworkFault ? '' : normalizeFaultUrl(fault.url),
     isNetworkFault ? '' : faultStackTop(fault.stackTrace),
     fault.statusCode ?? '',
   ].join('|');

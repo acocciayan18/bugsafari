@@ -359,6 +359,11 @@ export function refineCwe(bugClass: BugClass, categories: SignalCategory[], base
       if (has('INFO_LEAK')) return 'CWE-209';
       if (has('XSS_REFLECTION')) return 'CWE-79';
       return baseCwe;
+    // A leaked stack/error in a response body is specifically an error-message info exposure
+    // (CWE-209), the precise child of the class's generic CWE-200 default.
+    case 'SECURITY_VULNERABILITY_LEAK':
+      if (has('INFO_LEAK')) return 'CWE-209';
+      return baseCwe;
     default:
       return baseCwe;
   }

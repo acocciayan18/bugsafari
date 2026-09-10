@@ -199,7 +199,7 @@ export interface StabilityMonitorDeps {
   getInteractionContext(atMs: number, windowMs?: number): InteractionContext | null;
   /** True when two-or-more DISTINCT controls were acted near `atMs` (a concurrent burst), so a
    *  network fault at that instant cannot be blamed on one control. Optional: absent ⇒ never ambiguous. */
-  isConcurrentBurstAt?(atMs: number): boolean;
+  isConcurrentBurstAt?(atMs: number, windowMs?: number): boolean;
   /** True when a request in flight over [startMs, endMs] was cancelled by a BugSafari navigation
    *  (page unmounted mid-flight) — a self-caused net::ERR_FAILED, not an app defect. Optional. */
   wasRequestSupersededByEngineNav?(startMs: number | undefined, endMs: number): boolean;

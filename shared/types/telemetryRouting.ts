@@ -38,6 +38,7 @@ export type RoutingReasonCode =
   | 'CORS_BLOCKED'
   | 'SERVER_ERROR'
   | 'SOFT_FAIL_BODY'
+  | 'CLIENT_REQUEST_REJECTED'
   | 'DEFENSIVE_CLIENT_ERROR'
   | 'REDIRECT_ERROR'
   | 'TRANSPORT_FAILURE'
@@ -59,6 +60,7 @@ export const PROMOTABLE_REASON_CODES: ReadonlySet<string> = new Set<RoutingReaso
   'BROKE_UI',
   'SERVER_ERROR',
   'SOFT_FAIL_BODY',
+  'CLIENT_REQUEST_REJECTED',
 ]);
 
 /** True when a recorded routing decision belongs in Findings/Errors. */
@@ -92,6 +94,10 @@ export interface NetworkRoutingInput {
   causedRuntimeFault?: boolean;
   /** The request was in flight when BugSafari navigated away — a self-caused cancel, not a defect. */
   supersededByNavigation?: boolean;
+  /** The request was fired by a first-party, acted UI control (not background/polled chatter).
+   *  Lets a control-triggered "unprocessable request" 4xx promote while ordinary defensive
+   *  rejections the engine trips (auth/not-found/rate limits, or background calls) stay quiet. */
+  firstPartyControlTriggered?: boolean;
   /** Provenance verdict, when the caller has one (engine only). */
   origin?: string;
 }
@@ -246,6 +252,14 @@ export const ASSET_URL_PATTERN =
 export const DEFENSIVE_CLIENT_STATUSES: ReadonlySet<number> = new Set([
   400, 401, 403, 404, 405, 406, 409, 410, 415, 422, 429,
 ]);
+
+// "Unprocessable request" status: 422 means the app sent a well-formed but semantically
+// invalid request the server could not process — on a first-party, control-triggered call
+// that points at a client-side handling defect. Kept to 422 ONLY: a plain 400 is ordinarily
+// normal form validation (missing field, empty cart) the app surfaces correctly, so promoting
+// it would flag every fuzzed signup/checkout as a false positive. Auth/not-found/rate/method
+// statuses likewise stay defensive — the engine trips those constantly while exploring.
+export const UNPROCESSABLE_REQUEST_STATUSES: ReadonlySet<number> = new Set([422]);
 
 const includesAny = (haystack: string, needles: readonly string[]): boolean =>
   needles.some((needle) => haystack.includes(needle));
@@ -404,6 +418,24 @@ export function routeNetworkEvent(input: NetworkRoutingInput): NetworkRoutingVer
       'MEDIUM',
       'SOFT_FAIL_BODY',
       `HTTP ${status ?? 200} returned an error payload, indicating that the request reported success at the HTTP level but the application response indicates a failure.`,
+    );
+  }
+
+  // A first-party, control-triggered request the app itself built and fired, rejected as
+  // unprocessable (400/422): the app produced a bad request and — per the swallowed-4xx
+  // defect class — commonly gives the user no feedback. Promote as an app-side handling
+  // defect. Narrow by design (only these statuses, only when an acted control fired it) so
+  // the auth/not-found/rate-limit rejections the engine trips stay defensive Network rows.
+  if (
+    input.firstPartyControlTriggered &&
+    status !== undefined &&
+    UNPROCESSABLE_REQUEST_STATUSES.has(status)
+  ) {
+    return verdict(
+      'FINDING',
+      'MEDIUM',
+      'CLIENT_REQUEST_REJECTED',
+      `HTTP ${status}. The app sent a request the server could not process, and did not surface the failure.`,
     );
   }
 

@@ -56,6 +56,35 @@ check('defensive 4xx stays on the Network tab', () => {
   }
 });
 
+// D3: a first-party control-triggered 422 (the app built an unprocessable request and
+// swallowed the rejection) promotes; a plain 400 is normal form validation and does NOT.
+check('a first-party control-triggered 422 promotes as CLIENT_REQUEST_REJECTED', () => {
+  const v = routeNetworkEvent({ kind: 'HTTP_RESPONSE', statusCode: 422, resourceType: 'xhr', firstPartyControlTriggered: true });
+  assert.equal(v.promote, true);
+  assert.equal(v.reasonCode, 'CLIENT_REQUEST_REJECTED');
+  assert.ok(isPromotableReason(v.reasonCode));
+});
+
+check('a first-party 400 (ordinary form validation) stays defensive, never a finding', () => {
+  const v = routeNetworkEvent({ kind: 'HTTP_RESPONSE', statusCode: 400, resourceType: 'xhr', firstPartyControlTriggered: true });
+  assert.equal(v.promote, false);
+  assert.equal(v.reasonCode, 'DEFENSIVE_CLIENT_ERROR');
+});
+
+check('first-party auth/not-found/rate 4xx stay defensive even when control-triggered', () => {
+  for (const status of [401, 403, 404, 405, 406, 409, 410, 415, 429]) {
+    const v = routeNetworkEvent({ kind: 'HTTP_RESPONSE', statusCode: status, resourceType: 'xhr', firstPartyControlTriggered: true });
+    assert.equal(v.promote, false, `HTTP ${status}`);
+    assert.equal(v.reasonCode, 'DEFENSIVE_CLIENT_ERROR', `HTTP ${status}`);
+  }
+});
+
+check('a background (non-control) 422 stays a Network row', () => {
+  const v = routeNetworkEvent({ kind: 'HTTP_RESPONSE', statusCode: 422, resourceType: 'xhr', firstPartyControlTriggered: false });
+  assert.equal(v.promote, false);
+  assert.equal(v.reasonCode, 'DEFENSIVE_CLIENT_ERROR');
+});
+
 check('404 on a static asset is dropped as noise', () => {
   const v = routeNetworkEvent({ kind: 'HTTP_RESPONSE', statusCode: 404, url: 'https://app.io/favicon.ico', resourceType: 'image' });
   assert.equal(v.reasonCode, 'ASSET_NOISE');

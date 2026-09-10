@@ -861,7 +861,10 @@ export class StabilityMonitor {
     // decline single-control attribution and let the burst macro narrate the repro (mirrors the
     // network path's culpritForRequest). A captured non-JSON response is the only evidence that
     // turns a "not valid JSON" parse into a real API-contract break — resolve both once here.
-    const burstAmbiguous = this.deps.isConcurrentBurstAt?.(faultAtMs) ?? false;
+    // A runtime exception often surfaces asynchronously, just AFTER the burst's tight click
+    // window closed, so widen the ambiguity check to the runtime culprit window here — else a
+    // post-burst throw is wrongly pinned to one sibling (e.g. a persistent footer field).
+    const burstAmbiguous = this.deps.isConcurrentBurstAt?.(faultAtMs, RUNTIME_CULPRIT_WINDOW_MS) ?? false;
     const contract = this.contractCorrelator.correlate(faultAtMs);
 
     // Freeze the rolling buffer and minimize it to the steps causally required to reach
@@ -1677,7 +1680,13 @@ export class StabilityMonitor {
       },
     });
 
-    const forced = routing.reasonCode === 'CHAOS_INJECTED' || routing.reasonCode === 'BROKE_UI';
+    const forced =
+      routing.reasonCode === 'CHAOS_INJECTED' ||
+      routing.reasonCode === 'BROKE_UI' ||
+      // A first-party control-triggered unprocessable 4xx: the routing tree already gated it on
+      // first-party + status, so force-promote it as NEEDS_VERIFICATION rather than let the
+      // generic verifier score a lone 4xx as inconclusive and drop it.
+      routing.reasonCode === 'CLIENT_REQUEST_REJECTED';
     if (!verification.report && !forced) {
       t.emit('NETWORK', {
         statusCode: evidence.statusCode,
@@ -2038,6 +2047,10 @@ export class StabilityMonitor {
         resourceType,
         softFailBody,
         chaosInjected: chaosMode !== undefined,
+        // A first-party request an acted control actually fired (not background/polled chatter,
+        // not a burst) — lets a control-triggered unprocessable 4xx (400/422) promote as an
+        // app handling defect while ordinary defensive rejections stay Network-tab rows.
+        firstPartyControlTriggered: Boolean(this.triggeringActionForRequest(response.request())),
       });
 
       // Network-tab only: defensive 4xx, CORS blocks, and anything the tree does
