@@ -5,6 +5,14 @@ import type { ActionRecord } from '../../../../shared/types.js';
 // State-changing verbs only; reads (GET/HEAD/OPTIONS) can repeat safely and are ignored.
 const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+// Read/compute endpoints that persist nothing even over POST (price quotes, search, previews,
+// autocomplete). An overlapping repeat of one commits nothing, so it is never an unguarded
+// double-submit — skip it, matching on a path segment so `/price-alert` (a real write) is not
+// caught by `price`. Conservative, clear-read verbs only: the residual risk is a missed
+// double-submit on a read-verb-named write, preferable to flagging every idempotent quote.
+const READ_MODEL_ENDPOINT_RE =
+  /\/(?:quote|quotes|estimate|preview|calculate|calc|pricing|price|search|availability|suggest|autocomplete|typeahead|lookup)(?:[/?#]|$)/i;
+
 // Primary oracle is in-flight overlap. A repeat issued AFTER the first settled is only a
 // candidate inside this grace window; beyond it the operator intent is a fresh submission.
 const SETTLED_GRACE_MS = 1500;
@@ -169,6 +177,9 @@ export class DuplicateActionFinder {
   public observeRequest(o: RequestObservation): void {
     const method = (o.method ?? '').toString().toUpperCase();
     if (!STATE_CHANGING.has(method)) return;
+    // A read/compute endpoint (quote, search, preview…) has no persisted effect, so an
+    // overlapping repeat is harmless — never a double-submit defect.
+    if (READ_MODEL_ENDPOINT_RE.test(o.url ?? '')) return;
     this.observations += 1;
 
     const signature = this.signatureFor(method, o.url ?? '', o.body);

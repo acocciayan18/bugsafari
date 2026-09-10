@@ -109,6 +109,12 @@ const CRITICAL_RUNTIME_SUBTYPES: ReadonlySet<RuntimeSubtype> = new Set<RuntimeSu
 // that merely happened to be the last thing acted on.
 const RUNTIME_CULPRIT_WINDOW_MS = 1000;
 
+// A DOM control is only accepted as an exception's culprit when it was acted within this tight
+// window of the throw — a synchronous handler fault (type/submit → throw). Beyond it the fault is
+// async/render (surfacing after navigation), so attribution falls to the stack frame instead of a
+// stale, constantly-fuzzed persistent control (e.g. a footer field) that was merely last-acted.
+const RUNTIME_ELEMENT_SYNC_WINDOW_MS = 400;
+
 /** Maps the resolved 5-tier FaultSeverity to the persisted forensic-error scale. */
 const FAULT_TO_FORENSIC: Record<FaultSeverity, ForensicErrorSeverity> = {
   CRITICAL: ForensicErrorSeverity.CRITICAL,
@@ -987,12 +993,14 @@ export class StabilityMonitor {
     // value). Prefer a descriptive acted control; otherwise attribute to the failing
     // handler from the stack, never a wrong last-clicked control. Selector stays empty
     // for a stack attribution — a frame is not a DOM selector.
-    const rawCulpritLabel = this.culpritLabelAt(faultAtMs, RUNTIME_CULPRIT_WINDOW_MS);
+    // Accept a DOM control only if it was acted within the tight sync window (a handler-driven
+    // throw); an async/render fault beyond it attributes to the stack, not a stale footer field.
+    const rawCulpritLabel = this.culpritLabelAt(faultAtMs, RUNTIME_ELEMENT_SYNC_WINDOW_MS);
     const descriptiveLabel = isDescriptiveControlName(rawCulpritLabel) ? rawCulpritLabel : undefined;
     const { culpritLabel, culpritSelector } = resolveRuntimeCulprit({
       burstAmbiguous,
       descriptiveLabel,
-      selector: this.culpritSelectorAt(faultAtMs, RUNTIME_CULPRIT_WINDOW_MS),
+      selector: this.culpritSelectorAt(faultAtMs, RUNTIME_ELEMENT_SYNC_WINDOW_MS),
       stackCulprit,
     });
     t.gateway.emitIncidentReport({

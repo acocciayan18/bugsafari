@@ -783,4 +783,29 @@ check('a known culprit still double-fires that ONE control (unchanged behavior)'
   assert.equal(steps[1].elementLabel, 'Increment (unguarded)');
 });
 
+// A read/compute endpoint (price quote) persists nothing, so a double-fire is harmless and
+// must not be flagged — the RUN-89EBC5 false positive on POST /api/checkout/quote.
+check('an overlapping double POST to a read-model endpoint (/checkout/quote) is NOT a defect', () => {
+  const h = new Harness();
+  const a = h.send(1000, { url: 'http://app.test/api/checkout/quote' });
+  const b = h.send(1150, { url: 'http://app.test/api/checkout/quote' });
+  assert.equal(h.settle(b, 1400, 200), null);
+  assert.equal(h.settle(a, 1500, 200), null);
+  assert.equal(h.finder.totalFound(), 0);
+});
+
+// A real write endpoint with the same overlap still reports, and /price-alert (a write) is not
+// swallowed by the `price` read-verb.
+check('a real write endpoint (/orders, /price-alert) still reports a double-submit', () => {
+  for (const url of ['http://app.test/api/orders', 'http://app.test/api/products/p9/price-alert']) {
+    const h = new Harness();
+    const a = h.send(1000, { url });
+    const b = h.send(1150, { url });
+    h.settle(b, 1400, 201);
+    const defect = h.settle(a, 1500, 201);
+    assert.ok(defect, url);
+    assert.equal(defect!.verdict, 'CONFIRMED_DUPLICATE', url);
+  }
+});
+
 console.log(`\n${passed} passed`);
