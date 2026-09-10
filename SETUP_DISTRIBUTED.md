@@ -194,9 +194,9 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "improved bugsafari-target-app"
-git checkout -b 9-2-Ayan-1
-git push --set-upstream origin 9-2-Ayan-1
+git commit -m "Add custom Fix forensic report scrolling and element data consistence"
+git checkout -b 9-10-Ayan
+git push --set-upstream origin 9-10-Ayan
 
 
 
