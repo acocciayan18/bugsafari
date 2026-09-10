@@ -101,7 +101,7 @@ function FilterDropdown<T extends string>({ options, value, onChange, ariaLabel,
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         aria-label={ariaLabel}
-        className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] pl-2 pr-1.5 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-focus)]"
+        className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] pl-2 pr-1.5 text-body-sm font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-focus)]"
       >
         <span className="text-[var(--text-tertiary)]">{icon}</span>
         {dots && <span className={`h-2 w-2 shrink-0 rounded-full ${dots[value] ?? dots.ALL}`} aria-hidden="true" />}
@@ -125,7 +125,7 @@ function FilterDropdown<T extends string>({ options, value, onChange, ariaLabel,
                 <button
                   type="button"
                   onClick={() => { onChange(opt.value); closeMenu(); }}
-                  className={`flex w-full cursor-pointer items-center gap-2.5 px-3 py-2 text-left text-[13px] transition-colors hover:bg-[var(--surface-hover)] ${opt.value === value ? 'font-semibold text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}
+                  className={`flex w-full cursor-pointer items-center gap-2.5 px-3 py-2 text-left text-body-sm transition-colors hover:bg-[var(--surface-hover)] ${opt.value === value ? 'font-semibold text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}
                 >
                   {dots && <span className={`h-2 w-2 shrink-0 rounded-full ${dots[opt.value] ?? dots.ALL}`} aria-hidden="true" />}
                   <span className="flex-1 truncate">{opt.label}</span>
@@ -165,7 +165,7 @@ function emitUndoToast(message: string, onUndo: () => void): void {
         <button
           type="button"
           onClick={() => { toast.dismiss(id); onUndo(); }}
-          className="shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-semibold text-(--text-primary) hover:bg-(--surface-hover)"
+          className="shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-body-sm font-semibold text-(--text-primary) hover:bg-(--surface-hover)"
         >
           <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />
           Undo
@@ -373,7 +373,7 @@ export default function SavedEvaluationSafaris() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="
                       ml-2 min-w-0 flex-1 bg-transparent
-                      text-base sm:text-[13px] text-[var(--text-primary)]
+                      text-base sm:text-body-sm text-[var(--text-primary)]
                       placeholder:text-[var(--text-tertiary)]
                       focus:outline-none
                     "
@@ -382,7 +382,7 @@ export default function SavedEvaluationSafaris() {
               </div>
               {/* Sort controls — field picker + direction toggle */}
               <div data-tour="history-sort" className="flex items-center gap-2">
-                <label className="shrink-0 text-[13px] font-medium text-[var(--text-secondary)]">
+                <label className="shrink-0 text-body-sm font-medium text-[var(--text-secondary)]">
                   Sort by
                 </label>
                 <FilterDropdown
@@ -394,7 +394,7 @@ export default function SavedEvaluationSafaris() {
                 />
                 <button
                   onClick={() => setSortConfig((prev) => ({ ...prev, direction: prev.direction === 'asc' ? 'desc' : 'asc' }))}
-                  className="flex h-8 items-center gap-1 cursor-pointer rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] px-2 text-[13px] font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors"
+                  className="flex h-8 items-center gap-1 cursor-pointer rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] px-2 text-body-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors"
                   title={sortConfig.direction === 'asc' ? 'Ascending' : 'Descending'}
                   aria-label={`Sort direction: ${sortConfig.direction === 'asc' ? 'ascending' : 'descending'}`}
                 >
@@ -448,11 +448,11 @@ export default function SavedEvaluationSafaris() {
           ) : error ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
               <TriangleAlert className="h-12 w-12 text-[var(--status-critical-fg)]" />
-              <span className="text-[13px] font-medium text-[var(--status-critical-fg)]">We couldn't load your history</span>
-              <span className="text-[13px] text-[var(--text-secondary)]">{error}</span>
+              <span className="text-body-sm font-medium text-[var(--status-critical-fg)]">We couldn't load your history</span>
+              <span className="text-body-sm text-[var(--text-secondary)]">{error}</span>
               <button
                 onClick={() => void fetchSessions(true)}
-                className="mt-2 rounded-md border cursor-pointer border-[var(--border-strong)] bg-[var(--surface-app)] px-4 py-2 text-[13px] font-medium text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
+                className="mt-2 rounded-md border cursor-pointer border-[var(--border-strong)] bg-[var(--surface-app)] px-4 py-2 text-body-sm font-medium text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
               >
                 Try Again
               </button>
@@ -460,11 +460,11 @@ export default function SavedEvaluationSafaris() {
           ) : !token ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
               <Lock className="h-12 w-12 text-[var(--text-secondary)]" />
-              <span className="text-[13px] text-[var(--text-secondary)] font-medium">Please log in to view history</span>
-              <span className="text-[13px] text-[var(--text-secondary)]">Log in or sign up to access your saved evaluations</span>
+              <span className="text-body-sm text-[var(--text-secondary)] font-medium">Please log in to view history</span>
+              <span className="text-body-sm text-[var(--text-secondary)]">Log in or sign up to access your saved evaluations</span>
               <button
                 onClick={() => navigate('/login')}
-                className="mt-2 rounded-md bg-[var(--surface-invert)] px-4 py-2 text-[13px] font-medium text-[var(--text-oninvert)] hover:bg-[var(--surface-invert-hover)]"
+                className="mt-2 rounded-md bg-[var(--surface-invert)] px-4 py-2 text-body-sm font-medium text-[var(--text-oninvert)] hover:bg-[var(--surface-invert-hover)]"
               >
                 Go to Login
               </button>
@@ -472,14 +472,14 @@ export default function SavedEvaluationSafaris() {
           ) : view.page.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
               <ClipboardCheck className="h-12 w-12 text-[var(--text-secondary)]" />
-              <span className="text-[13px] text-[var(--text-secondary)] font-medium">
+              <span className="text-body-sm text-[var(--text-secondary)] font-medium">
                 {view.totalCount > 0
                   ? 'No safaris match the current filters'
                   : stateFilter === 'archived' ? 'No archived safaris'
                   : stateFilter === 'trashed' ? 'Trash is empty'
                   : 'No evaluation history yet'}
               </span>
-              <span className="text-[13px] text-[var(--text-secondary)]">
+              <span className="text-body-sm text-[var(--text-secondary)]">
                 {view.totalCount > 0
                   ? 'Adjust the search or severity filter to widen the results'
                   : stateFilter === 'archived' ? 'Archive a safari to park it here without deleting it'
@@ -489,7 +489,7 @@ export default function SavedEvaluationSafaris() {
               {view.totalCount === 0 && stateFilter === 'active' && (
                 <button
                   onClick={() => navigate('/dashboard')}
-                  className="mt-2 rounded-md bg-[var(--surface-invert)] px-4 py-2 text-[13px] font-medium text-[var(--text-oninvert)] hover:bg-[var(--surface-invert-hover)]"
+                  className="mt-2 rounded-md bg-[var(--surface-invert)] px-4 py-2 text-body-sm font-medium text-[var(--text-oninvert)] hover:bg-[var(--surface-invert-hover)]"
                 >
                   Go to Dashboard
                 </button>
@@ -525,7 +525,7 @@ export default function SavedEvaluationSafaris() {
                       <div className="truncate text-base font-medium text-[var(--text-primary)]">
                         {evalItem.targetUrl}
                       </div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[13px] text-[var(--text-secondary)]">
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-body-sm text-[var(--text-secondary)]">
                         {/* Session ID, Date, and Status each sit in a subtle neutral badge so they read as distinct chips, not a run-on line. */}
                         <span className="inline-flex min-h-6 items-center truncate rounded border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-2 py-0.5 font-mono font-normal text-[var(--text-secondary)]">
                           <Hash className="mr-1 h-3 w-3 shrink-0 text-[var(--text-tertiary)]" aria-hidden="true" />
@@ -548,7 +548,7 @@ export default function SavedEvaluationSafaris() {
                     <div className="flex shrink-0 items-center gap-3 sm:gap-4">
                       <div
                         title={`Worst finding: ${evalItem.severity} (${evalItem.findingCount} total)`}
-                        className={`flex h-6 items-center rounded border px-2 text-[13px] font-medium ${SEVERITY_BADGE_CLASS[evalItem.severity] ?? SEVERITY_BADGE_CLASS.CLEAR}`}
+                        className={`flex h-6 items-center rounded border px-2 text-body-sm font-medium ${SEVERITY_BADGE_CLASS[evalItem.severity] ?? SEVERITY_BADGE_CLASS.CLEAR}`}
                       >
                         {evalItem.severityCount} {evalItem.severity}
                       </div>
@@ -578,7 +578,7 @@ export default function SavedEvaluationSafaris() {
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-t border-[var(--border-hairline)] px-4 py-3 sm:px-6">
-          <span className="font-mono text-[13px] text-[var(--text-secondary)]">
+          <span className="font-mono text-body-sm text-[var(--text-secondary)]">
             Showing {view.showingStart}-{view.showingEnd} of {view.matchedCount} Safaris
             {view.isFiltered && ` (Filtered from ${view.totalCount})`}
           </span>
@@ -592,20 +592,20 @@ export default function SavedEvaluationSafaris() {
               <ChevronLeft className="h-4 w-4" />
             </button>
             {/* Compact page indicator on narrow widths; numbered buttons take over from sm up. */}
-            <span className="px-2 font-mono text-[13px] text-[var(--text-secondary)] sm:hidden">
+            <span className="px-2 font-mono text-body-sm text-[var(--text-secondary)] sm:hidden">
               {view.safePage} / {view.totalPages}
             </span>
             <div className="hidden items-center gap-1 sm:flex">
               {pageItems(view.safePage, view.totalPages).map((item, index) =>
                 item === 'gap' ? (
-                  <span key={`gap-${index}`} aria-hidden="true" className="flex h-8 w-8 items-center justify-center text-[13px] text-[var(--text-tertiary)]">…</span>
+                  <span key={`gap-${index}`} aria-hidden="true" className="flex h-8 w-8 items-center justify-center text-body-sm text-[var(--text-tertiary)]">…</span>
                 ) : (
                   <button
                     key={item}
                     onClick={() => setCurrentPage(() => item)}
                     aria-label={`Page ${item}`}
                     aria-current={item === view.safePage ? 'page' : undefined}
-                    className={`flex h-8 min-w-8 items-center justify-center rounded border px-2 text-[13px] font-medium transition-colors ${item === view.safePage
+                    className={`flex h-8 min-w-8 items-center justify-center rounded border px-2 text-body-sm font-medium transition-colors ${item === view.safePage
                       ? 'border-[var(--surface-invert)] bg-[var(--surface-invert)] text-[var(--text-oninvert)]'
                       : 'border-(--border-strong) bg-(--surface-app) text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
                       }`}

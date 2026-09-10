@@ -44,8 +44,8 @@ export default function AuthAlert({ feedback }: AuthAlertProps) {
     >
       <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${text}`} strokeWidth={1.75} aria-hidden="true" />
       <div className="min-w-0">
-        <p className={`text-[13px] ${text}`}>{feedback.message}</p>
-        {feedback.hint && <p className={`mt-0.5 text-[13px] opacity-80 ${text}`}>{feedback.hint}</p>}
+        <p className={`text-body-sm ${text}`}>{feedback.message}</p>
+        {feedback.hint && <p className={`mt-0.5 text-body-sm opacity-80 ${text}`}>{feedback.hint}</p>}
       </div>
     </div>
   );

@@ -30,7 +30,7 @@ export default function EmptyState({
       </span>
       <div className="flex flex-col gap-1">
         <p className="font-sans text-sm font-semibold text-(--text-primary)">{title}</p>
-        {description && <p className="max-w-xs font-sans text-[13px] leading-relaxed text-(--text-tertiary)">{description}</p>}
+        {description && <p className="max-w-xs font-sans text-body-sm leading-relaxed text-(--text-tertiary)">{description}</p>}
       </div>
     </div>
   );

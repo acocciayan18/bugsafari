@@ -207,7 +207,7 @@ export default function FindingsPanel({
 
       {/* Results */}
       {filtered.length === 0 ? (
-        <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) px-4 py-8 text-center text-[13px] text-(--text-tertiary)">
+        <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) px-4 py-8 text-center text-body-sm text-(--text-tertiary)">
           No findings match the current filters.
           <button type="button" onClick={clearFilters} className="ml-1 font-semibold text-(--text-secondary) underline hover:text-(--text-primary)">
             Clear filters

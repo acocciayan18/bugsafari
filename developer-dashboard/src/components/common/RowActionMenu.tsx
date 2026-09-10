@@ -141,7 +141,7 @@ export function RowActionMenu({
             <button
               onClick={() => handleItemClick(onShare)}
               disabled={disabled || isLoading}
-              className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
+              className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-body-sm text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
               role="menuitem"
             >
               <Share2 className="h-4 w-4 shrink-0 text-(--text-secondary)" aria-hidden="true" />
@@ -152,7 +152,7 @@ export function RowActionMenu({
             <button
               onClick={() => handleItemClick(onArchive)}
               disabled={disabled || isLoading}
-              className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
+              className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-body-sm text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
               role="menuitem"
             >
               <Archive className="h-4 w-4 shrink-0 text-(--text-secondary)" aria-hidden="true" />
@@ -163,7 +163,7 @@ export function RowActionMenu({
             <button
               onClick={() => handleItemClick(onRestore)}
               disabled={disabled || isLoading}
-              className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
+              className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-body-sm text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
               role="menuitem"
             >
               <ArchiveRestore className="h-4 w-4 shrink-0 text-(--text-secondary)" aria-hidden="true" />
@@ -174,7 +174,7 @@ export function RowActionMenu({
             <button
               onClick={() => handleItemClick(onMoveToTrash)}
               disabled={disabled || isLoading}
-              className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--status-critical-fg) hover:bg-(--status-critical-bg) disabled:opacity-40"
+              className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-body-sm text-(--status-critical-fg) hover:bg-(--status-critical-bg) disabled:opacity-40"
               role="menuitem"
             >
               <Trash2 className="h-4 w-4 shrink-0 text-(--status-critical-fg)" aria-hidden="true" />
@@ -185,7 +185,7 @@ export function RowActionMenu({
             <button
               onClick={() => handleItemClick(onDeleteForever)}
               disabled={disabled || isLoading}
-              className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--status-critical-fg) hover:bg-(--status-critical-bg) disabled:opacity-40"
+              className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-body-sm text-(--status-critical-fg) hover:bg-(--status-critical-bg) disabled:opacity-40"
               role="menuitem"
             >
               <Flame className="h-4 w-4 shrink-0 text-(--status-critical-fg)" aria-hidden="true" />

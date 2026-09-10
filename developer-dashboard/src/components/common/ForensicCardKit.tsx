@@ -93,15 +93,15 @@ export const ExpandableCodeBlock = ({
     <div>
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-2 px-4 py-3 pt-0 cursor-pointer text-(--text-secondary)  transition-colors text-[13px] font-semibold"
+        className="w-full flex items-center gap-2 px-4 py-3 pt-0 cursor-pointer text-(--text-secondary)  transition-colors text-body-sm font-semibold"
       >
-        <span className="shrink-0 text-[13px]">{isExpanded ? '▼' : ''}</span>
+        <span className="shrink-0 text-body-sm">{isExpanded ? '▼' : ''}</span>
         <span className="min-w-0 text-left">{title}</span>
         <span className="ml-auto hidden shrink-0 text-xs opacity-60 sm:inline">Click to {isExpanded ? 'collapse' : 'expand'}</span>
       </button>
       {isExpanded && (
         <div className={`custom-scrollbar px-4 py-3 pt-0 bg-(--surface-raised) max-h-96 overflow-y-auto border border-(--border-hairline) border-t-0 ${className}`}>
-          <pre className="text-[13px] font-mono whitespace-pre-wrap wrap-break-word text-(--text-secondary) leading-relaxed p-3 bg-(--surface-panel) rounded border border-(--border-hairline) overflow-x-auto">
+          <pre className="text-body-sm font-mono whitespace-pre-wrap wrap-break-word text-(--text-secondary) leading-relaxed p-3 bg-(--surface-panel) rounded border border-(--border-hairline) overflow-x-auto">
             {content}
           </pre>
           <div className="mt-2 flex justify-end">
@@ -236,8 +236,8 @@ export const SuggestedFixBlock = ({ advice, context, savedAiAdvice }: { advice: 
             </div>
           )
           : displayed
-            ? <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-(--text-primary)">{displayed}</pre>
-            : <div className="text-[13px] italic text-(--text-tertiary)">{context ? 'No suggested fix yet. Generate one above.' : 'No suggested fix for this finding yet.'}</div>}
+            ? <pre className="whitespace-pre-wrap break-words font-mono text-body-sm leading-relaxed text-(--text-primary)">{displayed}</pre>
+            : <div className="text-body-sm italic text-(--text-tertiary)">{context ? 'No suggested fix yet. Generate one above.' : 'No suggested fix for this finding yet.'}</div>}
       </div>
     </div>
   );

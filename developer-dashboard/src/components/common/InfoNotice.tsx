@@ -104,7 +104,7 @@ export default function InfoNotice({ ariaLabel, title, children }: InfoNoticePro
           style={{ position: 'fixed', top: pos?.top ?? 0, left: pos?.left ?? 0, opacity: pos ? 1 : 0 }}
           className="z-50 block w-72 max-w-[calc(100vw-1rem)] rounded-lg border border-(--border-hairline) bg-(--surface-raised) p-3 text-left shadow-lg transition-opacity duration-150"
         >
-          <span className="block text-[13px] font-bold text-(--text-primary)">{title}</span>
+          <span className="block text-body-sm font-bold text-(--text-primary)">{title}</span>
           <span className="mt-1 block text-xs leading-relaxed text-(--text-secondary)">{children}</span>
         </span>,
         document.body,

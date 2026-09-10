@@ -133,13 +133,13 @@ export default function SignupForm() {
           <p className="text-base leading-relaxed text-(--text-primary) mb-2 max-w-[40ch] mx-auto">
             We sent a verification link to <span className="font-medium break-all">{sentToEmail}</span>.
           </p>
-          <p className="text-[13px] leading-relaxed text-(--text-tertiary) mb-6 max-w-[40ch] mx-auto">
+          <p className="text-body-sm leading-relaxed text-(--text-tertiary) mb-6 max-w-[40ch] mx-auto">
             Open it to activate your account and sign in. Check your spam folder if it hasn't arrived.
           </p>
           <div className="pt-5 border-t border-(--border-hairline)">
             <Link
               to="/login"
-              className="inline-flex items-center gap-2 text-[13px] font-medium text-(--text-primary) hover:opacity-80 transition-opacity duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1 py-0.5"
+              className="inline-flex items-center gap-2 text-body-sm font-medium text-(--text-primary) hover:opacity-80 transition-opacity duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1 py-0.5"
             >
               <ArrowLeft className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
               Back to sign in

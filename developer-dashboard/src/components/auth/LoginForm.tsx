@@ -116,7 +116,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
           </div>
 
           <div className="mt-4 text-center">
-            <button type="button" onClick={() => setIsGuestModalOpen(true)} className="inline-flex items-center justify-center gap-1.5 text-[13px] font-medium text-(--text-tertiary) cursor-pointer hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-2 py-1">
+            <button type="button" onClick={() => setIsGuestModalOpen(true)} className="inline-flex items-center justify-center gap-1.5 text-body-sm font-medium text-(--text-tertiary) cursor-pointer hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-2 py-1">
               Continue As Guest
             </button>
           </div>
@@ -160,7 +160,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
             <div>
               <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1.5">
                 <label htmlFor="password" className="text-sm font-medium text-(--text-primary)">Password</label>
-                <Link to="/forgot-password" className="text-[13px] font-medium text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1">Forgot password?</Link>
+                <Link to="/forgot-password" className="text-body-sm font-medium text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1">Forgot password?</Link>
               </div>
               <div className="relative">
                 <input

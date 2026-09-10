@@ -30,7 +30,7 @@ export function GuestModeModal({ isOpen, onClose, onContinue, onCreateAccount }:
       Continue as Guest?
     </h3>
 
-    <p className="mt-0.5 text-[13px] text-(--text-tertiary)">
+    <p className="mt-0.5 text-body-sm text-(--text-tertiary)">
       Guest mode runs a time and scope limited test, and nothing is saved.
     </p>
   </div>
@@ -45,20 +45,20 @@ export function GuestModeModal({ isOpen, onClose, onContinue, onCreateAccount }:
       </div>
 
       <div className="px-3 py-4 sm:px-5">
-        <h4 className="text-[13px] font-semibold uppercase tracking-[0.08em] text-(--text-primary)">
+        <h4 className="text-body-sm font-semibold uppercase tracking-[0.08em] text-(--text-primary)">
           What you give up
         </h4>
         <ul className="mt-2 space-y-1.5 pl-4">
           {GUEST_LIMITATIONS.map((limitation) => (
             <li
               key={limitation}
-              className="list-disc text-[13px] leading-relaxed text-(--text-secondary) marker:text-(--text-tertiary)"
+              className="list-disc text-body-sm leading-relaxed text-(--text-secondary) marker:text-(--text-tertiary)"
             >
               {limitation}
             </li>
           ))}
         </ul>
-        <p className="mt-4 text-[13px] leading-relaxed text-(--text-secondary)">
+        <p className="mt-4 text-body-sm leading-relaxed text-(--text-secondary)">
           Create a free account to keep your session history, revisit past findings, and export reports.
         </p>
       </div>

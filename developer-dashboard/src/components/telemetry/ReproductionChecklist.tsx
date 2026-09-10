@@ -37,13 +37,13 @@ export default function ReproductionChecklist({ steps }: { steps: string[] }) {
                 <span className={`mt-px shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold uppercase ${chipClass(kind)}`}>
                   {chipLabel(kind)}
                 </span>
-                <span className="w-full min-w-0 text-[13px] leading-relaxed text-(--text-primary) break-words sm:w-auto sm:flex-1">{step}</span>
+                <span className="w-full min-w-0 text-body-sm leading-relaxed text-(--text-primary) break-words sm:w-auto sm:flex-1">{step}</span>
               </li>
             );
           })}
         </ol>
       ) : observations.length === 0 ? (
-        <div className="text-[13px] italic text-(--text-secondary)">No reproduction steps available.</div>
+        <div className="text-body-sm italic text-(--text-secondary)">No reproduction steps available.</div>
       ) : null}
       <ObservationsBlock observations={observations} />
     </div>
@@ -65,7 +65,7 @@ export function ObservationsBlock({ observations }: { observations: string[] }) 
         {observations.map((line, idx) => (
           <li
             key={`${idx}-${line}`}
-            className="rounded border border-(--status-critical-border) bg-(--status-critical-bg) px-2.5 py-1.5 text-[13px] leading-relaxed text-(--status-critical-fg) break-words"
+            className="rounded border border-(--status-critical-border) bg-(--status-critical-bg) px-2.5 py-1.5 text-body-sm leading-relaxed text-(--status-critical-fg) break-words"
           >
             {line}
           </li>

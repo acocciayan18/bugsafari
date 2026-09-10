@@ -119,7 +119,7 @@ export default function VerifyEmailForm() {
         <div className="mt-6 flex justify-center">
           <Link
             to="/login"
-            className="inline-flex items-center text-[13px] text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
+            className="inline-flex items-center text-body-sm text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]"
           >
             <ArrowLeft className="w-5 h-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
             <span className="ml-2">Back to sign in</span>

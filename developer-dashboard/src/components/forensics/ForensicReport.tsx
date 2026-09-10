@@ -101,7 +101,7 @@ function riskTheme(score: number): string {
 function StatBlock({ label, value, valueClassName = 'text-(--text-primary)' }: { label: string; value: ReactNode; valueClassName?: string }) {
   return (
     <div className="min-w-0">
-      <div className="text-[13px] font-medium capitalize tracking-wide text-(--text-tertiary)">{label}</div>
+      <div className="text-body-sm font-medium capitalize tracking-wide text-(--text-tertiary)">{label}</div>
       <div className={`mt-1 text-sm font-medium tabular-nums ${valueClassName}`}>{value}</div>
     </div>
   );
@@ -272,7 +272,7 @@ function AiInsightsPanel({
         <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-(--surface-raised) text-(--status-neutral-fg) ring-1 ring-(--status-neutral-border)">
           <Lightbulb className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
         </span>
-        <span className="text-[13px] font-bold uppercase tracking-wide text-(--text-primary)">Insights</span>
+        <span className="text-body-sm font-bold uppercase tracking-wide text-(--text-primary)">Insights</span>
         {aiAnalysis.riskLevel && (
           <span className="rounded-full border border-(--status-neutral-border) bg-(--surface-raised) px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-(--status-neutral-fg)">
             {aiAnalysis.riskLevel} risk
@@ -302,16 +302,16 @@ function AiInsightsPanel({
         )}
         {rootCause && (
           <div>
-            <span className="text-[12px] font-semibold uppercase text-(--text-tertiary)">Root cause</span>
-            <p className="mt-1 text-[13px] leading-relaxed text-(--text-primary)">{rootCause}</p>
+            <span className="text-caption font-semibold uppercase text-(--text-tertiary)">Root cause</span>
+            <p className="mt-1 text-body-sm leading-relaxed text-(--text-primary)">{rootCause}</p>
           </div>
         )}
         {recommendations.length > 0 && (
           <div className={rootCause ? 'mt-3 border-t border-(--border-hairline) pt-2.5' : ''}>
-            <span className="text-[12px] font-semibold uppercase text-(--text-tertiary)">Recommendations</span>
+            <span className="text-caption font-semibold uppercase text-(--text-tertiary)">Recommendations</span>
             <ul className="mt-1.5 space-y-1.5">
               {recommendations.map((recommendation, idx) => (
-                <li key={idx} className="flex gap-2 text-[13px] leading-relaxed text-(--text-secondary)">
+                <li key={idx} className="flex gap-2 text-body-sm leading-relaxed text-(--text-secondary)">
                   <span className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-(--status-neutral-bg) text-(--status-neutral-fg)">
                     <ArrowRight className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
                   </span>
@@ -673,7 +673,7 @@ function VerifyFixControl({
         type="button"
         onClick={onOpenResult}
         title="View verification result"
-        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1 text-[13px] font-medium capitalize transition-colors ${meta.badge}`}
+        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1 text-body-sm font-medium capitalize transition-colors ${meta.badge}`}
       >
         {meta.icon('h-3.5 w-3.5')}
         {meta.label}
@@ -705,7 +705,7 @@ function VerifyFixControl({
 function ResultStat({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
     <div className="rounded-lg border border-(--border-hairline) bg-(--surface-inset) px-3 py-2.5">
-      <div className="text-[12px] font-semibold uppercase tracking-wide text-(--text-tertiary)">{label}</div>
+      <div className="text-caption font-semibold uppercase tracking-wide text-(--text-tertiary)">{label}</div>
       <div className="mt-1 truncate text-sm font-bold text-(--text-primary)" title={title ?? value}>{value}</div>
     </div>
   );
@@ -715,14 +715,14 @@ function ReproducedSignal({ signal }: { signal: RegressionSignal }) {
   return (
     <li className="rounded-lg border border-(--status-critical-border) bg-(--status-critical-bg) p-3.5">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-md bg-(--status-critical-fg) px-2 py-0.5 text-[12px] font-bold uppercase tracking-wide text-(--text-oninvert)">
+        <span className="rounded-md bg-(--status-critical-fg) px-2 py-0.5 text-caption font-bold uppercase tracking-wide text-(--text-oninvert)">
           {signal.faultType}
         </span>
         {typeof signal.statusCode === 'number' && (
           <span className="font-mono text-xs font-semibold text-(--status-critical-fg)">HTTP {signal.statusCode}</span>
         )}
       </div>
-      <div className="mt-1 break-words text-[13px] text-(--text-primary)">{signal.message}</div>
+      <div className="mt-1 break-words text-body-sm text-(--text-primary)">{signal.message}</div>
       {signal.url && (
         <div className="mt-1 truncate font-mono text-xs text-(--text-secondary)" title={signal.url}>{signal.url}</div>
       )}
@@ -738,11 +738,11 @@ function VerdictExplanation({ result, meta }: { result: VerifyFixResult; meta: V
   return (
     <div className={`mt-4 rounded-lg border ${meta.cardBorder} ${meta.cardHeaderBg} p-4`}>
       <div className={`text-xs font-bold uppercase tracking-wide ${meta.cardTitle}`}>What this result means</div>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-(--text-primary)">{why}</p>
+      <p className="mt-1.5 text-body-sm leading-relaxed text-(--text-primary)">{why}</p>
       <div className={`mt-3.5 text-xs font-bold uppercase tracking-wide ${meta.cardTitle}`}>Recommended next steps</div>
       <ul className="mt-1.5 space-y-1.5">
         {steps.map((step, idx) => (
-          <li key={idx} className="flex gap-2 text-[13px] leading-relaxed text-(--text-primary)">
+          <li key={idx} className="flex gap-2 text-body-sm leading-relaxed text-(--text-primary)">
             <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`} aria-hidden="true" />
             <span>{step}</span>
           </li>
@@ -785,13 +785,13 @@ function VerificationResultModal({
           {meta.icon('h-6 w-6')}
         </span>
         <div className="min-w-0">
-          <div className="text-[12px] font-semibold uppercase tracking-wide opacity-90">Verification Result</div>
+          <div className="text-caption font-semibold uppercase tracking-wide opacity-90">Verification Result</div>
           <h2 id={titleId} className="text-lg font-bold leading-tight">{meta.label}</h2>
         </div>
       </div>
 
       <div className="bg-(--surface-panel) px-5 py-5 sm:px-6">
-        <p className="text-[13px] leading-relaxed text-(--text-primary)">{result.summary}</p>
+        <p className="text-body-sm leading-relaxed text-(--text-primary)">{result.summary}</p>
 
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <ResultStat label="Bug Class" value={humanizeFindingTitle(result.bugClass) || 'Unknown'} />
@@ -840,7 +840,7 @@ function VerificationResultModal({
         <button
           type="button"
           onClick={onReverify}
-          className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-(--border-strong) bg-(--surface-panel) px-3.5 py-2 text-[13px] font-semibold text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
+          className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-(--border-strong) bg-(--surface-panel) px-3.5 py-2 text-body-sm font-semibold text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
         >
           <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
           Re-verify
@@ -848,7 +848,7 @@ function VerificationResultModal({
         <button
           type="button"
           onClick={onClose}
-          className="cursor-pointer rounded-lg bg-(--surface-invert) px-4 py-2 text-[13px] font-semibold text-(--text-oninvert) transition-colors hover:bg-(--surface-invert-hover)"
+          className="cursor-pointer rounded-lg bg-(--surface-invert) px-4 py-2 text-body-sm font-semibold text-(--text-oninvert) transition-colors hover:bg-(--surface-invert-hover)"
         >
           Close
         </button>
@@ -931,8 +931,8 @@ function CleanRunCard() {
   return (
     <div className="flex flex-col items-center gap-2 rounded-xl border border-(--status-stable-border) bg-(--status-stable-bg) px-6 py-10 text-center">
       <CircleCheckBig className="h-8 w-8 text-(--status-stable-fg)" strokeWidth={1.75} aria-hidden="true" />
-      <div className="text-[13px] font-semibold text-(--status-stable-fg)">No findings were recorded for this session</div>
-      <div className="text-[13px] text-(--status-stable-fg)">The autonomous run completed without confirming any bugs or vulnerabilities.</div>
+      <div className="text-body-sm font-semibold text-(--status-stable-fg)">No findings were recorded for this session</div>
+      <div className="text-body-sm text-(--status-stable-fg)">The autonomous run completed without confirming any bugs or vulnerabilities.</div>
     </div>
   );
 }
@@ -970,7 +970,7 @@ function TabButton({ label, count, active, onClick, Icon }: { label: string; cou
     <button
       type="button"
       onClick={onClick}
-      className={`flex shrink-0 items-center cursor-pointer gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-[13px] font-semibold transition-colors ${
+      className={`flex shrink-0 items-center cursor-pointer gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-body-sm font-semibold transition-colors ${
         active
           ? 'border-(--border-strong) text-(--text-primary)'
           : 'border-transparent text-(--text-secondary) hover:text-(--text-primary)'
@@ -985,7 +985,7 @@ function TabButton({ label, count, active, onClick, Icon }: { label: string; cou
 
 function EmptyTab({ message }: { message: string }) {
   return (
-    <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) px-4 py-8 text-center text-[13px] italic text-(--text-tertiary)">
+    <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) px-4 py-8 text-center text-body-sm italic text-(--text-tertiary)">
       {message}
     </div>
   );
@@ -1020,10 +1020,10 @@ function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
         aria-expanded={isOpen}
         className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-(--surface-hover)"
       >
-        <span className="text-[13px] font-semibold uppercase text-(--text-secondary)">
+        <span className="text-body-sm font-semibold uppercase text-(--text-secondary)">
           Full Action Timeline ({steps.length} steps), for reference
         </span>
-        <span className="flex shrink-0 items-center gap-1.5 text-[13px] font-medium text-(--text-tertiary)">
+        <span className="flex shrink-0 items-center gap-1.5 text-body-sm font-medium text-(--text-tertiary)">
           {isOpen ? 'Collapse' : 'Expand'}
           <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isOpen ? '' : '-rotate-90'}`} aria-hidden="true" />
         </span>
@@ -1251,12 +1251,12 @@ export default function ForensicReport({ shared = false }: { shared?: boolean } 
             </span>
             <div className="flex flex-col gap-2">
               <h1 className="text-base font-semibold text-(--text-primary) sm:text-lg">{heading}</h1>
-              <p className="text-[13px] leading-relaxed text-(--text-tertiary) sm:text-sm">{detail}</p>
+              <p className="text-body-sm leading-relaxed text-(--text-tertiary) sm:text-sm">{detail}</p>
             </div>
             {shared && (
               <button
                 onClick={() => navigate('/')}
-                className="mt-1 cursor-pointer rounded-lg bg-(--surface-invert) px-5 py-2.5 text-[13px] font-semibold text-(--text-oninvert) transition-colors hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active)"
+                className="mt-1 cursor-pointer rounded-lg bg-(--surface-invert) px-5 py-2.5 text-body-sm font-semibold text-(--text-oninvert) transition-colors hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active)"
               >
                 Go to BugSafari
               </button>

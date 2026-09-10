@@ -85,7 +85,7 @@ function FullTimer({
     return (
         <div className="flex w-full flex-col items-center gap-3 p-3 sm:p-4 bg-(--surface-panel) rounded-lg shadow-md border border-(--border-hairline)">
             {/* Status Badge */}
-            <div className={`px-3 py-1 rounded-full text-[13px] font-bold uppercase r ${propIsPaused ? 'bg-(--status-warning-bg) text-(--status-warning-fg)' :
+            <div className={`px-3 py-1 rounded-full text-body-sm font-bold uppercase r ${propIsPaused ? 'bg-(--status-warning-bg) text-(--status-warning-fg)' :
                     timeRemaining <= 0 ? 'bg-(--status-critical-bg) text-(--status-critical-fg)' :
                         propIsRunning ? 'bg-(--status-stable-bg) text-(--status-stable-fg)' :
                             'bg-(--status-neutral-bg) text-(--status-neutral-fg)'
@@ -128,7 +128,7 @@ function FullTimer({
                     >
                         {formattedTime}
                     </span>
-                    <span className="text-[13px] text-(--text-tertiary) uppercase r">
+                    <span className="text-body-sm text-(--text-tertiary) uppercase r">
                         remaining
                     </span>
                 </div>
@@ -146,7 +146,7 @@ function FullTimer({
             </div>
 
             {/* Time Info */}
-            <div className="flex w-full flex-wrap justify-between gap-x-3 gap-y-1 text-[13px] text-(--text-secondary)">
+            <div className="flex w-full flex-wrap justify-between gap-x-3 gap-y-1 text-body-sm text-(--text-secondary)">
                 <span>Elapsed: {formatClock(initialTimeMs - timeRemaining)}</span>
                 <span>Total: {formatClock(initialTimeMs)}</span>
             </div>

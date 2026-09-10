@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { X, KeyRound, Crosshair, Route, Timer } from 'lucide-react';
 import { Modal } from '../ui/Modal';
+import { RadioOptionCard } from '../ui/RadioOptionCard';
 import { useAuth } from '../../context/AuthContext';
 import InfiltrationProfileSelector from './InfiltrationProfileSelector';
 import TargetAuthPanel, { isTargetAuthIncomplete, type TargetAuthDraft } from './TargetAuthPanel';
@@ -31,11 +32,40 @@ interface TestingConfigModalProps {
   onAuthDraftChange: (next: TargetAuthDraft) => void;
 }
 
-const TABS: { id: ConfigTab; label: string; icon: typeof Crosshair }[] = [
-  { id: 'infiltration', label: 'Infiltration', icon: Crosshair },
-  { id: 'boundary', label: 'Navigation', icon: Route },
-  { id: 'duration', label: 'Duration', icon: Timer },
-  { id: 'auth', label: 'Target Auth', icon: KeyRound },
+// Section metadata drives the nav rail and each panel header from one source.
+const TABS: { id: ConfigTab; label: string; hint: string; title: string; blurb: string; icon: typeof Crosshair }[] = [
+  {
+    id: 'infiltration',
+    label: 'Infiltration',
+    hint: 'Exploration behaviour',
+    title: 'Infiltration matrix',
+    blurb: 'How aggressively the engine interacts with the target.',
+    icon: Crosshair,
+  },
+  {
+    id: 'boundary',
+    label: 'Navigation',
+    hint: 'How far it roams',
+    title: 'Navigation boundary',
+    blurb: 'The furthest the engine may navigate from your target URL.',
+    icon: Route,
+  },
+  {
+    id: 'duration',
+    label: 'Duration',
+    hint: 'Run time limit',
+    title: 'Test duration',
+    blurb: 'When the engine stops once the run is under way.',
+    icon: Timer,
+  },
+  {
+    id: 'auth',
+    label: 'Target Auth',
+    hint: 'Sign in to the target',
+    title: 'Target authentication',
+    blurb: 'Optional test account so exploration reaches pages behind a login.',
+    icon: KeyRound,
+  },
 ];
 
 const BOUNDARY_OPTIONS: { id: BoundaryLockMode; label: string; description: string }[] = [
@@ -82,174 +112,146 @@ export default function TestingConfigModal({
     if (isGuestMode && activeTab === 'auth') setActiveTab('infiltration');
   }, [isGuestMode, duration, onDurationChange, activeTab]);
 
+  const active = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       titleId="testing-config-title"
-      maxWidthClassName="max-w-4xl"
+      maxWidthClassName="max-w-3xl"
       closeOnBackdrop={false}
       backdropClassName="bg-transparent backdrop-blur-[3px]"
     >
-      <div className="flex items-center justify-between border-b border-(--border-hairline) px-4 py-3">
-        <h3 id="testing-config-title" className="text-[13px] font-semibold text-(--text-primary)">
-          Testing Configuration
-        </h3>
+      <div className="flex items-start justify-between gap-4 border-b border-(--border-hairline) px-5 py-4">
+        <div className="min-w-0">
+          <h3 id="testing-config-title" className="text-sm font-semibold leading-snug text-(--text-primary) font-sans">
+            Testing Configuration
+          </h3>
+          <p className="mt-1 text-xs leading-normal text-(--text-tertiary) font-sans">
+            Fixed at launch and applied on your next run.
+          </p>
+        </div>
         <button
           onClick={onClose}
-          className="flex h-8 w-8 items-center hover:cursor-pointer justify-center rounded-md text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+          className="-mr-1.5 -mt-1 flex h-8 w-8 shrink-0 items-center hover:cursor-pointer justify-center rounded-md text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
           aria-label="Close configuration"
         >
           <X className="h-5 w-5" aria-hidden="true" />
         </button>
       </div>
 
-      <div className="scroll-rail flex border-b border-(--border-hairline) px-2" role="tablist" aria-label="Configuration sections">
-        {tabs.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            role="tab"
-            id={`config-tab-${id}`}
-            aria-selected={activeTab === id}
-            aria-controls={`config-panel-${id}`}
-            onClick={() => setActiveTab(id)}
-            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-xs font-bold uppercase cursor-pointer transition-colors font-sans ${
-              activeTab === id
-                ? 'border-(--text-primary) text-(--text-primary)'
-                : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'
-            }`}
-          >
-            <Icon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
-            {label}
-            {/* Tab-level marker so a blocking auth gap stays visible from the other tab. */}
-            {id === 'auth' && authDraft.enabled && (
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${authIncomplete ? 'bg-(--status-critical-fg)' : 'bg-(--status-stable-fg)'}`}
-                aria-hidden="true"
-              />
-            )}
-          </button>
-        ))}
-      </div>
+      {/* Sidebar rail on sm+, horizontal strip on mobile. Same items, one active-pill treatment. */}
+      <div className="flex flex-col sm:flex-row sm:min-h-[440px]">
+        <nav
+          className="scroll-rail flex shrink-0 gap-1 overflow-x-auto border-b border-(--border-hairline) p-2 sm:w-56 sm:flex-col sm:overflow-visible sm:border-b-0 sm:border-r sm:p-3"
+          role="tablist"
+          aria-label="Configuration sections"
+        >
+          {tabs.map(({ id, label, hint, icon: Icon }) => {
+            const selected = activeTab === id;
+            return (
+              <button
+                key={id}
+                role="tab"
+                id={`config-tab-${id}`}
+                aria-selected={selected}
+                aria-controls="config-active-panel"
+                onClick={() => setActiveTab(id)}
+                className={`flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-(--radius-md) px-3 py-2.5 text-left cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) sm:whitespace-normal ${
+                  selected
+                    ? 'bg-(--surface-hover) text-(--text-primary)'
+                    : 'text-(--text-tertiary) hover:bg-(--surface-hover) hover:text-(--text-secondary)'
+                }`}
+              >
+                <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="flex items-center gap-1.5 text-body-sm font-medium leading-snug font-sans">
+                    {label}
+                    {/* Auth gap stays visible while another section is open. */}
+                    {id === 'auth' && authDraft.enabled && (
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${authIncomplete ? 'bg-(--status-critical-fg)' : 'bg-(--status-stable-fg)'}`}
+                        aria-hidden="true"
+                      />
+                    )}
+                  </span>
+                  <span className="hidden text-xs leading-normal text-(--text-tertiary) font-sans sm:block">{hint}</span>
+                </span>
+              </button>
+            );
+          })}
+        </nav>
 
-      {/* Fixed height + inner scroll so the modal never resizes or shifts between tabs. */}
-      <div className="custom-scrollbar h-[420px] overflow-y-auto p-3 sm:p-4">
-        {activeTab === 'infiltration' && (
-          <div role="tabpanel" id="config-panel-infiltration" aria-labelledby="config-tab-infiltration" className="space-y-4">
+        {/* Fixed height + inner scroll so the modal never resizes or shifts between sections. */}
+        <div
+          id="config-active-panel"
+          role="tabpanel"
+          aria-labelledby={`config-tab-${active.id}`}
+          className="custom-scrollbar min-w-0 flex-1 overflow-y-auto p-5 sm:max-h-[440px]"
+        >
+          <div className="mb-5">
+            <h4 className="text-body-sm font-semibold leading-snug text-(--text-primary) font-sans">{active.title}</h4>
+            <p className="mt-1 text-xs leading-relaxed text-(--text-tertiary) font-sans">
+              {activeTab === 'duration' && isGuestMode
+                ? 'Guest runs are capped at 5 minutes. Sign in for longer runs.'
+                : active.blurb}
+            </p>
+          </div>
+
+          {activeTab === 'infiltration' && (
             <InfiltrationProfileSelector profile={profile} onProfileChange={onProfileChange} />
-          </div>
-        )}
+          )}
 
-        {activeTab === 'boundary' && (
-          <div role="tabpanel" id="config-panel-boundary" aria-labelledby="config-tab-boundary">
-            <div role="radiogroup" aria-label="Navigation boundary" className="flex flex-col gap-2">
-              <span className="text-xs font-bold r text-(--text-secondary) uppercase font-sans">
-                Navigation Boundary
-              </span>
-              {BOUNDARY_OPTIONS.map(({ id, label, description }) => {
-                const selected = boundaryMode === id;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    onClick={() => onBoundaryModeChange(id)}
-                    className={`flex items-start gap-2.5 text-left cursor-pointer select-none rounded-lg border px-3 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) ${
-                      selected
-                        ? 'border-(--text-primary) bg-(--surface-raised)'
-                        : 'border-(--border-hairline) bg-(--surface-base) hover:bg-(--surface-hover)'
-                    }`}
-                  >
-                    <span
-                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${selected ? 'border-(--text-primary)' : 'border-(--border-strong)'}`}
-                      aria-hidden="true"
-                    >
-                      {selected && <span className="h-2 w-2 rounded-full bg-(--text-primary)" />}
-                    </span>
-                    <span className="flex flex-col">
-                      <span className="text-xs font-bold r text-(--text-secondary) uppercase font-sans">
-                        {label}
-                        {id === 'site' && (
-                          <span className="ml-1.5 lowercase text-(--text-tertiary) font-medium">(recommended)</span>
-                        )}
-                      </span>
-                      <span className="text-xs text-(--text-tertiary) font-sans mt-0.5">{description}</span>
-                    </span>
-                  </button>
-                );
-              })}
+          {activeTab === 'boundary' && (
+            <div role="radiogroup" aria-label="Navigation boundary" className="flex flex-col gap-2.5">
+              {BOUNDARY_OPTIONS.map(({ id, label, description }) => (
+                <RadioOptionCard
+                  key={id}
+                  label={label}
+                  description={description}
+                  selected={boundaryMode === id}
+                  onSelect={() => onBoundaryModeChange(id)}
+                  badge={id === 'site' ? 'Recommended' : undefined}
+                />
+              ))}
             </div>
-          </div>
-        )}
+          )}
 
-        {activeTab === 'duration' && (
-          <div role="tabpanel" id="config-panel-duration" aria-labelledby="config-tab-duration">
-            <div role="radiogroup" aria-label="Test duration" className="flex flex-col gap-2">
-              <span className="text-xs font-bold r text-(--text-secondary) uppercase font-sans">
-                Test Duration
-              </span>
-              <span className="text-xs text-(--text-tertiary) font-sans -mt-1 mb-1">
-                {isGuestMode
-                  ? 'Guest runs are capped at 5 minutes. Sign in for longer runs.'
-                  : 'Saved for future runs. The engine stops when the active time limit is reached.'}
-              </span>
-              {durationPresets.map(({ id, label, sublabel }) => {
-                const selected = duration === id;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    onClick={() => onDurationChange(id)}
-                    className={`flex items-start gap-2.5 text-left cursor-pointer select-none rounded-lg border px-3 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) ${
-                      selected
-                        ? 'border-(--text-primary) bg-(--surface-raised)'
-                        : 'border-(--border-hairline) bg-(--surface-base) hover:bg-(--surface-hover)'
-                    }`}
-                  >
-                    <span
-                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${selected ? 'border-(--text-primary)' : 'border-(--border-strong)'}`}
-                      aria-hidden="true"
-                    >
-                      {selected && <span className="h-2 w-2 rounded-full bg-(--text-primary)" />}
-                    </span>
-                    <span className="flex flex-col">
-                      <span className="text-xs font-bold r text-(--text-secondary) uppercase font-sans">
-                        {label}
-                        {id === '10m' && (
-                          <span className="ml-1.5 lowercase text-(--text-tertiary) font-medium">(recommended)</span>
-                        )}
-                      </span>
-                      <span className="text-xs text-(--text-tertiary) font-sans mt-0.5">{sublabel}</span>
-                    </span>
-                  </button>
-                );
-              })}
+          {activeTab === 'duration' && (
+            <div role="radiogroup" aria-label="Test duration" className="flex flex-col gap-2.5">
+              {durationPresets.map(({ id, label, sublabel }) => (
+                <RadioOptionCard
+                  key={id}
+                  label={label}
+                  description={sublabel}
+                  selected={duration === id}
+                  onSelect={() => onDurationChange(id)}
+                  badge={id === '10m' ? 'Recommended' : undefined}
+                />
+              ))}
             </div>
-          </div>
-        )}
+          )}
 
-        {activeTab === 'auth' && !isGuestMode && (
-          <div role="tabpanel" id="config-panel-auth" aria-labelledby="config-tab-auth">
+          {activeTab === 'auth' && !isGuestMode && (
             <TargetAuthPanel draft={authDraft} onChange={onAuthDraftChange} />
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 border-t border-(--border-hairline) bg-(--surface-panel) px-4 py-3">
-  <span className="text-xs text-(--text-tertiary) font-sans">
-    Applied on the next run.
-  </span>
-
-  <button
-    onClick={onClose}
-    className="rounded-lg bg-(--surface-invert) px-6 py-2 text-xs font-bold uppercase text-(--text-oninvert) transition-colors hover:cursor-pointer hover:bg-(--surface-invert-hover)"
-  >
-    Done
-  </button>
-</div>
+      <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 border-t border-(--border-hairline) bg-(--surface-panel) px-5 py-3.5">
+        <span className="text-xs leading-normal text-(--text-tertiary) font-sans">
+          {authDraft.enabled && authIncomplete
+            ? 'Target Auth needs a username and password before it runs.'
+            : 'Changes are saved as you edit.'}
+        </span>
+        <button
+          onClick={onClose}
+          className="rounded-lg bg-(--surface-invert) px-6 py-2 text-xs font-bold uppercase text-(--text-oninvert) transition-colors hover:cursor-pointer hover:bg-(--surface-invert-hover)"
+        >
+          Done
+        </button>
+      </div>
     </Modal>
   );
 }

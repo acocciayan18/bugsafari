@@ -31,7 +31,7 @@ export default function ConsoleTabPanel({ browserConsole = [], filter }: Console
         />
       );
     }
-    return <div className="px-1 py-6 text-center text-[13px] text-(--text-tertiary)">{`No ${filter} logs in this session.`}</div>;
+    return <div className="px-1 py-6 text-center text-body-sm text-(--text-tertiary)">{`No ${filter} logs in this session.`}</div>;
   }
 
   return <ConsoleMessageList logs={visible} />;

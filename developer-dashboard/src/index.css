@@ -48,6 +48,8 @@
   --text-body-sm--line-height: 1.55;
   --text-caption: 12px;
   --text-caption--line-height: 1.4;
+  --text-micro: 11px;
+  --text-micro--line-height: 1.35;
 
   /* Motion — spec uses linear, no springs; kept for callers still referencing it */
   --ease-spring: cubic-bezier(0.2, 0, 0, 1);
@@ -351,6 +353,92 @@
     mask-image: radial-gradient(120% 100% at 50% 42%, #000 40%, transparent 85%);
   }
 
+  /* Live-feed initializing: a cursor roams a full skeletal target site, glancing over
+     regions without clicking, so the viewport reads as BugSafari actively exploring. */
+  .explore-stage {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+
+  /* Skeletal element block — staggered rise-in via inline animationDelay */
+  .explore-el {
+    position: absolute;
+    border-radius: 4px;
+    background: var(--surface-inset);
+    border: 1px solid var(--border-hairline);
+    animation: explore-rise 0.55s var(--ease-spring, ease-out) backwards;
+  }
+  .explore-el--round { border-radius: 9999px; }
+  .explore-el--soft { background: var(--surface-app); }
+  .explore-el--cta { background: var(--surface-invert); border-color: transparent; }
+
+  /* Highlight target — entrance timed by --enter-delay, scanner ring by ::after */
+  .explore-hl { animation-delay: var(--enter-delay, 0s); }
+  .explore-hl::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 6px;
+    border: 1.5px solid var(--border-focus);
+    opacity: 0;
+    animation: explore-scan 16s ease-in-out infinite;
+  }
+  .ex-t1::after { animation-delay: 0.95s; }
+  .ex-t2::after { animation-delay: 4s; }
+  .ex-t3::after { animation-delay: 7.35s; }
+  .ex-t4::after { animation-delay: 10.4s; }
+  .ex-t5::after { animation-delay: 13.45s; }
+
+  /* Roaming cursor — tip parked at the top-left corner, so left/top aims at targets */
+  .explore-cursor {
+    position: absolute;
+    left: 12%;
+    top: 24%;
+    width: 20px;
+    height: 20px;
+    z-index: 3;
+    color: var(--text-primary);
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+    animation: explore-roam 16s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  }
+
+  @keyframes explore-rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Scanner ring: a brief brighten as the cursor settles over each target, then fade */
+  @keyframes explore-scan {
+    0%   { opacity: 0; transform: scale(0.99); }
+    2%   { opacity: 1; transform: scale(1); }
+    9%   { opacity: 0.9; }
+    12%  { opacity: 0; transform: scale(1.01); }
+    100% { opacity: 0; }
+  }
+
+  /* Cursor path: dwell keyframes (repeated values) pause it over each region */
+  @keyframes explore-roam {
+    0%   { left: 12%; top: 24%; }
+    6%   { left: 52%; top: 7%; }
+    15%  { left: 52%; top: 7%; }
+    25%  { left: 72%; top: 30%; }
+    34%  { left: 72%; top: 30%; }
+    46%  { left: 20%; top: 68%; }
+    55%  { left: 20%; top: 68%; }
+    65%  { left: 50%; top: 68%; }
+    74%  { left: 50%; top: 68%; }
+    84%  { left: 78%; top: 68%; }
+    93%  { left: 78%; top: 68%; }
+    100% { left: 12%; top: 24%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .explore-el { animation: none; }
+    .explore-cursor { animation: none; }
+    .explore-hl::after { animation: none; opacity: 0.5; }
+  }
+
   /* Overlay fade — opacity only, so a scale never unblurs the backdrop edges */
   @keyframes backdrop-in {
     from {
@@ -476,11 +564,11 @@
 
   /* Error message container with proper wrapping */
   .error-message {
-    @apply text-[13px] font-mono whitespace-pre-wrap wrap-break-word leading-relaxed;
+    @apply text-body-sm font-mono whitespace-pre-wrap wrap-break-word leading-relaxed;
   }
 
   /* Expandable code block container */
   .code-block {
-    @apply text-[13px] font-mono whitespace-pre-wrap wrap-break-word text-gray-700 leading-relaxed p-3 bg-[#f4f4f5] rounded border border-gray-200 overflow-x-auto dark:bg-nova-dark dark:text-gray-200 dark:border-gray-700;
+    @apply text-body-sm font-mono whitespace-pre-wrap wrap-break-word text-gray-700 leading-relaxed p-3 bg-[#f4f4f5] rounded border border-gray-200 overflow-x-auto dark:bg-nova-dark dark:text-gray-200 dark:border-gray-700;
   }
 }

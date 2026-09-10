@@ -63,7 +63,7 @@ interface TargetAuthPanelProps {
 // text-base under `sm` keeps iOS from zooming the viewport on focus.
 const FIELD_CLASS =
   'w-full h-10 border border-(--border-strong) rounded-lg px-3 text-base font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled)';
-const LABEL_CLASS = 'block text-[13px] font-medium text-(--text-primary) mb-1 font-sans';
+const LABEL_CLASS = 'block text-body-sm font-medium text-(--text-primary) mb-1 font-sans';
 
 // Shared collapse choreography for the help and advanced regions.
 const COLLAPSE_MOTION = {
@@ -107,10 +107,10 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
         </button>
         <KeyRound className="h-4 w-4 shrink-0 text-(--text-tertiary)" strokeWidth={1.75} aria-hidden="true" />
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-bold text-(--text-secondary) uppercase font-sans leading-tight">
+          <p className="text-body-sm font-medium text-(--text-primary) font-sans leading-snug">
             Authenticate into target
           </p>
-          <p className="text-xs text-(--text-tertiary) font-sans leading-tight mt-0.5">
+          <p className="text-xs text-(--text-tertiary) font-sans leading-normal mt-0.5">
             Sign in so exploration reaches the pages behind your login
           </p>
         </div>
@@ -133,7 +133,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
               id={helpId}
               role="region"
               aria-label="Target authentication help"
-              className="border-t border-(--border-hairline) bg-(--surface-inset) px-4 py-3 space-y-2 text-[13px] leading-relaxed text-(--text-tertiary) font-sans"
+              className="border-t border-(--border-hairline) bg-(--surface-inset) px-4 py-3 space-y-2 text-body-sm leading-relaxed text-(--text-tertiary) font-sans"
             >
               <p>
                 Give BugSafari a test account so it can explore the pages behind your login, not just the
@@ -200,7 +200,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
           </p>
         )}
 
-        <p className="flex items-start gap-1.5 text-[13px] leading-relaxed text-(--text-tertiary) font-sans">
+        <p className="flex items-start gap-1.5 text-body-sm leading-relaxed text-(--text-tertiary) font-sans">
           <ShieldCheck className="h-4 w-4 shrink-0 mt-px" strokeWidth={1.75} aria-hidden="true" />
           <span>
             The password is held in memory only, never saved to your history, reports, logs, or the job
@@ -214,7 +214,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
           onClick={() => setShowAdvanced((prev) => !prev)}
           disabled={fieldsDisabled}
           aria-expanded={showAdvanced}
-          className="flex items-center gap-1 text-xs font-bold uppercase text-(--text-tertiary) enabled:hover:text-(--text-secondary) transition-colors font-sans disabled:cursor-not-allowed enabled:cursor-pointer"
+          className="flex items-center gap-1 text-body-sm font-medium text-(--text-secondary) enabled:hover:text-(--text-primary) transition-colors font-sans disabled:cursor-not-allowed enabled:cursor-pointer"
         >
           <ChevronDown
             className={`h-4 w-4 transition-transform duration-150 ${showAdvanced ? 'rotate-180' : ''}`}
@@ -227,7 +227,7 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
         <AnimatePresence initial={false}>
           {showAdvanced && (
             <motion.div key="target-auth-advanced" {...COLLAPSE_MOTION} className="space-y-3 overflow-hidden pt-1">
-              <p className="text-[13px] text-(--text-tertiary) font-sans leading-relaxed">
+              <p className="text-body-sm text-(--text-tertiary) font-sans leading-relaxed">
                 Leave blank to auto-detect. The engine finds the login form on the target, behind a Login /
                 Sign In control, or at a common auth route. Set these when the form is multi-step or built from
                 custom components, where detection cannot find the fields.

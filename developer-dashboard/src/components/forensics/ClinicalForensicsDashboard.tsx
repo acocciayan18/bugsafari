@@ -335,7 +335,7 @@ function ClinicalForensicsDashboard({
             aria-haspopup="dialog"
             aria-expanded={showConfigModal}
             title={isActiveSession ? 'Configuration is locked while a run is in progress' : 'Open testing configuration'}
-            className={`flex min-w-0 items-center gap-2 px-3 py-1.5 rounded-lg border border-(--border-strong) text-[13px] font-semibold text-(--text-secondary) bg-(--surface-raised) transition-colors ${isActiveSession ? 'opacity-50 cursor-not-allowed' : 'hover:bg-(--surface-hover) cursor-pointer'}`}
+            className={`flex min-w-0 items-center gap-2 px-3 py-1.5 rounded-lg border border-(--border-strong) text-body-sm font-semibold text-(--text-secondary) bg-(--surface-raised) transition-colors ${isActiveSession ? 'opacity-50 cursor-not-allowed' : 'hover:bg-(--surface-hover) cursor-pointer'}`}
           >
             <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-(--text-tertiary)" strokeWidth={1.75} aria-hidden="true" />
             <span>Configuration</span>
@@ -368,7 +368,7 @@ function ClinicalForensicsDashboard({
                 <button
                   disabled
                   title={transitionLabel}
-                  className="flex items-center gap-2 rounded-lg bg-(--surface-inset) text-(--text-secondary) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  cursor-not-allowed opacity-70"
+                  className="flex items-center gap-2 rounded-lg bg-(--surface-inset) text-(--text-secondary) px-3 sm:px-4 py-2 text-body-sm font-semibold uppercase  cursor-not-allowed opacity-70"
                 >
                   <LoaderCircle className="h-5 w-5 animate-spin" strokeWidth={1.75} aria-hidden="true" />
                   {transitionLabel}
@@ -377,18 +377,18 @@ function ClinicalForensicsDashboard({
               {testStatus === 'ACTIVE' && onPause && (
                 <button
                   onClick={onPause}
-                  className="flex items-center cursor-pointer gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
+                  className="flex items-center cursor-pointer gap-2 rounded-lg border border-(--status-warning-border) bg-transparent text-(--status-warning-fg) hover:bg-(--status-warning-bg) active:bg-(--status-warning-bg) px-3 sm:px-4 py-2 text-body-sm font-semibold capitalize transition-colors"
                 >
-                  <Pause className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+                  <Pause className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
                   Pause
                 </button>
               )}
               {testStatus === 'PAUSED' && onResume && (
                 <button
                   onClick={onResume}
-                  className="flex items-center cursor-pointer gap-2 rounded-lg bg-(--status-stable-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
+                  className="flex items-center cursor-pointer gap-2 rounded-lg border border-(--status-stable-border) bg-transparent text-(--status-stable-fg) hover:bg-(--status-stable-bg) active:bg-(--status-stable-bg) px-3 sm:px-4 py-2 text-body-sm font-semibold capitalize transition-colors"
                 >
-                  <Play className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+                  <Play className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
                   Resume
                 </button>
               )}
@@ -397,18 +397,18 @@ function ClinicalForensicsDashboard({
               {isQueued && !transitionLabel && onStop && (
                 <button
                   onClick={onStop}
-                  className="flex items-center cursor-pointer gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
+                  className="flex items-center cursor-pointer gap-2 rounded-lg border border-(--status-critical-border) bg-transparent text-(--status-critical-fg) hover:bg-(--status-critical-bg) active:bg-(--status-critical-bg) px-3 sm:px-4 py-2 text-body-sm font-semibold capitalize transition-colors"
                 >
-                  <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+                  <Square className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
                   Cancel Queued Run
                 </button>
               )}
               {isActiveSession && !transitionLabel && !isQueued && onStop && (
                 <button
                   onClick={onStop}
-                  className="flex items-center cursor-pointer  gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
+                  className="flex items-center cursor-pointer gap-2 rounded-lg border border-(--status-critical-border) bg-transparent text-(--status-critical-fg) hover:bg-(--status-critical-bg) active:bg-(--status-critical-bg) px-3 sm:px-4 py-2 text-body-sm font-semibold capitalize transition-colors"
                 >
-                  <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
+                  <Square className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
                   Stop
                 </button>
               )}
@@ -419,7 +419,7 @@ function ClinicalForensicsDashboard({
   onClick={onSaveSessionToHistory}
   disabled={isSessionSaved}
   title={isSessionSaved ? 'Session already saved' : 'Save session to history'}
-  className={`flex items-center gap-2 rounded-lg border px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors ${
+  className={`flex items-center gap-2 rounded-lg border px-3 sm:px-4 py-2 text-body-sm font-semibold capitalize transition-colors ${
     isSessionSaved
       ? 'border-(--border-default) text-(--text-primary) hover:cursor-not-allowed opacity-80'
       : 'border-(--border-default) text-(--text-primary) hover:cursor-pointer hover:bg-(--surface-hover) hover:text-(--text-primary)'
@@ -428,7 +428,7 @@ function ClinicalForensicsDashboard({
   {isSessionSaved && (
     <Check className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
   )}
-  {isSessionSaved ? 'Saved' : 'Save Session'}
+  {isSessionSaved ? 'Saved' : 'Save'}
 </button>
               )}
               {/* Anchored near Resume/Stop — surfaces only past the settle window. */}
@@ -487,9 +487,9 @@ function ClinicalForensicsDashboard({
                     ? 'Enter a username and password, or turn off target authentication'
                     : undefined
             }
-            className="flex h-11 w-full sm:w-auto hover:cursor-pointer items-center justify-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) text-(--text-oninvert) px-5 text-[13px] font-semibold uppercase  font-sans shrink-0 transition-all duration-100 disabled:opacity-50 disabled:hover:bg-(--surface-invert) disabled:cursor-not-allowed"
+            className="flex h-11 w-full sm:w-auto hover:cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--surface-invert) bg-transparent hover:bg-(--surface-hover) active:bg-(--surface-hover) text-(--text-primary) px-5 text-body-sm font-semibold capitalize font-sans shrink-0 transition-colors duration-100 disabled:opacity-50 disabled:hover:bg-transparent disabled:cursor-not-allowed"
           >
-            <BugPlay className="h-5 w-5 shrink-0" />
+            <BugPlay className="h-4 w-4 shrink-0" />
             <span>Start Testing</span>
           </button>
         </div>
@@ -562,7 +562,7 @@ function ClinicalForensicsDashboard({
                     tabIndex={selected ? 0 : -1}
                     onClick={() => setActiveTab(id)}
                     onKeyDown={handleTabKeyDown}
-                    className={`flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap border-b-2 px-3 sm:px-4 py-3 text-[13px] font-medium  sm:st transition-colors font-sans ${selected ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
+                    className={`flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap border-b-2 px-3 sm:px-4 py-3 text-body-sm font-medium  sm:st transition-colors font-sans ${selected ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
                   >
                     <Icon className="h-3.5 w-3.5" aria-hidden="true" />
                     {label}
@@ -602,7 +602,7 @@ function ClinicalForensicsDashboard({
               id="terminal-tabpanel"
               aria-labelledby={`terminal-tab-${activeTab}`}
               tabIndex={0}
-              className="custom-scrollbar h-full overflow-y-auto overflow-x-hidden overscroll-contain bg-(--surface-panel) p-3 pb-10 sm:p-4 sm:pb-10 font-mono text-[13px] border border-(--border-hairline) border-t-0"
+              className="custom-scrollbar h-full overflow-y-auto overflow-x-hidden overscroll-contain bg-(--surface-panel) p-3 pb-10 sm:p-4 sm:pb-10 font-mono text-body-sm border border-(--border-hairline) border-t-0"
             >
               {activeTab === 'telemetry' && (
                 <div role="log" aria-live="polite" aria-relevant="additions" aria-label="Engine telemetry log">
@@ -626,7 +626,7 @@ function ClinicalForensicsDashboard({
                       {isActiveSession && !isQueued && (
                         <div className="flex items-center gap-2 py-2 text-(--text-secondary)">
                           <span className="h-2 w-2 rounded-full bg-(--surface-invert) animate-ping"></span>
-                          <span className="font-mono text-[13px]">
+                          <span className="font-mono text-body-sm">
                             {currentEngineAction || 'BugSafari Engine is thinking... parsing DOM trees'}
                           </span>
                         </div>

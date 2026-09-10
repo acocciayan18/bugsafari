@@ -111,7 +111,7 @@ export default function CweBadge({ cwe }: { cwe: string }) {
           style={{ position: 'fixed', top: pos?.top ?? 0, left: pos?.left ?? 0, opacity: pos ? 1 : 0 }}
           className="pointer-events-none z-50 block w-64 max-w-[calc(100vw-1rem)] rounded-lg border border-(--border-hairline) bg-(--surface-raised) p-3 text-left shadow-lg transition-opacity duration-150"
         >
-          <span className="block text-[13px] font-bold text-(--text-primary)">{cwe}{info ? ` · ${info.name}` : ''}</span>
+          <span className="block text-body-sm font-bold text-(--text-primary)">{cwe}{info ? ` · ${info.name}` : ''}</span>
           <span className="mt-1 block text-xs leading-relaxed text-(--text-secondary)">{info?.plain ?? GENERIC}</span>
           <span className="mt-2 block border-t border-(--border-hairline) pt-2 text-xs leading-relaxed text-(--text-tertiary)">
             CWE (Common Weakness Enumeration) is a shared catalog that names common software security weaknesses.

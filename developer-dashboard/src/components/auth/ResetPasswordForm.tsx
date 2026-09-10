@@ -50,7 +50,7 @@ export default function ResetPasswordForm() {
           <div className="pt-5 border-t border-(--border-hairline)">
             <Link
               to="/forgot-password"
-              className="inline-flex items-center gap-2 text-[13px] font-medium text-(--text-primary) hover:opacity-80 transition-opacity duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1 py-0.5"
+              className="inline-flex items-center gap-2 text-body-sm font-medium text-(--text-primary) hover:opacity-80 transition-opacity duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1 py-0.5"
             >
               <ArrowLeft className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
               Request a new reset link
@@ -160,7 +160,7 @@ export default function ResetPasswordForm() {
                   {showPassword ? <EyeOff className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" /> : <Eye className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />}
                 </button>
               </div>
-              {passwordError && <p id="password-error" className="mt-1.5 text-[13px] text-(--status-critical-fg)">{passwordError}</p>}
+              {passwordError && <p id="password-error" className="mt-1.5 text-body-sm text-(--status-critical-fg)">{passwordError}</p>}
             </div>
 
             {/* Confirm Password Field */}
@@ -194,7 +194,7 @@ export default function ResetPasswordForm() {
                   {showConfirmPassword ? <EyeOff className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" /> : <Eye className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />}
                 </button>
               </div>
-              {confirmError && <p id="confirmPassword-error" className="mt-1.5 text-[13px] text-(--status-critical-fg)">{confirmError}</p>}
+              {confirmError && <p id="confirmPassword-error" className="mt-1.5 text-body-sm text-(--status-critical-fg)">{confirmError}</p>}
             </div>
 
             {/* Password Requirements */}
@@ -212,7 +212,7 @@ export default function ResetPasswordForm() {
           <div className="mt-6 pt-5 border-t border-(--border-hairline) flex justify-center">
             <Link
               to="/login"
-              className="inline-flex items-center gap-2 text-[13px] font-medium text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1 py-0.5"
+              className="inline-flex items-center gap-2 text-body-sm font-medium text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1 py-0.5"
             >
               <ArrowLeft className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
               Back to sign in

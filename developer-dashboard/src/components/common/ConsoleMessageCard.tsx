@@ -110,7 +110,7 @@ export function ConsoleCard({ log }: { log: BrowserConsoleMessage }) {
 
       {/* Message body — clamped when long, toggled open on demand. */}
       <p
-        className={`mt-2 whitespace-pre-wrap break-words font-mono text-[13px] leading-5 text-(--text-primary) ${
+        className={`mt-2 whitespace-pre-wrap break-words font-mono text-body-sm leading-5 text-(--text-primary) ${
           isLong && !messageOpen ? 'line-clamp-3' : ''
         }`}
       >

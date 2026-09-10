@@ -236,7 +236,7 @@ function LiveFeed({
         </div>
 
         {/* CENTER: URL bar */}
-        <div className="flex flex-1 items-center gap-1.5 min-w-0 mx-1 bg-(--surface-panel) rounded-full px-2.5 py-1 text-[13px] text-(--text-secondary) shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] border border-(--border-hairline) sm:mx-2 sm:px-3">
+        <div className="flex flex-1 items-center gap-1.5 min-w-0 mx-1 bg-(--surface-panel) rounded-full px-2.5 py-1 text-body-sm text-(--text-secondary) shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] border border-(--border-hairline) sm:mx-2 sm:px-3">
           {isSecureUrl ? (
             <Lock size={11} className="shrink-0 text-(--text-tertiary)" aria-hidden="true" />
           ) : (
@@ -248,14 +248,14 @@ function LiveFeed({
         {/* RIGHT: status + three-dot menu (decorative) */}
         <div className="flex items-center gap-1.5 shrink-0 sm:gap-2">
           {isQueued && (
-            <span className="flex items-center gap-1.5 whitespace-nowrap text-xs font-mono text-(--status-neutral-fg) sm:text-[13px]">
+            <span className="flex items-center gap-1.5 whitespace-nowrap text-xs font-mono text-(--status-neutral-fg) sm:text-body-sm">
               <span className="h-2.5 w-2.5 shrink-0 bg-(--status-neutral-fg) rounded-full animate-pulse sm:h-3 sm:w-3"></span>
               QUEUED
             </span>
           )}
 
           {!isQueued && !isTestRunning && (
-            <span className="whitespace-nowrap text-xs text-(--text-tertiary) sm:text-[13px]">Ready</span>
+            <span className="whitespace-nowrap text-xs text-(--text-tertiary) sm:text-body-sm">Ready</span>
           )}
 
           <span className="hidden p-1 cursor-default text-(--text-tertiary) sm:inline" aria-hidden="true">
@@ -277,7 +277,7 @@ function LiveFeed({
             <div className="relative flex h-14 w-14 items-center justify-center rounded-full border border-(--border-hairline) bg-(--surface-app) text-(--text-tertiary) shadow-(--shadow-sm)">
               <Globe size={24} strokeWidth={1.75} aria-hidden="true" />
             </div>
-            <p className="relative font-mono text-xs uppercase tracking-[0.07em] text-(--text-primary) sm:text-[13px]">
+            <p className="relative font-mono text-xs uppercase tracking-[0.07em] text-(--text-primary) sm:text-body-sm">
               Enter a target URL to begin
             </p>
           </div>
@@ -291,21 +291,54 @@ function LiveFeed({
               <span className="absolute inset-0 rounded-full border-2 border-(--border-hairline)"></span>
               <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-(--status-neutral-fg) animate-spin"></span>
             </span>
-            <p className="relative font-mono text-xs uppercase tracking-[0.07em] text-(--text-primary) sm:text-[13px]">
+            <p className="relative font-mono text-xs uppercase tracking-[0.07em] text-(--text-primary) sm:text-body-sm">
               Queued, waiting for an open slot
             </p>
           </div>
         )}
 
-        {/* INITIALIZING STATE */}
+        {/* INITIALIZING STATE — cursor observing a full skeletal site while telemetry links up */}
         {isInitializingScreen && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-(--surface-panel) px-4 text-center">
+          <div className="absolute inset-0 z-10 bg-(--surface-panel)" aria-label="Establishing telemetry stream" role="status">
             <div className="livefeed-grid" aria-hidden="true"></div>
-            <span className="relative flex h-11 w-11 items-center justify-center" aria-hidden="true">
-              <span className="absolute inset-0 rounded-full border-2 border-(--border-hairline)"></span>
-              <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-(--text-primary) animate-spin"></span>
-            </span>
-            <p className="relative font-mono text-xs uppercase tracking-[0.07em] text-(--text-primary) sm:text-[13px]">
+            {/* Full-bleed skeletal target site + roaming cursor */}
+            <div className="explore-stage" aria-hidden="true">
+              {/* Nav */}
+              <div className="explore-el" style={{ left: '6%', top: '4%', width: '8%', height: '5%', animationDelay: '0.05s' }}></div>
+              <div className="explore-el" style={{ left: '36%', top: '5%', width: '9%', height: '3.5%', animationDelay: '0.1s' }}></div>
+              <div className="explore-el explore-hl ex-t1" style={{ left: '48%', top: '5%', width: '9%', height: '3.5%', ['--enter-delay' as string]: '0.15s' }}></div>
+              <div className="explore-el" style={{ left: '60%', top: '5%', width: '9%', height: '3.5%', animationDelay: '0.2s' }}></div>
+              <div className="explore-el explore-el--round" style={{ left: '90%', top: '3.5%', width: '5%', aspectRatio: '1', height: 'auto', animationDelay: '0.25s' }}></div>
+              {/* Hero */}
+              <div className="explore-el" style={{ left: '6%', top: '18%', width: '34%', height: '4%', animationDelay: '0.2s' }}></div>
+              <div className="explore-el" style={{ left: '6%', top: '25%', width: '28%', height: '4%', animationDelay: '0.25s' }}></div>
+              <div className="explore-el" style={{ left: '6%', top: '32%', width: '20%', height: '3.5%', animationDelay: '0.3s' }}></div>
+              <div className="explore-el explore-el--cta" style={{ left: '6%', top: '40%', width: '16%', height: '6%', animationDelay: '0.35s' }}></div>
+              <div className="explore-el explore-hl ex-t2" style={{ left: '54%', top: '16%', width: '40%', height: '30%', ['--enter-delay' as string]: '0.3s' }}></div>
+              {/* Section header */}
+              <div className="explore-el" style={{ left: '6%', top: '52%', width: '24%', height: '3.5%', animationDelay: '0.4s' }}></div>
+              {/* Card row */}
+              <div className="explore-el explore-hl ex-t3" style={{ left: '6%', top: '58%', width: '28%', height: '24%', ['--enter-delay' as string]: '0.45s' }}></div>
+              <div className="explore-el explore-el--soft" style={{ left: '8%', top: '60%', width: '24%', height: '11%', animationDelay: '0.5s' }}></div>
+              <div className="explore-el" style={{ left: '8%', top: '73%', width: '20%', height: '2.5%', animationDelay: '0.55s' }}></div>
+              <div className="explore-el" style={{ left: '8%', top: '77%', width: '14%', height: '2.5%', animationDelay: '0.6s' }}></div>
+              <div className="explore-el explore-hl ex-t4" style={{ left: '36%', top: '58%', width: '28%', height: '24%', ['--enter-delay' as string]: '0.5s' }}></div>
+              <div className="explore-el explore-el--soft" style={{ left: '38%', top: '60%', width: '24%', height: '11%', animationDelay: '0.55s' }}></div>
+              <div className="explore-el" style={{ left: '38%', top: '73%', width: '20%', height: '2.5%', animationDelay: '0.6s' }}></div>
+              <div className="explore-el" style={{ left: '38%', top: '77%', width: '14%', height: '2.5%', animationDelay: '0.65s' }}></div>
+              <div className="explore-el explore-hl ex-t5" style={{ left: '66%', top: '58%', width: '28%', height: '24%', ['--enter-delay' as string]: '0.55s' }}></div>
+              <div className="explore-el explore-el--soft" style={{ left: '68%', top: '60%', width: '24%', height: '11%', animationDelay: '0.6s' }}></div>
+              <div className="explore-el" style={{ left: '68%', top: '73%', width: '20%', height: '2.5%', animationDelay: '0.65s' }}></div>
+              <div className="explore-el" style={{ left: '68%', top: '77%', width: '14%', height: '2.5%', animationDelay: '0.7s' }}></div>
+              {/* Footer */}
+              <div className="explore-el explore-el--soft" style={{ left: '6%', top: '90%', width: '88%', height: '5%', animationDelay: '0.7s' }}></div>
+              {/* Cursor */}
+              <svg className="explore-cursor" viewBox="0 0 12 12" fill="currentColor">
+                <path d="M1 1l3.4 9.2 1.6-3.9 3.9-1.6L1 1z" />
+              </svg>
+            </div>
+            {/* Status text — top-left */}
+            <p className="absolute left-3 top-3 z-[2] rounded-md border border-(--border-hairline) bg-(--surface-panel) px-2 py-1 font-mono text-micro uppercase tracking-[0.07em] text-(--text-secondary) shadow-(--shadow-sm) sm:left-4 sm:text-xs">
               Establishing telemetry stream
             </p>
           </div>
@@ -318,10 +351,10 @@ function LiveFeed({
             <div className="relative flex h-14 w-14 items-center justify-center rounded-full border border-(--border-hairline) bg-(--surface-app) text-(--text-tertiary) shadow-(--shadow-sm)">
               <Flag size={22} strokeWidth={1.75} aria-hidden="true" />
             </div>
-            <p className="relative font-mono text-xs uppercase tracking-[0.07em] text-(--text-primary) sm:text-[13px]">
+            <p className="relative font-mono text-xs uppercase tracking-[0.07em] text-(--text-primary) sm:text-body-sm">
               {terminationCopy?.label ?? 'Exploration Complete'}
             </p>
-            <p className="relative max-w-md text-[13px] text-(--text-secondary)">
+            <p className="relative max-w-md text-body-sm text-(--text-secondary)">
               {terminationReason ?? terminationCopy?.detail ?? 'Exploration finished.'}
             </p>
           </div>

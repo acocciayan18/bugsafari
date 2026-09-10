@@ -75,13 +75,13 @@ export default function ForgotPasswordForm() {
           <p className="text-base leading-relaxed text-(--text-primary) mb-2 max-w-[38ch] mx-auto">
             If an account exists with that email, a password reset link has been sent.
           </p>
-          <p className="text-[13px] leading-relaxed text-(--text-tertiary) mb-6 max-w-[38ch] mx-auto">
+          <p className="text-body-sm leading-relaxed text-(--text-tertiary) mb-6 max-w-[38ch] mx-auto">
             The link expires in 1 hour. Check your spam folder if it hasn't arrived.
           </p>
           <div className="pt-5 border-t border-(--border-hairline)">
             <Link
               to="/login"
-              className="inline-flex items-center gap-2 text-[13px] font-medium text-(--text-primary) hover:opacity-80 transition-opacity duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1 py-0.5"
+              className="inline-flex items-center gap-2 text-body-sm font-medium text-(--text-primary) hover:opacity-80 transition-opacity duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1 py-0.5"
             >
               <ArrowLeft className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
               Back to sign in
@@ -123,7 +123,7 @@ export default function ForgotPasswordForm() {
           </div>
           {emailFieldError
             ? <p id="email-error" className="mt-1.5 text-sm text-(--status-critical-fg)">{emailFieldError}</p>
-            : <p className="mt-1.5 text-[13px] leading-relaxed text-(--text-tertiary)">We'll email a reset link to this address.</p>}
+            : <p className="mt-1.5 text-body-sm leading-relaxed text-(--text-tertiary)">We'll email a reset link to this address.</p>}
         </div>
 
         <AuthAlert feedback={feedback} />
@@ -137,7 +137,7 @@ export default function ForgotPasswordForm() {
       <div className="mt-6 pt-5 border-t border-(--border-hairline) flex justify-center">
         <Link
           to="/login"
-          className="inline-flex items-center gap-2 text-[13px] font-medium text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1 py-0.5"
+          className="inline-flex items-center gap-2 text-body-sm font-medium text-(--text-tertiary) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1 py-0.5"
         >
           <ArrowLeft className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
           Back to sign in

@@ -134,7 +134,7 @@ export default function SidebarLayout({
             >
               <Menu className="h-5 w-5" />
             </button>
-            <span className="min-w-0 truncate text-[13px] font-bold uppercase r text-(--text-primary)">
+            <span className="min-w-0 truncate text-body-sm font-bold uppercase r text-(--text-primary)">
               {VIEW_TITLES[activeView]}
             </span>
           </header>

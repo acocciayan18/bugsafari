@@ -17,10 +17,10 @@ export function LegalDocModal({ docId, onClose }: LegalDocModalProps) {
     <Modal isOpen onClose={onClose} titleId="legal-doc-title" maxWidthClassName="max-w-2xl">
       <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-(--border-hairline) bg-(--surface-panel) px-3 py-3 sm:gap-4 sm:px-5">
         <div className="min-w-0">
-          <h3 id="legal-doc-title" className="text-[13px] font-semibold text-(--text-primary)">
+          <h3 id="legal-doc-title" className="text-body-sm font-semibold text-(--text-primary)">
             {doc.title}
           </h3>
-          <p className="mt-0.5 text-[13px] text-(--text-tertiary)">{doc.summary}</p>
+          <p className="mt-0.5 text-body-sm text-(--text-tertiary)">{doc.summary}</p>
         </div>
         <button
           onClick={onClose}
@@ -36,11 +36,11 @@ export function LegalDocModal({ docId, onClose }: LegalDocModalProps) {
 
         {doc.sections.map((section) => (
           <section key={section.heading} className="space-y-2">
-            <h4 className="text-[13px] font-semibold uppercase tracking-[0.08em] text-(--text-primary)">
+            <h4 className="text-body-sm font-semibold uppercase tracking-[0.08em] text-(--text-primary)">
               {section.heading}
             </h4>
             {section.body.map((paragraph) => (
-              <p key={paragraph} className="text-[13px] leading-relaxed text-(--text-secondary)">
+              <p key={paragraph} className="text-body-sm leading-relaxed text-(--text-secondary)">
                 {paragraph}
               </p>
             ))}
@@ -49,7 +49,7 @@ export function LegalDocModal({ docId, onClose }: LegalDocModalProps) {
                 {section.bullets.map((bullet) => (
                   <p
                     key={bullet}
-                    className="list-disc text-[13px] leading-relaxed text-(--text-secondary) marker:text-(--text-tertiary)"
+                    className="list-disc text-body-sm leading-relaxed text-(--text-secondary) marker:text-(--text-tertiary)"
                   >
                     {bullet}
                   </p>

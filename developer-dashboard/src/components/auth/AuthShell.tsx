@@ -31,7 +31,7 @@ export default function AuthShell({
         type="button"
         onClick={() => navigate('/')}
         aria-label="Back to home"
-        className="fixed top-3 left-3 sm:top-4 sm:left-4 lg:top-6 lg:left-6 flex items-center gap-1.5 px-3 py-2 text-(--text-tertiary) hover:text-(--text-primary) cursor-pointer transition-colors text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+        className="fixed top-3 left-3 sm:top-4 sm:left-4 lg:top-6 lg:left-6 flex items-center gap-1.5 px-3 py-2 text-(--text-tertiary) hover:text-(--text-primary) cursor-pointer transition-colors text-body-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
       >
         <Home className="w-4 h-4 shrink-0" strokeWidth={1.75} />
         Home
@@ -44,7 +44,7 @@ export default function AuthShell({
            
 
             <div className="p-4 sm:p-6">
-              <p className="text-center text-[13px] font-mono font-medium tracking-[0.14em] text-(--text-tertiary) mb-2">{eyebrow}</p>
+              <p className="text-center text-body-sm font-mono font-medium tracking-[0.14em] text-(--text-tertiary) mb-2">{eyebrow}</p>
               <h1 className="text-center text-h2 leading-tight font-semibold text-(--text-primary) mb-2">{title}</h1>
               {subtitle && <p className="text-center text-body-sm text-(--text-primary) mb-5 sm:mb-6">{subtitle}</p>}
 

@@ -28,7 +28,7 @@ function StepContext({ segments }: { segments: string[] }) {
         return (
           <span key={`${i}-${seg}`} className="inline-flex items-baseline gap-x-1">
             {i > 0 && <span className="text-(--text-tertiary)">·</span>}
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-(--text-tertiary)">{label}</span>
+            <span className="text-micro font-semibold uppercase tracking-wide text-(--text-tertiary)">{label}</span>
             {value && <span className="text-xs text-(--text-secondary)">{value}</span>}
           </span>
         );
@@ -62,7 +62,7 @@ export function ActionStepList({ steps, perStepContext = false }: { steps: Foren
               {chipLabel(kind)}
             </span>
             <div className="w-full min-w-0 sm:w-auto sm:flex-1">
-              <div className="text-[13px] leading-relaxed text-(--text-primary) break-words">{instruction}</div>
+              <div className="text-body-sm leading-relaxed text-(--text-primary) break-words">{instruction}</div>
               {showWhere && <StepContext segments={segments} />}
               {payloadDisplay && (
                 <code title={payloadDisplay} className="mt-1 inline-block max-w-full break-words rounded bg-(--status-critical-bg) px-1.5 py-0.5 font-mono text-xs text-(--status-critical-fg)">
@@ -99,13 +99,13 @@ function BypassRow({ label, children }: { label: string; children: ReactNode }) 
   return (
     <div className="min-w-0">
       <div className="text-xs font-semibold uppercase text-(--text-tertiary)">{label}</div>
-      <div className="mt-0.5 text-[13px] leading-relaxed text-(--text-primary) break-words">{children}</div>
+      <div className="mt-0.5 text-body-sm leading-relaxed text-(--text-primary) break-words">{children}</div>
     </div>
   );
 }
 
 const Chip = ({ text }: { text: string }) => (
-  <code className="inline-block max-w-full break-words rounded bg-(--surface-panel) px-1.5 py-0.5 font-mono text-[13px] text-(--text-secondary)">
+  <code className="inline-block max-w-full break-words rounded bg-(--surface-panel) px-1.5 py-0.5 font-mono text-body-sm text-(--text-secondary)">
     {text}
   </code>
 );
@@ -154,7 +154,7 @@ function Reproduction({ view }: { view: FindingView }) {
     return <ReproductionChecklist steps={view.reproductionSteps} />;
   }
   return (
-    <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) p-3 text-[13px] italic text-(--text-tertiary)">
+    <div className="rounded-md border border-(--border-hairline) bg-(--surface-inset) p-3 text-body-sm italic text-(--text-tertiary)">
       No steps to reproduce this finding were recorded.
     </div>
   );

@@ -51,11 +51,11 @@ export function NetworkFailureCard({ row }: { row: NetworkFailureRow }) {
     <div className={`border ${borderColor} ${bgColor} rounded-lg overflow-hidden shadow-sm`}>
       <div className="px-3 py-2 flex items-center justify-between gap-2 border-b border-(--border-hairline)">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="font-mono text-[13px] font-bold text-(--status-critical-fg)">
+          <span className="font-mono text-body-sm font-bold text-(--status-critical-fg)">
             {method} {statusCode || 'ERR'}
           </span>
           <span
-            className={`rounded px-1.5 py-0.5 text-[13px] font-bold uppercase ${
+            className={`rounded px-1.5 py-0.5 text-body-sm font-bold uppercase ${
               ok ? 'bg-(--status-stable-bg) text-(--status-stable-fg)' : 'bg-(--status-critical-bg) text-(--status-critical-fg)'
             }`}
           >
@@ -68,7 +68,7 @@ export function NetworkFailureCard({ row }: { row: NetworkFailureRow }) {
         </div>
       </div>
 
-      <div title={url} className="px-3 py-2 text-[13px] font-mono text-(--text-secondary) break-all">{routePath(url)}</div>
+      <div title={url} className="px-3 py-2 text-body-sm font-mono text-(--text-secondary) break-all">{routePath(url)}</div>
 
       <div className="px-3 py-2 text-xs text-(--text-secondary) border-t border-(--border-hairline) space-y-1">
         <div className="leading-relaxed">{routed.reason}</div>

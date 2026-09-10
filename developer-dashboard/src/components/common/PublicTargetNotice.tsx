@@ -26,7 +26,7 @@ export default function PublicTargetNotice({ onDismiss, title = 'Local website d
       <div className="flex items-start gap-2.5">
         <div className="min-w-0 space-y-1">
           <p className="text-sm font-bold text-(--status-warning-fg)">{title}</p>
-<p className="text-[13px] leading-relaxed text-(--text-secondary)">
+<p className="text-body-sm leading-relaxed text-(--text-secondary)">
   {children ?? DEFAULT_BODY}
 </p>
         </div>

@@ -45,10 +45,10 @@ export function WelcomeModal({ isOpen, onDismiss }: WelcomeModalProps) {
     >
       <div className="border-b border-zinc-200 px-5 pt-5 pb-4 sm:px-6">
         <div className="min-w-0 space-y-2">
-          <span className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 font-mono text-[13px] font-bold uppercase st text-zinc-800">
+          <span className="inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 font-mono text-body-sm font-bold uppercase st text-zinc-800">
             Work in progress
           </span>
-          <h2 id="welcome-notice-title" className="text-[24px] font-extrabold uppercase leading-tight tracking-tight text-black">
+          <h2 id="welcome-notice-title" className="text-h1 font-extrabold uppercase leading-tight tracking-tight text-black">
             Welcome to BugSafari
           </h2>
         </div>
@@ -56,7 +56,7 @@ export function WelcomeModal({ isOpen, onDismiss }: WelcomeModalProps) {
 
       <div className="space-y-3 px-5 py-5 sm:px-6">
         {NOTES.map((note) => (
-          <p key={note} className="text-[14px] leading-relaxed text-zinc-600">
+          <p key={note} className="text-body-lg leading-relaxed text-zinc-600">
             {note}
           </p>
         ))}

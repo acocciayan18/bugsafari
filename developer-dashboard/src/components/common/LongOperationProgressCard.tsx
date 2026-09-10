@@ -83,7 +83,7 @@ export default function LongOperationProgressCard() {
     >
       <div className="flex items-center gap-2">
         <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-(--status-stable-fg)" strokeWidth={2} aria-hidden="true" />
-        <span className="text-[13px] font-bold text-(--text-primary)">{title}…</span>
+        <span className="text-body-sm font-bold text-(--text-primary)">{title}…</span>
         <button
           type="button"
           onClick={() => setDismissed(true)}

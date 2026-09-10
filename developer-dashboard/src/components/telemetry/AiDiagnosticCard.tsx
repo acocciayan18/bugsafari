@@ -24,7 +24,7 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null | undefined 
 
   return (
     <div
-      className={`mt-3 bg-(--surface-inset) border-l-4 rounded-r p-3 sm:p-4 text-(--text-primary) font-mono text-[13px] ${
+      className={`mt-3 bg-(--surface-inset) border-l-4 rounded-r p-3 sm:p-4 text-(--text-primary) font-mono text-body-sm ${
         isCritical ? 'border-(--status-critical-fg)' : 'border-(--border-strong)'
       }`}
     >
@@ -53,7 +53,7 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null | undefined 
         </div>
 
         {/* Remediation box — flat neutral surface, no color spent on "good news" */}
-        <div className="mt-3 p-2.5 bg-(--surface-raised) border border-(--border-hairline) text-(--text-primary) rounded font-sans text-[13px] break-words">
+        <div className="mt-3 p-2.5 bg-(--surface-raised) border border-(--border-hairline) text-(--text-primary) rounded font-sans text-body-sm break-words">
           <span className="font-mono text-xs font-bold uppercase block text-(--text-secondary) mb-1">
              Suggested fix:
           </span>
