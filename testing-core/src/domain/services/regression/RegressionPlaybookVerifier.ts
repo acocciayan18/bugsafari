@@ -111,6 +111,12 @@ export class RegressionPlaybookVerifier {
       // cannot prove it fixed, so it can never read RESOLVED (only STILL_ACTIVE on recurrence).
       const nondeterministicProvenance = finding.bug.attribution?.routingReason === 'concurrent-burst';
 
+      // A finding exploration itself never reproduced (Plan 1 gate left it PENDING/NOT_REPRODUCED)
+      // has no confirmed baseline — a clean replay cannot prove a fix, only re-observe non-reproduction.
+      // EXEMPT/REPRODUCED findings (a real crash/5xx signal, or a probe reproduction) resolve normally.
+      const repro = finding.bug.attribution?.reproductionState;
+      const originalNeverReproduced = repro === 'PENDING' || repro === 'NOT_REPRODUCED';
+
       const decide = (p: ReplaySessionResult): VerdictDecision =>
         decideVerdict({
           strong: p.matchedSignals,
@@ -123,6 +129,7 @@ export class RegressionPlaybookVerifier {
           faultUrlPath,
           finalUrlPath: pathOf(p.finalUrl),
           nondeterministicProvenance,
+          originalNeverReproduced,
         });
 
       const probe = await this.attempt(browser, finding, originalBugClass, originalFaultType, emit);

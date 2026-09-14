@@ -460,6 +460,9 @@ const REASON_TEXT: Record<VerifyFixReason, string> = {
   NONDETERMINISTIC_PROVENANCE:
     'This issue was originally caused by several controls firing at the same time (a race condition), which a step-by-step replay cannot reliably recreate. A clean replay does not prove the issue is fixed. Run a new exploration to re-test it.',
 
+  UNREPRODUCED_ORIGINAL:
+    'This finding was never reproduced during exploration, so it had no confirmed baseline to compare against. A clean replay only repeats that non-reproduction and cannot prove the issue is fixed. Run a new exploration to confirm whether it still occurs.',
+
   NO_REPLAY_STEPS:
     'No reproduction steps were recorded for this finding, so there is nothing to replay. Run a new exploration to capture the steps needed to verify the issue.',
 
@@ -527,6 +530,11 @@ const NEXT_STEPS: Record<VerifyFixReason, string[]> = {
     'This fault came from a burst of controls firing together, so a deterministic replay cannot reproduce it on demand.',
     'Run a new exploration to re-test the race condition under real timing.',
     'Reproduce the original burst manually if you need to confirm the fix directly.',
+  ],
+  UNREPRODUCED_ORIGINAL: [
+    'Exploration never reproduced this finding, so a clean replay repeats that non-reproduction rather than proving a fix.',
+    'Run a new exploration to see whether the issue reproduces on its own.',
+    'Reproduce the original steps manually if you need to confirm the behavior directly.',
   ],
   UNCONFIRMED_RESOLUTION: [
     'The bug appears intermittent — one replay was clean, another was not.',
@@ -613,6 +621,7 @@ const NOT_REPLAYABLE_REASONS = new Set<VerifyFixReason>(['UNVERIFIABLE_BUG_CLASS
 // generic "Verification Failed" — the verdict is unchanged, only the label operators see.
 const REASON_LABEL_OVERRIDE: Partial<Record<VerifyFixReason, string>> = {
   AUTH_WALL: 'Authentication Required',
+  UNREPRODUCED_ORIGINAL: 'Never Reproduced',
 };
 
 function verdictMetaOf(verdict: RegressionVerdict): VerdictMeta {

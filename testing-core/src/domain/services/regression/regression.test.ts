@@ -141,6 +141,53 @@ check('a non-burst fault is unaffected by the gate → RESOLVED', () => {
   assert.equal(d.reason, 'CLEAN_REPLAY');
 });
 
+// A finding exploration NEVER reproduced (replay gate PENDING/NOT_REPRODUCED) has no confirmed
+// baseline, so a clean replay just repeats the non-reproduction — it must never read RESOLVED.
+// This is the second false-"fixed" a user hits after Verify Fix without deploying a fix
+// (findings02 finding 2: ×104 exception, NEEDS VERIFICATION, verify said Resolved).
+check('clean replay of a never-reproduced finding → INCONCLUSIVE, never RESOLVED', () => {
+  const d = decideVerdict({
+    strong: [], weak: [], stats: stats(), timelineSource: 'finding', originalNeverReproduced: true,
+  });
+  assert.equal(d.verdict, 'INCONCLUSIVE');
+  assert.equal(d.reason, 'UNREPRODUCED_ORIGINAL');
+});
+
+check('reproduction still wins over the never-reproduced gate (strong → STILL_ACTIVE)', () => {
+  const d = decideVerdict({
+    strong: [signal], weak: [], stats: stats(), timelineSource: 'finding', originalNeverReproduced: true,
+  });
+  assert.equal(d.verdict, 'STILL_ACTIVE');
+});
+
+// A reproduced/exempt finding (originalNeverReproduced omitted or false) resolves normally —
+// the gate must not block legitimate RESOLVED verdicts for confirmed findings.
+check('a reproduced/exempt finding is unaffected by the never-reproduced gate → RESOLVED', () => {
+  const d = decideVerdict({
+    strong: [], weak: [], stats: stats(), timelineSource: 'finding', originalNeverReproduced: false,
+  });
+  assert.equal(d.verdict, 'RESOLVED');
+  assert.equal(d.reason, 'CLEAN_REPLAY');
+});
+
+// Burst provenance is the more specific cause, so it is reported first when both hold.
+check('burst provenance takes precedence over the never-reproduced gate', () => {
+  const d = decideVerdict({
+    strong: [], weak: [], stats: stats(), timelineSource: 'finding',
+    nondeterministicProvenance: true, originalNeverReproduced: true,
+  });
+  assert.equal(d.reason, 'NONDETERMINISTIC_PROVENANCE');
+});
+
+check('summarize(UNREPRODUCED_ORIGINAL) states the no-baseline cause, not the generic fallback', () => {
+  const d = decideVerdict({
+    strong: [], weak: [], stats: stats(), timelineSource: 'finding', originalNeverReproduced: true,
+  });
+  const text = summarize(d, 'RUNTIME_STABILITY_EXCEPTION', stats()).toLowerCase();
+  assert.ok(text.includes('never reproduced'));
+  assert.ok(!text.includes('could not conclude'));
+});
+
 // A page navigation aborted mid-replay (e.g. ERR_ABORTED) ⇒ the faulting page never
 // loaded, so a clean run is not proof of a fix — must be INCONCLUSIVE, not RESOLVED.
 check('clean replay but a navigation aborted → INCOMPLETE_REPLAY, not RESOLVED', () => {

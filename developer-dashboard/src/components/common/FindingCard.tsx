@@ -60,7 +60,7 @@ export function FindingMetaBar({ attribution }: { attribution?: FindingAttributi
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {attribution?.cwe && <CweBadge cwe={attribution.cwe} />}
-      {verification && <MetaPill label="Status" value={verification} title="How this finding was verified" />}
+      {verification && <MetaPill label="At detection" value={verification} title="Confidence from the exploration run that first found this. A Verify Fix result, when present, is the current check and takes precedence." />}
     </div>
   );
 }

@@ -26,6 +26,8 @@ export interface VerdictInput {
   finalUrlPath?: string;
   /** True when the fault came from a concurrent burst/race — a clean deterministic replay cannot prove it fixed. */
   nondeterministicProvenance?: boolean;
+  /** True when exploration itself never reproduced the finding (Plan 1 gate left it PENDING/NOT_REPRODUCED) — a clean replay is the same non-reproduction, not proof of a fix. */
+  originalNeverReproduced?: boolean;
 }
 
 /** Two pathnames name the SAME surface unless they differ AND neither contains the other (SPA shell vs deep link). */
@@ -93,6 +95,12 @@ export function decideVerdict(input: VerdictInput): VerdictDecision {
   if (input.nondeterministicProvenance) {
     return { verdict: 'INCONCLUSIVE', reason: 'NONDETERMINISTIC_PROVENANCE', matchedSignals: [] };
   }
+  // A finding exploration never reproduced (replay gate left it PENDING/NOT_REPRODUCED) has no
+  // established baseline: a clean replay is the same non-reproduction, not proof of a fix. Reproduction
+  // above already flips it to STILL_ACTIVE; a clean run is INCONCLUSIVE, never a fabricated RESOLVED.
+  if (input.originalNeverReproduced) {
+    return { verdict: 'INCONCLUSIVE', reason: 'UNREPRODUCED_ORIGINAL', matchedSignals: [] };
+  }
   return { verdict: 'RESOLVED', reason: 'CLEAN_REPLAY', matchedSignals: [] };
 }
 
@@ -119,6 +127,8 @@ export function summarize(decision: VerdictDecision, bugClass: string, stats: Re
       return `A same-class ${bugClass} fault recurred but could not be corroborated as the original defect — this leans still-active. Treat as unconfirmed, not fixed.`;
     case 'NONDETERMINISTIC_PROVENANCE':
       return `The original ${bugClass} fault came from a concurrent burst/race, which a deterministic replay cannot reliably recreate — a clean run does not prove it is fixed. Re-test with a live exploration run.`;
+    case 'UNREPRODUCED_ORIGINAL':
+      return `The original ${bugClass} finding was never reproduced during exploration, so it had no confirmed baseline — a clean replay is the same non-reproduction, not proof of a fix. Re-run a live exploration to confirm whether it still occurs.`;
     case 'NO_REPLAY_STEPS':
       return `This finding has no recorded reproduction steps, so there was nothing to replay and no fault could be attributed to it. Re-run a live exploration to capture a replayable timeline.`;
     case 'UNCONFIRMED_RESOLUTION':

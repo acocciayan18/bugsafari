@@ -258,4 +258,40 @@ export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
       '3. Add a test that moves through the signed-in area and confirms no bounce back to login',
     ),
   },
+  METAMORPHIC_STATE_LEAK: {
+    title: 'Closing what was opened left the page changed',
+    description: 'A reversible action (opening then closing a dialog/menu, adding then removing an item) did not restore the page. Leftover elements or state remained after the action was undone, so the app does not fully clean up.',
+    defaultSeverity: 'MEDIUM',
+    cwe: 'CWE-459',
+    remediation: remediation(
+      'Suggested fix: fully undo what an action added',
+      '1. When a dialog/menu/overlay closes, remove every node and listener it added (no orphaned backdrop or portal)',
+      '2. When an item is removed, restore the surrounding state to exactly what it was before it was added',
+      '3. Add a test that opens then closes the control and asserts the DOM matches the starting state',
+    ),
+  },
+  NON_IDEMPOTENT_ACTION: {
+    title: 'Loading the same page twice gave different results',
+    description: 'Performing the same read twice produced two different end states. A repeated GET or a fresh reload of the same route should be deterministic; drifting output points to unguarded shared state or an initialization side effect.',
+    defaultSeverity: 'MEDIUM',
+    cwe: 'CWE-675',
+    remediation: remediation(
+      'Suggested fix: make repeated reads deterministic',
+      '1. Ensure loading the same route twice renders the same result (no dependence on leftover in-memory state)',
+      '2. Move first-load side effects behind an explicit guard so a second load does not double-apply them',
+      '3. Add a test that loads the route twice and asserts the two results are equivalent',
+    ),
+  },
+  RELOAD_STATE_CORRUPTION: {
+    title: 'A reload did not reproduce the page',
+    description: 'Reloading the page changed its rendered state even though nothing was done between loads. State that should survive a refresh was lost, duplicated, or re-rendered differently.',
+    defaultSeverity: 'MEDIUM',
+    cwe: 'CWE-664',
+    remediation: remediation(
+      'Suggested fix: make state survive a reload consistently',
+      '1. Rehydrate persisted state on load so a refresh reproduces the same view (no loss, no duplication)',
+      '2. Key list items by a stable id so a reload cannot duplicate or drop rows',
+      '3. Add a test that reloads the page and asserts the rendered state is unchanged',
+    ),
+  },
 };

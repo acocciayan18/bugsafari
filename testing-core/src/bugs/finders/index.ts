@@ -4,6 +4,9 @@ import { noSqlInjectionFinder } from './noSqlInjection.js';
 import { spaRaceConditionsFinder } from './spaRaceConditions.js';
 import { constraintBypassFinder } from './constraintBypass.js';
 import { injectionDifferentialFinder } from './injectionDifferential.js';
+import { roundTripOracle } from './metamorphic/roundTripOracle.js';
+import { idempotenceOracle } from './metamorphic/idempotenceOracle.js';
+import { reloadStabilityOracle } from './metamorphic/reloadStabilityOracle.js';
 
 /**
  * Finders executed by BugFinderRunner, ordered cheapest-gate-first.
@@ -30,6 +33,14 @@ export const BUG_FINDERS: readonly BugFinder[] = [
   // (auth bypass / broadened query) while the server still answers 2xx — the case the
   // signal-only noSqlInjectionFinder above cannot see (audit C3).
   injectionDifferentialFinder,
+  // Metamorphic oracles: assert a relationship between two observations of the same app
+  // (reversibility, idempotence, reload-stability) to catch silent logic bugs that never
+  // throw. roundTrip is non-navigating and always samples; the two navigating oracles
+  // self-gate to a sparse step cadence. All surface at NEEDS_VERIFICATION (the replay
+  // probe cannot re-observe a structural relation), never a false CONFIRMED.
+  roundTripOracle,
+  idempotenceOracle,
+  reloadStabilityOracle,
 ];
 
 export { setChaosManagerAccessor as setStructuralProbeAccessor } from './structuralProbe.js';
