@@ -457,6 +457,9 @@ const REASON_TEXT: Record<VerifyFixReason, string> = {
   WEAK_MATCH_ONLY:
     'A similar error appeared during replay, but it could not be confirmed as the original defect. Treat the issue as unresolved until it can be verified with another test.',
 
+  NONDETERMINISTIC_PROVENANCE:
+    'This issue was originally caused by several controls firing at the same time (a race condition), which a step-by-step replay cannot reliably recreate. A clean replay does not prove the issue is fixed. Run a new exploration to re-test it.',
+
   NO_REPLAY_STEPS:
     'No reproduction steps were recorded for this finding, so there is nothing to replay. Run a new exploration to capture the steps needed to verify the issue.',
 
@@ -519,6 +522,11 @@ const NEXT_STEPS: Record<VerifyFixReason, string[]> = {
     'Treat the issue as unresolved until a test can confirm it either way.',
     'Run Verify Fix again to see if the same-type signal recurs.',
     'Inspect the signals below to judge whether they match the original defect.',
+  ],
+  NONDETERMINISTIC_PROVENANCE: [
+    'This fault came from a burst of controls firing together, so a deterministic replay cannot reproduce it on demand.',
+    'Run a new exploration to re-test the race condition under real timing.',
+    'Reproduce the original burst manually if you need to confirm the fix directly.',
   ],
   UNCONFIRMED_RESOLUTION: [
     'The bug appears intermittent — one replay was clean, another was not.',

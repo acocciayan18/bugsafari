@@ -16,6 +16,7 @@ import type { FaultConfidence, VerificationVerdict } from '../../../../../shared
 import type { FaultType } from '../../../bugs/knowledgeBase/FaultClassifier.js';
 import { classifyFaultOrigin } from './faultOrigin.js';
 import { scoreFinding } from './confidenceScore.js';
+import { reproductionStateFor, replayGateEnabled } from './reproductionGate.js';
 
 export interface VerificationCandidate {
   faultType: FaultType;
@@ -34,6 +35,8 @@ export interface VerificationCandidate {
   };
   /** Result of an out-of-band reproduction pass, when one has already run. */
   reproduced?: boolean;
+  /** Oracle-confirmed, non-replayable finding — exempt from the pending replay cap. */
+  oracleProof?: boolean;
   /** Origin of the app under test — lets provenance separate first- from third-party failures. */
   targetOrigin?: string;
 }
@@ -115,6 +118,21 @@ export class VerificationPipeline {
     // Corroboration: the same fault recurred, OR a different channel flagged the same URL.
     const corroborated = seenCount >= 2 || crossChannel;
 
+    // Replay-gate posture: at first sighting no replay has settled, so a non-exempt
+    // candidate is PENDING and cannot be CONFIRMED until its reproduction pass lifts it.
+    const reproRate = candidate.reproduced === undefined ? undefined : candidate.reproduced ? 1 : 0;
+    const reproductionState = replayGateEnabled()
+      ? reproductionStateFor(
+          {
+            faultType: candidate.faultType,
+            statusCode: candidate.statusCode,
+            hasStackTrace: candidate.evidence?.hasStackTrace,
+            oracleProof: candidate.oracleProof,
+          },
+          reproRate,
+        )
+      : undefined;
+
     // An identified artifact origin is never a defect — reject before scoring.
     if (!originVerdict.isTargetApp && originVerdict.origin !== 'UNKNOWN') {
       return {
@@ -126,6 +144,8 @@ export class VerificationPipeline {
         corroborated,
         seenCount,
         reason: originVerdict.reason,
+        reproductionState,
+        reproductionRate: reproRate ?? null,
       };
     }
 
@@ -135,6 +155,7 @@ export class VerificationPipeline {
       evidenceCompleteness: evidenceCompleteness(candidate),
       corroborated,
       reproduced: candidate.reproduced,
+      reproductionState,
     });
 
     return {
@@ -145,6 +166,8 @@ export class VerificationPipeline {
       confidence: candidate.confidence,
       corroborated,
       seenCount,
+      reproductionState,
+      reproductionRate: reproRate ?? null,
       reason:
         status === 'CONFIRMED'
           ? `${originVerdict.reason} Evidence sufficient (score ${score}).`

@@ -23,6 +23,27 @@ check('a non-target-app origin can never read as CONFIRMED', () => {
   assert.equal(statusForScore(0.95, 'BUGSAFARI').status, 'NEEDS_VERIFICATION');
 });
 
+check('the replay cap holds a PENDING/NOT_REPRODUCED finding below CONFIRMED', () => {
+  // The primary false-positive this plan removes: a strong score cannot CONFIRM until replay settles.
+  assert.equal(statusForScore(0.95, 'TARGET_APP', 'PENDING').status, 'NEEDS_VERIFICATION');
+  assert.equal(statusForScore(0.95, 'TARGET_APP', 'NOT_REPRODUCED').status, 'NEEDS_VERIFICATION');
+});
+
+check('an EXEMPT or REPRODUCED finding keeps its CONFIRMED band (no verdict regression)', () => {
+  assert.equal(statusForScore(0.95, 'TARGET_APP', 'EXEMPT').status, 'CONFIRMED');
+  assert.equal(statusForScore(0.95, 'TARGET_APP', 'REPRODUCED').status, 'CONFIRMED');
+});
+
+check('the replay cap composes with the origin cap (neither is bypassed)', () => {
+  assert.equal(statusForScore(0.95, 'BUGSAFARI', 'REPRODUCED').status, 'NEEDS_VERIFICATION');
+  assert.equal(statusForScore(0.95, 'BUGSAFARI', 'PENDING').status, 'NEEDS_VERIFICATION');
+});
+
+check('an omitted state preserves pre-gate scoring (locks the flag-off rollback path)', () => {
+  assert.equal(statusForScore(0.95, 'TARGET_APP').status, 'CONFIRMED');
+  assert.equal(statusForScore(0.6, 'TARGET_APP').status, 'NEEDS_VERIFICATION');
+});
+
 check('a GUARDED duplicate defect scores in the low band and maps to a non-CONFIRMED status', () => {
   const finder = new DuplicateActionFinder();
   const base = 1000;

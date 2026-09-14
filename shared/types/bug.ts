@@ -4,7 +4,7 @@
 // Crash/incident reports plus the action breadcrumb/record shapes that
 // compose the reproduction playbook.
 
-import type { FaultConfidence, FaultOrigin, VerificationStatus } from './verification.js';
+import type { FaultConfidence, FaultOrigin, ReproductionState, VerificationStatus } from './verification.js';
 import type { IntelligentDiagnosis } from './telemetry.js';
 
 export interface ActionBreadcrumb {
@@ -45,6 +45,10 @@ export interface FindingAttribution {
   confidenceScore?: number;
   /** True when a repeat occurrence or a second channel corroborated the fault. */
   corroborated?: boolean;
+  /** Replay-gate posture behind {@link verificationStatus} (absent when the gate is off). */
+  reproductionState?: ReproductionState;
+  /** Reproductions ÷ decidable replays (0–1); null until a replay settles. */
+  reproductionRate?: number | null;
   /**
    * Why the routing tree promoted this to a finding (RoutingReasonCode). Absent on
    * runtime faults, which are findings by definition, and on records predating it.

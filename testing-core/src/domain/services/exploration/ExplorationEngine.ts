@@ -16,7 +16,7 @@ import { resolveScenarioAttribution } from '../../../bugs/knowledgeBase/scenario
 import { normalizeFaultType, isSecurityBugClass } from '../../../bugs/knowledgeBase/FaultClassifier.js';
 import { ReproductionProbe, type ReproductionOutcome } from '../verification/ReproductionProbe.js';
 import { applyReproductionOutcome } from '../verification/confidenceScore.js';
-import { classifyFaultOrigin } from '../verification/index.js';
+import { classifyFaultOrigin, replayGateEnabled } from '../verification/index.js';
 import { InteractionSimulator } from '../../scenarios/rapidClicker/index.js';
 import { RiskScorer } from '../RiskScorer.js';
 import { ChaosTransactionManager } from '../../chaos/ChaosTransactionManager.js';
@@ -705,13 +705,27 @@ export class ExplorationEngine {
     const existing = index >= 0 ? this.confirmedBugsMemory[index] : undefined;
     if (!existing?.attribution) return;
 
+    // A settled replay is authoritative: rate > 0 lifts the pending cap to CONFIRMED,
+    // rate 0 holds it at NEEDS_VERIFICATION (demoting even an exempt deterministic crash).
+    const reproductionState = replayGateEnabled()
+      ? outcome.reproductionRate > 0
+        ? ('REPRODUCED' as const)
+        : ('NOT_REPRODUCED' as const)
+      : undefined;
     const { score, status } = applyReproductionOutcome(
       existing.attribution.confidenceScore ?? 0,
       existing.attribution.origin ?? 'UNKNOWN',
       outcome.reproduced,
       outcome.reproductionRate,
+      reproductionState,
     );
-    const attribution = { ...existing.attribution, confidenceScore: score, verificationStatus: status };
+    const attribution = {
+      ...existing.attribution,
+      confidenceScore: score,
+      verificationStatus: status,
+      reproductionState,
+      reproductionRate: outcome.reproductionRate,
+    };
     this.confirmedBugsMemory[index] = { ...existing, attribution };
     this.markFindingsDirty();
 

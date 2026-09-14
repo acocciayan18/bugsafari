@@ -115,6 +115,32 @@ check('clean fully-executed per-finding replay → RESOLVED', () => {
   assert.equal(d.reason, 'CLEAN_REPLAY');
 });
 
+// A concurrent-burst/race fault is non-deterministic: a clean deterministic replay cannot
+// recreate the timing, so it must never read RESOLVED — the false "fixed" a user hits after
+// clicking Verify Fix without ever deploying a fix.
+check('clean replay of a concurrent-burst fault → INCONCLUSIVE, never RESOLVED', () => {
+  const d = decideVerdict({
+    strong: [], weak: [], stats: stats(), timelineSource: 'finding', nondeterministicProvenance: true,
+  });
+  assert.equal(d.verdict, 'INCONCLUSIVE');
+  assert.equal(d.reason, 'NONDETERMINISTIC_PROVENANCE');
+});
+
+check('reproduction still wins over the burst-provenance gate (strong signal → STILL_ACTIVE)', () => {
+  const d = decideVerdict({
+    strong: [signal], weak: [], stats: stats(), timelineSource: 'finding', nondeterministicProvenance: true,
+  });
+  assert.equal(d.verdict, 'STILL_ACTIVE');
+});
+
+check('a non-burst fault is unaffected by the gate → RESOLVED', () => {
+  const d = decideVerdict({
+    strong: [], weak: [], stats: stats(), timelineSource: 'finding', nondeterministicProvenance: false,
+  });
+  assert.equal(d.verdict, 'RESOLVED');
+  assert.equal(d.reason, 'CLEAN_REPLAY');
+});
+
 // A page navigation aborted mid-replay (e.g. ERR_ABORTED) ⇒ the faulting page never
 // loaded, so a clean run is not proof of a fix — must be INCONCLUSIVE, not RESOLVED.
 check('clean replay but a navigation aborted → INCOMPLETE_REPLAY, not RESOLVED', () => {

@@ -107,6 +107,10 @@ export class RegressionPlaybookVerifier {
       // (network is already covered by faultEndpoint). Undefined disables the gate.
       const faultUrlPath = originalFaultType !== 'NETWORK' ? pathOf(finding.bug.url ?? undefined) : undefined;
 
+      // A concurrent-burst fault is non-deterministic — a clean deterministic replay
+      // cannot prove it fixed, so it can never read RESOLVED (only STILL_ACTIVE on recurrence).
+      const nondeterministicProvenance = finding.bug.attribution?.routingReason === 'concurrent-burst';
+
       const decide = (p: ReplaySessionResult): VerdictDecision =>
         decideVerdict({
           strong: p.matchedSignals,
@@ -118,6 +122,7 @@ export class RegressionPlaybookVerifier {
           replayIncomplete: p.replayIncomplete,
           faultUrlPath,
           finalUrlPath: pathOf(p.finalUrl),
+          nondeterministicProvenance,
         });
 
       const probe = await this.attempt(browser, finding, originalBugClass, originalFaultType, emit);

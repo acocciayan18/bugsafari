@@ -48,6 +48,7 @@ import {
   isProxyGatewayArtifact,
   resolveMaskedFailure,
   statusForScore,
+  replayGateEnabled,
   type VerificationCandidate,
 } from '../verification/index.js';
 import { MAX_SOFT_FAIL_BODY_BYTES } from '../verification/softFailBody.js';
@@ -762,6 +763,8 @@ export class StabilityMonitor {
       verificationStatus: outcome.status,
       confidenceScore: outcome.score,
       corroborated: outcome.corroborated,
+      reproductionState: outcome.reproductionState,
+      reproductionRate: outcome.reproductionRate,
     };
     // Drop under-evidenced findings (score < 0.5 ⇒ INCONCLUSIVE): they add noise at the
     // same weight as proven bugs. The caller still emits them as informational telemetry.
@@ -1292,8 +1295,14 @@ export class StabilityMonitor {
 
     const scenario = resolveScenarioAttribution(ActiveScenarioTracker.getActiveScenarioName());
     // Status from the finder's own score via the single grading source, so the shown
-    // label can never disagree with the shown confidence percentage.
-    const verificationStatus = statusForScore(defect.confidenceScore, 'TARGET_APP').status;
+    // label can never disagree with the shown confidence percentage. This defect carries a
+    // deterministic replay (built above) and is enqueued for reproduction, so under the
+    // replay gate it is PENDING until that pass settles and lifts it back to CONFIRMED.
+    const verificationStatus = statusForScore(
+      defect.confidenceScore,
+      'TARGET_APP',
+      replayGateEnabled() ? ('PENDING' as const) : undefined,
+    ).status;
     const severity = resolveSeverity({
       severity: defect.severity,
       bugClass: defect.bugClass,
@@ -1315,6 +1324,8 @@ export class StabilityMonitor {
         confidenceScore: defect.confidenceScore,
         verificationStatus,
         corroborated: defect.corroborated,
+        reproductionState: replayGateEnabled() ? ('PENDING' as const) : undefined,
+        reproductionRate: null,
       },
       advice: defect.advice,
       reproductionPlaybook,

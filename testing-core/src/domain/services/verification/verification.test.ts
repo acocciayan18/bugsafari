@@ -258,4 +258,46 @@ check('cross-channel: console error + same-URL 5xx within window → corroborate
   assert.equal(out.corroborated, true);
 });
 
+// ── Replay gate ──
+check('flaky candidate (unsettled, non-exempt) is PENDING and never CONFIRMED', () => {
+  // The primary false-positive this plan removes: a strong, corroborated exception with
+  // no stack has not replayed, so it stays NEEDS_VERIFICATION until a repro pass lifts it.
+  const p = new VerificationPipeline(() => 1000);
+  const cand = {
+    faultType: 'EXCEPTION' as const, message: "TypeError: cannot read 'id'", confidence: 'CONFIRMED' as const,
+    url: 'https://app.test/x', targetOrigin: 'https://app.test',
+    evidence: { hasMessage: true, hasStackTrace: false, hasSelector: true, hasReproductionSteps: true },
+  };
+  p.evaluate(cand);
+  const second = p.evaluate(cand);
+  assert.equal(second.corroborated, true);
+  assert.ok(second.score >= 0.8, 'score is CONFIRMED-band');
+  assert.equal(second.reproductionState, 'PENDING');
+  assert.notEqual(second.status, 'CONFIRMED');
+});
+
+check('deterministic crash is EXEMPT → CONFIRMED, then demotes on a settled rate-0 replay', () => {
+  const p = new VerificationPipeline(() => 1000);
+  const crash = p.evaluate({
+    faultType: 'EXCEPTION', message: "TypeError: cannot read 'id'", confidence: 'CONFIRMED',
+    url: 'https://app.test/x', targetOrigin: 'https://app.test',
+    evidence: { hasMessage: true, hasStackTrace: true, hasSelector: true },
+  });
+  assert.equal(crash.reproductionState, 'EXEMPT');
+  assert.equal(crash.status, 'CONFIRMED');
+  const demoted = applyReproductionOutcome(crash.score, 'TARGET_APP', false, 0, 'NOT_REPRODUCED');
+  assert.notEqual(demoted.status, 'CONFIRMED');
+});
+
+check('oracle-proof finding stays CONFIRMED with no replay (guards the recall regression)', () => {
+  const p = new VerificationPipeline(() => 1000);
+  const oracle = p.evaluate({
+    faultType: 'CONSOLE', message: 'reflected payload executed', confidence: 'CONFIRMED',
+    url: 'https://app.test/x', targetOrigin: 'https://app.test', oracleProof: true,
+    evidence: { hasMessage: true },
+  });
+  assert.equal(oracle.reproductionState, 'EXEMPT');
+  assert.equal(oracle.status, 'CONFIRMED');
+});
+
 console.log(`\n${passed} checks passed.`);

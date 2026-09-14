@@ -29,6 +29,13 @@ export type VerificationStatus =
   | 'NEEDS_VERIFICATION' // Plausibly real but under-evidenced; needs a reproduction pass.
   | 'INCONCLUSIVE'; // Evidence too weak / origin uncertain to report as a bug.
 
+/** Replay-gate posture of a finding: whether a reproduction pass has confirmed it. */
+export type ReproductionState =
+  | 'REPRODUCED' // A replay re-observed the fault (rate > 0).
+  | 'NOT_REPRODUCED' // A replay settled and the fault did not recur (rate 0).
+  | 'PENDING' // Replay not yet settled; caps a non-exempt finding below CONFIRMED.
+  | 'EXEMPT'; // Self-evident class (deterministic crash / oracle-proof) — no replay needed.
+
 /** Socket channel carrying in-run reproduction verdicts back to the operator. */
 export const REPRODUCTION_VERDICT_EVENT = 'reproduction-verdict' as const;
 
@@ -100,4 +107,8 @@ export interface VerificationVerdict {
   corroborated: boolean;
   /** Human-readable one-line justification (safe to surface in telemetry). */
   reason: string;
+  /** Replay-gate posture that produced {@link status} (undefined when the gate is off). */
+  reproductionState?: ReproductionState;
+  /** Reproductions ÷ decidable replays (0–1); null until a replay settles. */
+  reproductionRate?: number | null;
 }

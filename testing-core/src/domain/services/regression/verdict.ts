@@ -24,6 +24,8 @@ export interface VerdictInput {
   faultUrlPath?: string;
   /** Pathname the replay actually ended on — compared to faultUrlPath to prove the fault page was reached. */
   finalUrlPath?: string;
+  /** True when the fault came from a concurrent burst/race — a clean deterministic replay cannot prove it fixed. */
+  nondeterministicProvenance?: boolean;
 }
 
 /** Two pathnames name the SAME surface unless they differ AND neither contains the other (SPA shell vs deep link). */
@@ -84,6 +86,13 @@ export function decideVerdict(input: VerdictInput): VerdictDecision {
   if (input.replayIncomplete) {
     return { verdict: 'INCONCLUSIVE', reason: 'INCOMPLETE_REPLAY', matchedSignals: [] };
   }
+  // A fault born of a concurrent burst/race is non-deterministic: a single-threaded
+  // deterministic replay routinely will not recreate the timing, so a clean run proves
+  // nothing about a fix. Reproduction already won above (STILL_ACTIVE); a clean burst
+  // replay is INCONCLUSIVE, never a fabricated RESOLVED.
+  if (input.nondeterministicProvenance) {
+    return { verdict: 'INCONCLUSIVE', reason: 'NONDETERMINISTIC_PROVENANCE', matchedSignals: [] };
+  }
   return { verdict: 'RESOLVED', reason: 'CLEAN_REPLAY', matchedSignals: [] };
 }
 
@@ -108,6 +117,8 @@ export function summarize(decision: VerdictDecision, bugClass: string, stats: Re
       return `${stats.executed} of ${stats.total} recorded step(s) executed and no ${bugClass} fault recurred. Defect resolved.`;
     case 'WEAK_MATCH_ONLY':
       return `A same-class ${bugClass} fault recurred but could not be corroborated as the original defect — this leans still-active. Treat as unconfirmed, not fixed.`;
+    case 'NONDETERMINISTIC_PROVENANCE':
+      return `The original ${bugClass} fault came from a concurrent burst/race, which a deterministic replay cannot reliably recreate — a clean run does not prove it is fixed. Re-test with a live exploration run.`;
     case 'NO_REPLAY_STEPS':
       return `This finding has no recorded reproduction steps, so there was nothing to replay and no fault could be attributed to it. Re-run a live exploration to capture a replayable timeline.`;
     case 'UNCONFIRMED_RESOLUTION':

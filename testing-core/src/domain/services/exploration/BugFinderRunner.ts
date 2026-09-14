@@ -12,6 +12,7 @@ import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
 import { ensureFindingEvidence } from '../../../bugs/knowledgeBase/findingEvidence.js';
 import { requiresBehavioralProof, hasBehavioralProof } from '../../../bugs/knowledgeBase/securityEvidenceGate.js';
 import { scoreFinding } from '../verification/confidenceScore.js';
+import { replayGateEnabled } from '../verification/reproductionGate.js';
 import type { TelemetryEmitter } from '../telemetry/TelemetryEmitter.js';
 import type { ScenarioGate } from '../scenarioGate.js';
 import type { ConfirmedBug } from './types.js';
@@ -236,21 +237,24 @@ export class BugFinderRunner {
     // SIGNAL. scoreFinding + its bands then decide the label: strong findings read CONFIRMED,
     // weak single-shot ones NEEDS_VERIFICATION (capping severity at MEDIUM until a repeat/repro corroborates them).
     const replayable = Boolean(finding.evidence?.reproductionActions ?? reproductionActions);
-    const findingConfidence: FaultConfidence =
-      replayable || (requiresBehavioralProof(finding.bugClass) && hasBehavioralProof(finding))
-        ? 'CONFIRMED'
-        : 'SIGNAL';
+    const oracleProof = requiresBehavioralProof(finding.bugClass) && hasBehavioralProof(finding);
+    const findingConfidence: FaultConfidence = replayable || oracleProof ? 'CONFIRMED' : 'SIGNAL';
+    // Replay gate: an oracle-proof finding is self-evident (EXEMPT); a replayable one is
+    // PENDING until its reproduction pass settles and lifts it back to CONFIRMED.
+    const reproductionState = replayGateEnabled() ? (oracleProof ? ('EXEMPT' as const) : ('PENDING' as const)) : undefined;
     const graded = scoreFinding({
       confidence: findingConfidence,
       origin: 'TARGET_APP',
       evidenceCompleteness: replayable ? 1 : 0.5,
       corroborated: false,
+      reproductionState,
     });
     const verdict = {
       origin: 'TARGET_APP' as const,
       confidence: findingConfidence,
       confidenceScore: graded.score,
       verificationStatus: graded.status,
+      reproductionState,
     };
 
     // Precedence: finder-supplied reproduction (concurrent-burst finders pre-record their

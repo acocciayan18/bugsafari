@@ -23,6 +23,7 @@ export type VerifyFixReason =
   | 'FAULT_LOCATION_NOT_REACHED' // replay ended on a different route than the recorded fault page (non-network)
   | 'UNVERIFIABLE_BUG_CLASS' // class has no replay-time detector
   | 'WEAK_MATCH_ONLY' // same-class faults seen but uncorroborated
+  | 'NONDETERMINISTIC_PROVENANCE' // fault came from a concurrent burst/race; a clean deterministic replay cannot prove it fixed
   | 'NO_REPLAY_STEPS' // finding has no recorded timeline — nothing to replay, no fault is attributable
   | 'UNCONFIRMED_RESOLUTION' // one clean replay, but a confirmation replay disagreed (flaky) — not provably fixed
   | 'INCOMPLETE_REPLAY' // a page navigation aborted mid-replay, so the faulting state was never reached

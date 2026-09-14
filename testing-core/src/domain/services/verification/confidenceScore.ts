@@ -8,6 +8,7 @@
 // being reported as a confirmed bug.
 
 import type { FaultConfidence, FaultOrigin, VerificationStatus } from '../../../../../shared/types.js';
+import type { ReproductionState } from './reproductionGate.js';
 
 export interface ScoreInput {
   confidence: FaultConfidence;
@@ -18,6 +19,9 @@ export interface ScoreInput {
   corroborated: boolean;
   /** A deterministic reproduction pass re-observed the fault (optional; unknown ⇒ undefined). */
   reproduced?: boolean;
+  // Replay-gate posture. PENDING/NOT_REPRODUCED (non-exempt) caps CONFIRMED at
+  // NEEDS_VERIFICATION; undefined preserves the pre-gate behavior for legacy callers.
+  reproductionState?: ReproductionState;
 }
 
 export interface ScoreResult {
@@ -59,7 +63,7 @@ export function scoreFinding(input: ScoreInput): ScoreResult {
 
   score += 0.1 * clamp01(input.evidenceCompleteness);
 
-  return gradeScore(score, input.origin);
+  return gradeScore(score, input.origin, input.reproductionState);
 }
 
 /** Weight of an in-run reproduction pass — applied at scoring time or retroactively. */
@@ -85,6 +89,7 @@ export function applyReproductionOutcome(
   origin: FaultOrigin,
   reproduced: boolean,
   rate?: number,
+  reproductionState?: ReproductionState,
 ): ScoreResult {
   const delta =
     rate === undefined
@@ -94,7 +99,7 @@ export function applyReproductionOutcome(
       : rate > 0
         ? REPRODUCED_BONUS * clamp01(rate)
         : -NOT_REPRODUCED_PENALTY;
-  return gradeScore(score + delta, origin);
+  return gradeScore(score + delta, origin, reproductionState);
 }
 
 /**
@@ -102,12 +107,16 @@ export function applyReproductionOutcome(
  * into a terminal status, so any surface that already holds a score (the duplicate-action
  * finder, finder registration) labels it with the SAME bands and origin caps everyone else uses.
  */
-export function statusForScore(score: number, origin: FaultOrigin): ScoreResult {
-  return gradeScore(score, origin);
+export function statusForScore(
+  score: number,
+  origin: FaultOrigin,
+  reproductionState?: ReproductionState,
+): ScoreResult {
+  return gradeScore(score, origin, reproductionState);
 }
 
-/** Clamp, threshold, and apply the origin caps. Single source of the verdict bands. */
-function gradeScore(raw: number, origin: FaultOrigin): ScoreResult {
+/** Clamp, threshold, and apply the origin + replay caps. Single source of the verdict bands. */
+function gradeScore(raw: number, origin: FaultOrigin, reproductionState?: ReproductionState): ScoreResult {
   const score = clamp01(raw);
 
   let status: VerificationStatus;
@@ -117,6 +126,15 @@ function gradeScore(raw: number, origin: FaultOrigin): ScoreResult {
 
   // Hard caps: only a target-app fault may be CONFIRMED; an unattributed one needs a pass.
   if (status === 'CONFIRMED' && origin !== 'TARGET_APP') status = 'NEEDS_VERIFICATION';
+
+  // Replay gate: a finding whose replay is pending or did not reproduce cannot be
+  // CONFIRMED unless it is a self-evident exempt class. Composes with the origin cap.
+  if (
+    status === 'CONFIRMED' &&
+    (reproductionState === 'PENDING' || reproductionState === 'NOT_REPRODUCED')
+  ) {
+    status = 'NEEDS_VERIFICATION';
+  }
 
   return { score: Math.round(score * 100) / 100, status };
 }
