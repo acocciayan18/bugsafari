@@ -1155,6 +1155,7 @@ export class ExplorationEngine {
       recordFindingOccurrence: (bugId, occurrences) => this.recordFindingOccurrence(bugId, occurrences),
       setFreeze: () => this.freezeRecording(),
       getLastKnownUrl: () => lastKnownUrl,
+      getActiveUrlAt: (atMs) => navTrail.urlAt(atMs),
       onApiFailure: () => { this.runtimeMetrics.requestsCount++; },
       recordNetworkFailure: () => this.networkFailureCascade.recordFailure(),
       getInteractionContext: (atMs, windowMs) => this.interactionContextAt(atMs, windowMs),

@@ -1,6 +1,7 @@
 import type { Dialog, Page, Request, Response } from 'playwright';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { decideDialog } from '../exploration/dialogPolicy.js';
+import { resolveReproFaultUrl } from './faultUrlAnchor.js';
 import { captureStateFingerprint } from '../../../infrastructure/monitoring/stateFingerprint.js';
 import { setupStabilityMonitoring } from '../../../infrastructure/monitoring/stabilityMonitor.js';
 import { setupBrowserConsoleListener } from '../../../infrastructure/monitoring/browserConsoleListener.js';
@@ -554,6 +555,15 @@ export class StabilityMonitor {
     const start = this.requestStartTimes.get(request) ?? this.requestSettledAtMs(request);
     if (this.deps.isConcurrentBurstAt?.(start)) return undefined;
     return this.culpritSelectorAt(start);
+  }
+
+  // Page URL active when a request STARTED — anchors its reproduction to the page that issued it,
+  // not the page reached by a later navigation before the response settled. Undefined when the
+  // start time is unknown or the engine exposes no url-at-time lookup (caller falls back).
+  private activeUrlAtRequestStart(request: Request): string | undefined {
+    const start = this.requestStartTimes.get(request);
+    if (start === undefined) return undefined;
+    return this.deps.getActiveUrlAt?.(start) || undefined;
   }
 
   // A request that a first-party, main-frame control could actually have issued. A third-party
@@ -2120,7 +2130,7 @@ export class StabilityMonitor {
           culpritSelector: this.culpritForRequest(response.request()),
           breadcrumbs: this.deps.getBreadcrumbs(),
           reproduction: ActiveScenarioTracker.flushSnapshot({
-            faultUrl: this.deps.getLastKnownUrl() || page.url(),
+            faultUrl: resolveReproFaultUrl(this.activeUrlAtRequestStart(response.request()), this.deps.getLastKnownUrl(), page.url()),
             faultAtMs: settledAtMs,
             culpritSelector: this.culpritForRequest(response.request()),
           }),
@@ -2231,7 +2241,7 @@ export class StabilityMonitor {
         culpritSelector: this.culpritForRequest(request),
         breadcrumbs,
         reproduction: ActiveScenarioTracker.flushSnapshot({
-          faultUrl: this.deps.getLastKnownUrl() || page.url(),
+          faultUrl: resolveReproFaultUrl(this.activeUrlAtRequestStart(request), this.deps.getLastKnownUrl(), page.url()),
           faultAtMs: failedAtMs,
           culpritSelector: this.culpritForRequest(request),
         }),

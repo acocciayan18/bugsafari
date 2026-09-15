@@ -189,6 +189,10 @@ export interface StabilityMonitorDeps {
   setFreeze(): void;
   /** Last navigated URL captured by the engine's framenavigated handler. */
   getLastKnownUrl(): string;
+  /** URL of the page active at `atMs` — anchors a network fault's reproduction to the page current
+   *  when the failing request started, not when it settled after a later navigation. Optional:
+   *  absent ⇒ callers fall back to the last-known/live URL. */
+  getActiveUrlAt?(atMs: number): string;
   /** Increment the failed-requests metric (Phase 3 telemetry). */
   onApiFailure(): void;
   /** Record one raw network failure (>=400 response or non-aborted requestfailed) into the run-scoped cascade tracker, ahead of any reportability filtering. */

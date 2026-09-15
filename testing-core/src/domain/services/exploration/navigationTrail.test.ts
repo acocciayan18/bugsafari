@@ -58,4 +58,35 @@ check('stale marks expire and do not match a much later request', () => {
   assert.equal(trail.supersededInFlight(20000, 21000), false);
 });
 
+const P11 = 'https://app.io/products/p11';
+const P9 = 'https://app.io/products/p9';
+
+check('urlAt returns the page active at the query time, not a later navigation', () => {
+  const trail = new NavigationTrail();
+  trail.record({ url: P11, atMs: 1000, engineInitiated: true });
+  trail.record({ url: P9, atMs: 1200, engineInitiated: true });
+  // A request that STARTED at 1100 was issued from p11, even though the page later moved to p9.
+  assert.equal(trail.urlAt(1100), P11);
+  assert.equal(trail.urlAt(1200), P9);
+});
+
+check('urlAt considers app-initiated navigations too (any nav changed the page)', () => {
+  const trail = new NavigationTrail();
+  trail.record({ url: P11, atMs: 1000, engineInitiated: false });
+  assert.equal(trail.urlAt(1500), P11);
+});
+
+check('urlAt returns empty when no mark is at or before the query time', () => {
+  const trail = new NavigationTrail();
+  assert.equal(trail.urlAt(1000), '');
+  trail.record({ url: HOME, atMs: 2000, engineInitiated: true });
+  assert.equal(trail.urlAt(1000), '');
+});
+
+check('urlAt does not return a mark older than the retention window', () => {
+  const trail = new NavigationTrail();
+  trail.record({ url: HOME, atMs: 1000, engineInitiated: true });
+  assert.equal(trail.urlAt(20000), '');
+});
+
 console.log(`\n${passed} navigation-trail checks passed.`);

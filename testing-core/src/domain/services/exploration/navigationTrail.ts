@@ -36,6 +36,18 @@ export class NavigationTrail {
     this.marks.push(mark);
   }
 
+  /** URL of the last navigation observed at or before `atMs` — the page active at that instant.
+   *  Empty when no mark qualifies. Considers every navigation (engine or app), since either
+   *  changed the displayed page. Used to anchor a network fault's reproduction to the page that
+   *  was current when the failing request STARTED, not when it settled after a later navigation. */
+  public urlAt(atMs: number): string {
+    this.expire(atMs);
+    for (let i = this.marks.length - 1; i >= 0; i -= 1) {
+      if (this.marks[i].atMs <= atMs) return this.marks[i].url;
+    }
+    return '';
+  }
+
   /** True when an engine-initiated navigation happened while the request was in flight. */
   public supersededInFlight(startMs: number | undefined, endMs: number): boolean {
     if (startMs === undefined) return false;
