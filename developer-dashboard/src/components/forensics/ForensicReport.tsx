@@ -597,12 +597,14 @@ const NEXT_STEPS: Record<VerifyFixReason, string[]> = {
 const VERIFICATION_DISCLAIMER =
   'Automated verification is an indicator, not proof. A replay only re-runs the recorded steps against the current app, so a passing result does not guarantee the bug is gone and a failed run does not always mean the fix is broken. Always confirm by running another verification or by reproducing the issue manually before closing a finding.';
 
-// A distinct, calmer badge for findings replay fundamentally CAN'T check — a class with
-// no replay-time detector, or a finding with no recorded steps. These aren't "inconclusive
-// evidence"; there was nothing to replay, so they read "Not Replayable" (neutral), not the
-// amber "Inconclusive" that implies a real-but-ambiguous run.
+// A distinct, calmer badge for findings automated Verify-Fix fundamentally CAN'T check — a
+// class with no replay-time detector, or a finding with no recorded steps. These aren't
+// "inconclusive evidence"; the automated checker had nothing conclusive to run, so they read
+// "Needs Live Re-test" (neutral), not the amber "Inconclusive" that implies a real-but-
+// ambiguous run. The label deliberately avoids "replay" so it does not read as contradicting
+// the human Reproduction Guide shown on the same card.
 const NOT_REPLAYABLE_META: VerdictMeta = {
-  label: 'Not Replayable',
+  label: 'Needs Live Re-test',
   badge: 'bg-(--status-neutral-fg) text-(--text-oninvert) hover:opacity-90',
   chip: 'bg-(--status-neutral-bg) text-(--status-neutral-fg) border border-(--status-neutral-border)',
   dot: 'bg-(--status-neutral-fg)',
@@ -628,7 +630,7 @@ function verdictMetaOf(verdict: RegressionVerdict): VerdictMeta {
   return VERDICT_META[verdict] ?? VERDICT_META.INCONCLUSIVE;
 }
 
-/** Badge/theme for a settled result — a "can't replay this" reason reads Not Replayable. */
+/** Badge/theme for a settled result — a "can't auto-check this" reason reads Needs Live Re-test. */
 function metaForResult(result: { verdict: RegressionVerdict; reason: VerifyFixReason }): VerdictMeta {
   if (result.verdict === 'INCONCLUSIVE' && NOT_REPLAYABLE_REASONS.has(result.reason)) return NOT_REPLAYABLE_META;
   const base = verdictMetaOf(result.verdict);

@@ -5,8 +5,10 @@
 // the dirty post-action page never matters.
 
 import type { BugFinder, BugContext, BugFinding } from '../../types.js';
-import { captureCompound, equivalent, type CompoundCapture } from './relations.js';
+import { captureCompound, equivalent, volatileOnly, type CompoundCapture } from './relations.js';
 import { safeRoutePath } from '../../../domain/services/exploration/bugIdentity.js';
+import { routeKey } from '../../../ml/domHasher.js';
+import { VolatilityModel } from '../../../domain/services/baseline/volatilityModel.js';
 
 // Navigating checks are disruptive, so sample sparsely (on top of the runner's cadence).
 const RUN_EVERY = 8;
@@ -23,13 +25,21 @@ export async function evaluateIdempotence(
   const page = ctx.page;
   const url = page.url();
   if (!/^https?:/i.test(url)) return [];
+  const key = routeKey(url);
 
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }).catch(() => undefined);
   const first = await capture(page);
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }).catch(() => undefined);
   const second = await capture(page);
+  // A third load learns per-load churn from an action-free pair, so a nonce/token that
+  // differs on every load is not mistaken for non-deterministic initialization.
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }).catch(() => undefined);
+  const third = await capture(page);
+  VolatilityModel.record(key, second.paths, third.paths);
 
-  if (equivalent(first, second)) return [];
+  if (equivalent(first.hash, second.hash)) return [];
+  // The two loads differ only by per-load dynamic content — deterministic enough.
+  if (volatileOnly(key, first, second)) return [];
 
   const route = safeRoutePath(page) || url;
   return [

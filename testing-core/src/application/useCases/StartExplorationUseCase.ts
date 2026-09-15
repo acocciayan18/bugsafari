@@ -21,6 +21,7 @@ import { resetBurstCounter } from '../../infrastructure/monitoring/burstCorrelat
 import { FuzzForensicLog } from '../../infrastructure/monitoring/fuzzForensics.js';
 import { NavForensicLog } from '../../infrastructure/monitoring/navForensics.js';
 import { NetworkLogStore } from '../../infrastructure/monitoring/NetworkLogStore.js';
+import { VolatilityModel } from '../../domain/services/baseline/volatilityModel.js';
 import { ConsoleLogStore } from '../../infrastructure/monitoring/ConsoleLogStore.js';
 import { classifyFaultOrigin } from '../../domain/services/verification/index.js';
 
@@ -658,6 +659,7 @@ export class StartExplorationUseCase {
             NavForensicLog.reset();
             NetworkLogStore.reset();
             ConsoleLogStore.reset();
+            VolatilityModel.reset();
 
             // Register the run with the centralized SessionManager: it owns the
             // engine control surface, reconnect replay buffer, grace window, room

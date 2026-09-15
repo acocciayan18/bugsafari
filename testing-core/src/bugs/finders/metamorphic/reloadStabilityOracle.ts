@@ -5,8 +5,10 @@
 // observations start from a clean load, so the dirty post-action page never matters.
 
 import type { BugFinder, BugContext, BugFinding } from '../../types.js';
-import { captureCompound, equivalent, type CompoundCapture } from './relations.js';
+import { captureCompound, equivalent, volatileOnly, type CompoundCapture } from './relations.js';
 import { safeRoutePath } from '../../../domain/services/exploration/bugIdentity.js';
+import { routeKey } from '../../../ml/domHasher.js';
+import { VolatilityModel } from '../../../domain/services/baseline/volatilityModel.js';
 
 // Sample sparsely (on top of the runner's cadence); offset from idempotence so the two
 // navigating oracles never fire on the same step.
@@ -25,13 +27,21 @@ export async function evaluateReloadStability(
   const page = ctx.page;
   const url = page.url();
   if (!/^https?:/i.test(url)) return [];
+  const key = routeKey(url);
 
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }).catch(() => undefined);
   const fresh = await capture(page);
   await page.reload({ waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }).catch(() => undefined);
   const reloaded = await capture(page);
+  // A second reload learns per-load churn (nonces, timestamps, A/B) from an action-free
+  // pair, so it is never mistaken for reload corruption in the fresh-vs-reload diff.
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS }).catch(() => undefined);
+  const reloadedAgain = await capture(page);
+  VolatilityModel.record(key, reloaded.paths, reloadedAgain.paths);
 
-  if (equivalent(fresh, reloaded)) return [];
+  if (equivalent(fresh.hash, reloaded.hash)) return [];
+  // The fresh-vs-reload difference is entirely per-load dynamic content — not corruption.
+  if (volatileOnly(key, fresh, reloaded)) return [];
 
   const route = safeRoutePath(page) || url;
   return [

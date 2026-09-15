@@ -31,6 +31,8 @@ import { deriveStableBugId, safeRoutePath } from './bugIdentity.js';
 import { detectClientErrorView } from './clientErrorOracle.js';
 import { BUG_CATALOG } from '../../../bugs/knowledgeBase/bugCatalog.js';
 import type { RouteExhaustionVerdict } from './RouteExhaustionTracker.js';
+import { captureDomPaths } from '../baseline/domSnapshot.js';
+import { VolatilityModel } from '../baseline/volatilityModel.js';
 
 import { createLogger } from '../../../infrastructure/observability/logger.js';
 
@@ -259,6 +261,10 @@ export class ExplorationLoop {
       firstVisitRevealed: new Set<string>(),
       freezeReported: new Set<string>(),
     };
+
+    // Seed DOM volatility from two action-free reads of the entry state before any action,
+    // so the metamorphic oracles start with the app's dynamic fields already learned.
+    await this.seedEntryVolatility(page);
 
     for (let step = 1; ; step++) {
       // Mark idle at the top: while parked here (budget/stop/timebox/pause gates) no
@@ -516,6 +522,21 @@ export class ExplorationLoop {
     }
 
     return this.buildTerminalSummary(ctx);
+  }
+
+  // Two action-free reads of the entry state teach the volatility model which fields churn
+  // on their own, so metamorphic oracles start pre-seeded. Best-effort; never derails startup.
+  private async seedEntryVolatility(page: Page): Promise<void> {
+    try {
+      if (!/^https?:/i.test(page.url())) return;
+      const key = routeKey(page.url());
+      const a = await captureDomPaths(page);
+      await settle(page);
+      const b = await captureDomPaths(page);
+      VolatilityModel.record(key, a, b);
+    } catch {
+      // Entry seed is optional — a closed/wedged page is handled by the loop's health gate.
+    }
   }
 
   /** Budget boundary: extend while unexplored controls remain AND coverage is still

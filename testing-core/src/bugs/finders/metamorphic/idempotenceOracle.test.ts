@@ -3,8 +3,9 @@
 
 import assert from 'node:assert/strict';
 import type { BugContext } from '../../types.js';
-import type { CompoundStateHash } from '../../../ml/domHasher.js';
+import type { CompoundObservation } from './relations.js';
 import { evaluateIdempotence, idempotenceOracle } from './idempotenceOracle.js';
+import { VolatilityModel } from '../../../domain/services/baseline/volatilityModel.js';
 
 let passed = 0;
 function check(name: string, fn: () => Promise<void> | void): Promise<void> {
@@ -14,10 +15,14 @@ function check(name: string, fn: () => Promise<void> | void): Promise<void> {
   });
 }
 
-const hash = (s: string): CompoundStateHash => ({ structure: s, interactive: 'i', routePath: '/p', combined: s });
-const sequence = (...states: CompoundStateHash[]) => {
+const obs = (s: string, paths: Record<string, string> = {}): CompoundObservation => ({
+  hash: { structure: s, interactive: 'i', routePath: '/p', combined: s },
+  paths: new Map(Object.entries(paths)),
+});
+// Capture stub: returns first, second, third load in order.
+const sequence = (...states: CompoundObservation[]) => {
   let i = 0;
-  return async (): Promise<CompoundStateHash> => states[Math.min(i++, states.length - 1)];
+  return async (): Promise<CompoundObservation> => states[Math.min(i++, states.length - 1)];
 };
 
 function page(url: string) {
@@ -32,18 +37,21 @@ async function main(): Promise<void> {
   console.log('metamorphic/idempotenceOracle — two fresh loads must agree');
 
   await check('two identical fresh loads → no finding', async () => {
-    const findings = await evaluateIdempotence(ctx('https://app.test/list'), sequence(hash('a'), hash('a')));
+    VolatilityModel.reset();
+    const findings = await evaluateIdempotence(ctx('https://app.test/list'), sequence(obs('a'), obs('a'), obs('a')));
     assert.equal(findings.length, 0);
   });
 
   await check('two diverging fresh loads → NON_IDEMPOTENT_ACTION', async () => {
-    const findings = await evaluateIdempotence(ctx('https://app.test/list'), sequence(hash('a'), hash('b')));
+    VolatilityModel.reset();
+    const findings = await evaluateIdempotence(ctx('https://app.test/list'), sequence(obs('a'), obs('b'), obs('b')));
     assert.equal(findings.length, 1);
     assert.equal(findings[0].bugClass, 'NON_IDEMPOTENT_ACTION');
   });
 
   await check('a non-http route is skipped', async () => {
-    const findings = await evaluateIdempotence(ctx('about:blank'), sequence(hash('a'), hash('b')));
+    VolatilityModel.reset();
+    const findings = await evaluateIdempotence(ctx('about:blank'), sequence(obs('a'), obs('b'), obs('b')));
     assert.equal(findings.length, 0);
   });
 
@@ -51,6 +59,19 @@ async function main(): Promise<void> {
     assert.equal(idempotenceOracle.isApplicable(ctx('https://app.test/list', 8)), true);
     assert.equal(idempotenceOracle.isApplicable(ctx('https://app.test/list', 9)), false);
     assert.equal(idempotenceOracle.isApplicable(ctx('about:blank', 8)), false);
+  });
+
+  await check('two loads differing only by a per-load nonce → suppressed (no finding)', async () => {
+    VolatilityModel.reset();
+    const findings = await evaluateIdempotence(
+      ctx('https://app.test/list'),
+      sequence(
+        obs('load', { 'body#value': 'AAAAAAAAAAAAAAAAAAAAAAAA' }),
+        obs('load2', { 'body#value': 'BBBBBBBBBBBBBBBBBBBBBBBB' }),
+        obs('load3', { 'body#value': 'CCCCCCCCCCCCCCCCCCCCCCCC' }),
+      ),
+    );
+    assert.equal(findings.length, 0);
   });
 
   console.log(`\nidempotenceOracle: ${passed} checks passed.`);

@@ -4,9 +4,11 @@
 // and no correct-answer needed: the start state IS the expected end state.
 
 import type { BugFinder, BugContext, BugFinding } from '../../types.js';
-import { captureCompound, equivalent, detectModalOpeners, type CompoundCapture } from './relations.js';
+import { captureCompound, equivalent, volatileOnly, detectModalOpeners, type CompoundCapture } from './relations.js';
 import { resolveElementLabel } from '../../../domain/services/forensics/narration.js';
 import { safeRoutePath } from '../../../domain/services/exploration/bugIdentity.js';
+import { routeKey } from '../../../ml/domHasher.js';
+import { VolatilityModel } from '../../../domain/services/baseline/volatilityModel.js';
 
 // Scoped dismiss affordances tried before falling back to Escape. Bounded to close
 // controls (inside a dialog, or an explicit close/dismiss label) so we never actuate an
@@ -25,8 +27,14 @@ export async function evaluateRoundTrip(
 
   const page = ctx.page;
   const urlBefore = page.url();
+  const key = routeKey(urlBefore);
   try {
     const baseline = await capture(page);
+    // A second action-free read learns which fields churn on their own (clocks, tokens),
+    // independent of the open/close diff under test.
+    const baseline2 = await capture(page);
+    VolatilityModel.record(key, baseline.paths, baseline2.paths);
+
     await page.locator(opener.selector).first().click({ timeout: 1000 }).catch(() => undefined);
 
     // A navigation means this was a link, not a layer toggle — not our case.
@@ -34,7 +42,7 @@ export async function evaluateRoundTrip(
 
     const opened = await capture(page);
     // The click was a no-op (nothing rendered) — nothing to round-trip, no finding.
-    if (equivalent(baseline, opened)) return [];
+    if (equivalent(baseline.hash, opened.hash)) return [];
 
     // Close: prefer a scoped dismiss affordance, else Escape.
     const closeBtn = page.locator(CLOSE_SELECTOR).first();
@@ -44,7 +52,9 @@ export async function evaluateRoundTrip(
 
     const closed = await capture(page);
     // Restored cleanly — healthy round-trip.
-    if (equivalent(baseline, closed)) return [];
+    if (equivalent(baseline.hash, closed.hash)) return [];
+    // Differs only by dynamic content the app churns on its own — not a leak.
+    if (volatileOnly(key, baseline, closed)) return [];
 
     const label = resolveElementLabel(opener);
     const route = safeRoutePath(page) || urlBefore;
