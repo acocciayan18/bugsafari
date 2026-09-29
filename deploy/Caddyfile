@@ -5,20 +5,20 @@
 #
 # Deploy: /etc/caddy/Caddyfile on the API host, then `caddy validate` + `caddy reload`.
 
-bugsafari.duckdns.org {
-	# Allow-list. Group 1 is the exact production dashboard; group 2 covers Vercel
-	# preview deployments. Anchored at both ends so bugsafari.vercel.app.evil.com
-	# and http:// downgrades do not match. Add local origins here ONLY if you point
-	# a dev dashboard at this host — normal local dev goes through the Vite proxy
-	# same-origin and needs no CORS at all.
-	@allowed_origin header_regexp origin Origin ^https://(bugsafari\.vercel\.app|[a-z0-9-]+\.vercel\.app)$
+api.bugsafari.me, bugsafari.duckdns.org {
+	# Allow-list: the sole dashboard origin, bugsafari.me. Anchored at both ends so
+	# bugsafari.me.evil.com and http:// downgrades do not match. Vercel preview
+	# deployments (*.vercel.app) are intentionally NOT accepted — only the custom
+	# domain reaches the API. Add local origins here ONLY if you point a dev dashboard
+	# at this host — normal local dev goes through the Vite proxy same-origin.
+	@allowed_origin header_regexp origin Origin ^https://bugsafari\.me$
 
 	# Preflight: answered by Caddy, never forwarded upstream. Both conditions must
 	# hold, so an OPTIONS from an unlisted origin falls through to the proxy and
 	# gets no CORS headers.
 	@preflight {
 		method OPTIONS
-		header_regexp origin Origin ^https://(bugsafari\.vercel\.app|[a-z0-9-]+\.vercel\.app)$
+		header_regexp origin Origin ^https://bugsafari\.me$
 	}
 	handle @preflight {
 		header {

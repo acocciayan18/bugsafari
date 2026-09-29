@@ -97,10 +97,10 @@ check('local and private targets are refused, never rewritten', () => {
 
 check('self-targeting BugSafari is refused with a distinct code, never rewritten', () => {
   for (const raw of [
-    'https://bugsafari.vercel.app',
-    'https://bugsafari.vercel.app/dashboard',
-    'https://www.bugsafari.vercel.app',
-    'https://bugsafari-git-main-team.vercel.app',
+    'https://bugsafari.me',
+    'https://bugsafari.me/dashboard',
+    'https://www.bugsafari.me',
+    'https://api.bugsafari.me',
   ]) {
     const result = resolveEngineTargetUrl(raw);
     assert.equal(result.ok, false, raw);
@@ -121,7 +121,7 @@ async function run(): Promise<void> {
   });
 
   await acheck('a shortened link redirecting to a BugSafari host is refused as self-target', async () => {
-    const restore = stubRedirects({ 'https://sho.rt/x': { status: 301, location: 'https://bugsafari.vercel.app/dashboard' } });
+    const restore = stubRedirects({ 'https://sho.rt/x': { status: 301, location: 'https://bugsafari.me/dashboard' } });
     const result = await admitTargetChain('https://sho.rt/x', 50, admitSync);
     assert.equal(result.ok, false);
     if (!result.ok) assert.equal(result.code, 'TARGET_SELF_FORBIDDEN');
@@ -131,7 +131,7 @@ async function run(): Promise<void> {
   await acheck('a multi-hop redirect ending on a BugSafari host is refused', async () => {
     const restore = stubRedirects({
       'https://a.io/1': { status: 302, location: 'https://b.io/2' },
-      'https://b.io/2': { status: 302, location: 'https://bugsafari-git-main-team.vercel.app' },
+      'https://b.io/2': { status: 302, location: 'https://api.bugsafari.me' },
     });
     const result = await admitTargetChain('https://a.io/1', 50, admitSync);
     assert.equal(result.ok, false);

@@ -1,0 +1,656 @@
+================================================================================
+BUGSAFARI - USER MANUAL
+Autonomous Exploratory Testing Engine for Web Apps
+================================================================================
+
+HOW TO USE THIS MANUAL
+Each section maps to one screen or component you interact with. Every section
+lists:
+  - SCREENSHOT: the exact screen/component to capture, plus a short title to
+    file it under.
+  - Purpose
+  - User Actions / Steps
+  - Expected Result
+  - Notes
+
+The manual follows the natural order a user moves through the product: landing
+and info pages, sign-in, the Dashboard (run a test), History, the Forensic
+Report, sharing, and Settings.
+
+Only test websites you own or are authorized to test. BugSafari refuses local
+addresses and its own origin.
+
+
+================================================================================
+1. LANDING PAGE
+================================================================================
+SCREENSHOT: The public home page at "/" (hero with the "Find Bugs Before Your
+Users Do" headline, "Try It Free" button, trust stats, How It Works steps, FAQ).
+Title: "01_Landing_Home"
+
+Purpose
+  First page a visitor sees. Explains what BugSafari does and routes you into
+  the app, either by signing in or trying it as a guest.
+
+User Actions / Steps
+  1. Read the hero and feature cards (Tests Itself, Learns As It Goes, Shows
+     What Broke).
+  2. Use the top navigation to reach How It Works, Features, Who It's For, or
+     About.
+  3. Toggle light/dark theme from the top-right control.
+  4. Click "Try It Free" to go to the sign-in screen.
+
+Expected Result
+  The marketing content renders and "Try It Free" opens the Login screen.
+
+Notes
+  On first visit per browser a "Welcome to BugSafari" work-in-progress notice
+  appears (see next section) and must be read before continuing.
+
+
+--------------------------------------------------------------------------------
+1a. WELCOME NOTICE (Work-In-Progress Modal)
+--------------------------------------------------------------------------------
+SCREENSHOT: The "Welcome to BugSafari" modal with the "Work in progress" badge
+and the timed "Please read - Ns" button.
+Title: "01a_Welcome_Notice"
+
+Purpose
+  One-time notice that the product is a thesis evaluation build and invites
+  honest feedback.
+
+User Actions / Steps
+  1. Read the three notes.
+  2. Wait for the 5-second read timer to finish.
+  3. Click "I understand, continue to BugSafari".
+
+Expected Result
+  The modal closes and does not reappear on later visits from the same browser.
+
+Notes
+  The dismiss button stays disabled until the countdown reaches zero.
+
+
+================================================================================
+2. INFORMATION PAGES
+================================================================================
+SCREENSHOT: Any of the four info sections - How It Works ("/explore"),
+Features ("/features"), Who It's For ("/community"), About ("/about").
+Title: "02_Info_Pages"
+
+Purpose
+  Explain how the engine works, what it detects, who it is for, and background
+  on the project. Reachable without an account.
+
+User Actions / Steps
+  1. Open a page from the landing navigation or directly by URL.
+  2. Read the section content.
+  3. Return home or continue to sign in.
+
+Expected Result
+  The selected information section renders as static, read-only content.
+
+Notes
+  These pages are public and never trigger a login or a test run.
+
+
+================================================================================
+3. SIGN IN (LOGIN)
+================================================================================
+SCREENSHOT: The Login screen at "/login" (Email + Password fields, "Sign In",
+"Forgot password?", "Sign Up", "Continue As Guest").
+Title: "03_Login"
+
+Purpose
+  Authenticate an existing account so runs can be saved to history.
+
+User Actions / Steps
+  1. Enter your email and password.
+  2. Optionally use the eye icon to reveal the password.
+  3. Click "Sign In".
+
+Expected Result
+  On success you land on the Dashboard. Wrong credentials mark both fields and
+  show a single error message.
+
+Notes
+  - If the account email is unverified, a "Resend verification email" button
+    appears.
+  - "Forgot password?" starts the reset flow.
+  - "Continue As Guest" opens the guest confirmation modal.
+
+
+--------------------------------------------------------------------------------
+3a. CONTINUE AS GUEST (Confirmation Modal)
+--------------------------------------------------------------------------------
+SCREENSHOT: The "Continue as Guest?" modal listing "What you give up".
+Title: "03a_Guest_Mode_Confirm"
+
+Purpose
+  Confirms the guest trade-off before entering the Dashboard without an account.
+
+User Actions / Steps
+  1. Review the guest limitations.
+  2. Click "Continue as Guest" to proceed, or "Create Account" to sign up.
+
+Expected Result
+  "Continue as Guest" enables guest mode and opens the Dashboard. Nothing is
+  saved to history in guest mode.
+
+Notes
+  Guest runs are time and scope limited: capped at 5 minutes, one run at a time,
+  Target Auth disabled, and results cannot be saved.
+
+
+================================================================================
+4. CREATE ACCOUNT (SIGN UP)
+================================================================================
+SCREENSHOT: The Signup screen at "/signup" (name/email/password fields with the
+password requirements list).
+Title: "04_Signup"
+
+Purpose
+  Register a free account to save run history and export reports.
+
+User Actions / Steps
+  1. Fill in the sign-up fields.
+  2. Meet the shown password requirements.
+  3. Submit the form.
+
+Expected Result
+  The account is created and a verification email is sent; follow it to verify.
+
+Notes
+  Password rules are shown inline as you type.
+
+
+--------------------------------------------------------------------------------
+4a. FORGOT / RESET PASSWORD, VERIFY EMAIL
+--------------------------------------------------------------------------------
+SCREENSHOT: The "/forgot-password" screen (email entry), the "/reset-password"
+screen (new password), and the "/verify-email" screen.
+Title: "04a_Password_And_Verification"
+
+Purpose
+  Recover access to an account and confirm email ownership.
+
+User Actions / Steps
+  1. Forgot Password: enter your email to receive a reset link.
+  2. Reset Password: open the emailed link and set a new password.
+  3. Verify Email: open the emailed link to confirm your address.
+
+Expected Result
+  Each flow confirms completion and returns you to sign in.
+
+Notes
+  These screens are reached from email links or from the Login screen.
+
+
+================================================================================
+5. DASHBOARD - COMMAND CENTER (TOP CONTROLS)
+================================================================================
+SCREENSHOT: The Dashboard top bar at "/dashboard" (DASHBOARD title,
+"Configuration" button with its summary, the target URL field with the globe
+icon, and the "Start Testing" button).
+Title: "05_Dashboard_Controls"
+
+Purpose
+  Set the target and launch an autonomous test run.
+
+User Actions / Steps
+  1. Enter a public URL of the app you want to test.
+  2. Optionally open "Configuration" to adjust the run (see section 6).
+  3. Click "Start Testing" (or press Enter in the URL field).
+
+Expected Result
+  The engine initializes and the run begins; the URL field locks for the run and
+  session controls appear.
+
+Notes
+  - Start is blocked for a blank URL, a local/private address, BugSafari's own
+    origin, or when Target Auth is enabled but incomplete. Hover the button for
+    the reason.
+  - Your last target and configuration are remembered on this device between
+    runs and reloads (the Target Auth password is never stored).
+
+
+================================================================================
+6. TESTING CONFIGURATION MODAL
+================================================================================
+SCREENSHOT: The "Testing Configuration" modal open on the Infiltration tab,
+showing the left rail (Infiltration, Navigation, Duration, Target Auth).
+Title: "06_Testing_Config"
+
+Purpose
+  One place for every setting fixed at launch. Applied on your next run and
+  locked while a run is active.
+
+User Actions / Steps
+  1. Click "Configuration" on the Dashboard.
+  2. Pick options in each section (details below).
+  3. Click "Done". Changes save as you edit.
+
+Expected Result
+  The selected configuration is stored and summarized on the Configuration
+  button.
+
+Notes
+  Configuration is disabled during an active run because the engine reads it once
+  at launch.
+
+  6.1 INFILTRATION (Exploration behaviour)
+      Chooses how the engine interacts with the target. Current build: "Chaos
+      Infiltration" runs every scenario at once for maximum coverage; the other
+      profiles (Deep Semantic Data Attack, High-Frequency Concurrency Strain,
+      Async Lifecycle Assault, Auth-State Subversion) are shown but locked.
+
+  6.2 NAVIGATION (How far it roams)
+      - Exact URL: only the configured target URL.
+      - Sub-Tree / Prefix Lock: the target route and its descendant pages.
+      - Whole Site (Recommended): the host, its subdomains, and trusted auth
+        origins.
+
+  6.3 DURATION (Run time limit)
+      5 min (Quick smoke), 10 min (Standard, Recommended), 20 min (Deep),
+      30 min (Thorough, max). Guests are capped at 5 min.
+
+  6.4 TARGET AUTH (Sign in to the target)
+      Optional test account so exploration reaches pages behind a login. Toggle
+      it on and enter a username and password; use Advanced for custom selectors
+      (login URL, field/submit selectors, success indicator) when auto-detection
+      cannot find the form.
+      The password is held in memory only, re-entered each run, and never saved
+      to history, reports, logs, or the queue. Use a dedicated test account.
+      Target Auth is disabled for guests.
+
+
+================================================================================
+7. LIVE FEED VIEWPORT
+================================================================================
+SCREENSHOT: The left-side browser-frame viewport during a run, streaming the
+target page as the engine clicks and types.
+Title: "07_Live_Feed"
+
+Purpose
+  A live screencast of what the engine sees and does on the target, in real time.
+
+User Actions / Steps
+  1. Start a run.
+  2. Watch the viewport stream frames as the engine explores.
+
+Expected Result
+  Live frames of the target render while the run is active; when the run ends an
+  overlay states the outcome and reason.
+
+Notes
+  A "Only test websites you own or are authorized to test" reminder sits under
+  the viewport. If a run is queued, a standby state shows until a worker starts it.
+
+
+================================================================================
+8. TELEMETRY TERMINAL (STREAM TABS)
+================================================================================
+SCREENSHOT: The right-side terminal panel with the four tabs - Telemetry,
+Findings, Network, Console - and the verbose toggle and help (?) control.
+Title: "08_Telemetry_Terminal"
+
+Purpose
+  The live output workspace. Streams the engine's decisions and every fault it
+  observes, split into four tabs with live counts.
+
+User Actions / Steps
+  1. Switch tabs to view different streams:
+       - Telemetry: step-by-step exploration events and the engine's current
+         action.
+       - Findings: confirmed bugs and vulnerabilities as they are caught.
+       - Network: failed/actionable network requests.
+       - Console: browser console messages from the target.
+  2. On the Telemetry tab, toggle the verbose control to show or hide the full
+     per-step execution trace.
+  3. Use the (?) help control for an explanation of the active tab.
+  4. Use "Jump to bottom" to re-pin the newest output when scrolled up.
+
+Expected Result
+  Each tab shows its live stream with a running count badge; the counts match
+  what is saved to the forensic report.
+
+Notes
+  If enough accessibility issues are detected, a one-time WCAG banner appears on
+  the Telemetry tab and can be dismissed.
+
+
+================================================================================
+9. SESSION CONTROLS & TIMER
+================================================================================
+SCREENSHOT: The session controls cluster during a run (live timer plus Pause /
+Resume / Stop, and after completion the Save button).
+Title: "09_Session_Controls"
+
+Purpose
+  Control a run in progress and capture its result.
+
+User Actions / Steps
+  1. Pause: temporarily halt exploration (button becomes Resume).
+  2. Resume: continue a paused run.
+  3. Stop: end the run.
+  4. Cancel Queued Run: remove a still-queued job before a worker claims it.
+  5. Save: after a run ends, save the session to history (see notes).
+
+Expected Result
+  Controls lock instantly on press; brief "Pausing..."/"Stopping..." labels
+  appear only if settling takes longer than about a second. The timer freezes
+  while queued and while paused.
+
+Notes
+  - Save appears only in a terminal state (Completed / Stopped / Failed) and can
+    be used once; it shows "Saved" afterward.
+  - Guests who press Save get an upsell modal instead (see section 10) because
+    saving requires an account.
+  - With Auto Save enabled in Settings, a finished run is saved automatically.
+
+
+================================================================================
+10. GUEST SAVE PROMPT
+================================================================================
+SCREENSHOT: The "Save runs to history" modal shown when a guest presses Save.
+Title: "10_Guest_Save_Prompt"
+
+Purpose
+  Explains that saving is account-only and offers to create an account.
+
+User Actions / Steps
+  1. As a guest, press Save after a run.
+  2. Choose "Create Account" to sign up, or "Not now" to dismiss.
+
+Expected Result
+  Choosing Create Account routes to Signup; guest results are never persisted.
+
+Notes
+  Guest sessions are temporary by design.
+
+
+================================================================================
+11. HISTORY (SAVED EVALUATIONS)
+================================================================================
+SCREENSHOT: The History page at "/history" - search bar, Sort by control,
+lifecycle filter (Active/Archived/Trash), severity filter, the list of saved
+runs, and pagination.
+Title: "11_History_List"
+
+Purpose
+  Browse, filter, and manage every saved run. Account-only.
+
+User Actions / Steps
+  1. Search saved runs by target URL.
+  2. Sort by a field and toggle ascending/descending.
+  3. Filter by lifecycle bucket: Active, Archived, or Trash.
+  4. Filter by worst severity: All, Critical, High, Medium, Low, Clear.
+  5. Click a row to open its forensic report.
+  6. Use the three-dot menu on a row for record actions (see 11a).
+  7. Page through results with the pager. Use Refresh to reload, and (?) for a
+     guided tour.
+
+Expected Result
+  The filtered, sorted list renders with a severity badge and status per row;
+  each row shows its ID, date, and profile.
+
+Notes
+  Guests and signed-out users are prompted to log in; there is no guest history.
+
+
+--------------------------------------------------------------------------------
+11a. ROW ACTIONS (Three-Dot Menu)
+--------------------------------------------------------------------------------
+SCREENSHOT: An open row action menu showing Share, Archive, Restore, Move to
+Trash, Delete forever (options vary by bucket).
+Title: "11a_Row_Actions"
+
+Purpose
+  Per-record lifecycle and sharing actions.
+
+User Actions / Steps
+  1. Share: open the share-link manager (see section 13).
+  2. Archive: park an active record without deleting it (undo available).
+  3. Restore: return an archived or trashed record to Active.
+  4. Move to Trash: soft-delete; auto-deletes after the shown retention window.
+  5. Delete forever: permanently remove a trashed record (see 11b).
+
+Expected Result
+  The record moves between buckets optimistically; reversible actions show an
+  Undo toast. A failure refetches so the row reappears rather than vanishing.
+
+Notes
+  Available actions depend on the row's current bucket.
+
+
+--------------------------------------------------------------------------------
+11b. PERMANENT DELETE CONFIRMATION
+--------------------------------------------------------------------------------
+SCREENSHOT: The "Delete permanently?" dialog, including the typed-code confirm
+field for important records.
+Title: "11b_Permanent_Delete"
+
+Purpose
+  Final, irreversible removal of a trashed record and everything captured with
+  it, including active share links.
+
+User Actions / Steps
+  1. Choose "Delete forever" on a trashed record.
+  2. For an important (high-finding) record, type the shown RUN- code to confirm.
+  3. Confirm.
+
+Expected Result
+  The record and its child data are permanently removed; active share links stop
+  working immediately. This cannot be undone.
+
+Notes
+  The typed-code gate applies only to important records.
+
+
+================================================================================
+12. FORENSIC REPORT
+================================================================================
+SCREENSHOT: A saved report at "/history/forensic-report/:id" - executive summary
+banner, Insights panel, and the Findings/Network/Console tabs with finding cards.
+Title: "12_Forensic_Report"
+
+Purpose
+  The full result of one saved run: a single document grouping summary, insights,
+  findings, and evidence.
+
+User Actions / Steps
+  1. Open a report from History.
+  2. Read the Executive Summary (target URL, run ID, date, outcome, profile,
+     duration, findings count, risk score; expand Visited Routes).
+  3. Read the Insights panel (risk level, root cause, recommendations). If not
+     yet generated, use "Get Insights".
+  4. Switch tabs: Findings, Network, Console.
+  5. Expand a finding card to see its message, attribution, reproduction steps,
+     and suggested fix; copy details as needed.
+  6. Optionally use "Verify Fix" on a finding (see 12a).
+  7. Expand the "Full Action Timeline" appendix for the raw step-by-step trace.
+  8. Use "Back" to return to History.
+
+Expected Result
+  The report renders every section; a clean run shows a "No findings" card
+  instead of finding cards. The header theme reflects the run outcome.
+
+Notes
+  Identical repeated faults are collapsed into one card with an xN count.
+
+
+--------------------------------------------------------------------------------
+12a. VERIFY FIX (Regression Replay)
+--------------------------------------------------------------------------------
+SCREENSHOT: A finding card mid-verification (Replaying.../Validating...) and the
+Verification Result modal with its verdict and "What this result means".
+Title: "12a_Verify_Fix"
+
+Purpose
+  Replay a finding's recorded steps against the current app to check whether it
+  is fixed.
+
+User Actions / Steps
+  1. Click "Verify Fix" on a finding.
+  2. Watch the progress pill (replaying step counts, then validating).
+  3. Read the result modal: verdict, engine summary, run metadata, any
+     reproduced signals, what it means, and recommended next steps.
+  4. Use "Re-verify" to run again, or close.
+
+Expected Result
+  A verdict is shown - Resolved, Still Active, Inconclusive, Not Replayable, or
+  Verification Failed - and the finding card re-themes to match. The verdict is
+  remembered on the report.
+
+Notes
+  Automated verification is an indicator, not proof. Always confirm with another
+  run or by reproducing manually before closing a finding. Verify Fix is
+  owner-only and hidden on public shared reports.
+
+
+================================================================================
+13. SHARE LINK MANAGER
+================================================================================
+SCREENSHOT: The "Share this report" modal - expiry selector, Create/Reuse link
+button, freshly minted link, and the list of existing links with copy/revoke.
+Title: "13_Share_Links"
+
+Purpose
+  Mint self-expiring, revocable, view-only links to a report that anyone can open
+  without signing in.
+
+User Actions / Steps
+  1. From a History row's Share action, open the manager.
+  2. Choose an expiry window.
+  3. Click "Create link" (or "Reuse link" when an active one already covers that
+     window).
+  4. Copy the new link.
+  5. Manage existing links: copy active ones, or Revoke (with confirm).
+
+Expected Result
+  A "/shared/<token>" URL is produced. Each link shows Active/Expired/Revoked
+  status and a countdown; revoked or expired links stop working.
+
+Notes
+  Shared links open a frozen, read-only snapshot at share time. Creating for a
+  duration that already has an active link reuses it instead of duplicating.
+
+
+--------------------------------------------------------------------------------
+13a. PUBLIC SHARED REPORT
+--------------------------------------------------------------------------------
+SCREENSHOT: A "/shared/:token" report opened without signing in (read-only, no
+Back button, no Verify Fix).
+Title: "13a_Shared_Report_Public"
+
+Purpose
+  The read-only view a recipient sees.
+
+User Actions / Steps
+  1. Open the shared link.
+  2. Read the summary, insights, findings, and evidence.
+
+Expected Result
+  The frozen report renders. If the link is expired, revoked, or the report was
+  deleted, an "isn't available" screen appears with a link to BugSafari.
+
+Notes
+  No sign-in, no editing, no verification, and no per-finding AI generation.
+
+
+================================================================================
+14. SETTINGS
+================================================================================
+SCREENSHOT: The Settings page at "/settings" showing the Account card and the
+Application card.
+Title: "14_Settings"
+
+Purpose
+  Manage your account and application preferences.
+
+User Actions / Steps
+  Account card:
+    1. View your identity (name/email).
+    2. Change Password (see 14a).
+    3. Sign Out (with confirm). Guests see "Exit Guest Mode" instead.
+  Application card:
+    1. Theme: choose Light, Dark, or System (applies immediately).
+    2. Notifications: enable desktop alerts for finds/finish while the tab is in
+       the background (requires browser permission).
+    3. Auto Save: automatically save a finished run to history.
+  Use the (?) control for a guided tour.
+
+Expected Result
+  Changes apply immediately and persist (synced to the account when signed in,
+  local storage for guests).
+
+Notes
+  If Notifications is on but the browser has not granted permission, a warning
+  explains nothing will be delivered and offers to grant it.
+
+
+--------------------------------------------------------------------------------
+14a. CHANGE PASSWORD
+--------------------------------------------------------------------------------
+SCREENSHOT: The expanded Change Password form inside the Account card, and the
+success state with the sign-out countdown.
+Title: "14a_Change_Password"
+
+Purpose
+  Update the account password. Signed-in users only.
+
+User Actions / Steps
+  1. Click "Change Password".
+  2. Enter current password, then the new password twice.
+  3. Submit.
+
+Expected Result
+  On success, every active session is signed out for security; a short countdown
+  runs, then you are returned to sign in. Use "Sign in now" to go immediately.
+
+Notes
+  Backend errors (e.g. wrong current password) are shown inline.
+
+
+================================================================================
+15. SIDEBAR NAVIGATION
+================================================================================
+SCREENSHOT: The left sidebar with Dashboard, History, and Settings, plus the
+collapse/expand control (and the mobile drawer version).
+Title: "15_Sidebar_Nav"
+
+Purpose
+  Move between the main authenticated views.
+
+User Actions / Steps
+  1. Click Dashboard, History, or Settings.
+  2. Collapse/expand the rail (desktop) or open/close the drawer (mobile).
+
+Expected Result
+  The selected view opens; the active item is highlighted.
+
+Notes
+  History is hidden for guests (nothing is saved for them). Re-entering History
+  reopens the last forensic report you viewed; pressing History again returns to
+  the list.
+
+
+================================================================================
+APPENDIX: GLOSSARY
+================================================================================
+  Infiltration Profile ... the set of testing scenarios the engine runs.
+  Navigation Boundary .... how far from the target URL exploration may roam.
+  Target Auth ............ optional test credentials so the engine can reach
+                           pages behind the target app's login.
+  Finding ................ a confirmed bug or vulnerability the engine caught.
+  Risk Score ............. an overall severity indicator for a run.
+  Verify Fix ............. replaying a finding's steps to check if it is fixed.
+  Guest Mode ............. account-free, time/scope-limited runs that are never
+                           saved.
+  Forensic Report ........ the saved, detailed result document for one run.
+  Share Link ............. a view-only, expiring link to a report for people
+                           without an account.
+
+================================================================================
+END OF MANUAL
+================================================================================

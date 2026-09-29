@@ -13,9 +13,10 @@ export const SELF_TARGET_FORBIDDEN_MESSAGE =
 
 // Hosts BugSafari must never test: itself. Centralized default (bare hostnames, no
 // scheme/port); the backend extends this from BUGSAFARI_PROTECTED_ORIGINS and the
-// dashboard adds its own serving origin. Matching also covers subdomains and Vercel
+// dashboard adds its own serving origin. Matching also covers subdomains (so
+// api.bugsafari.me is protected) and, for any configured *.vercel.app host, its
 // preview deployments (see isProtectedTargetHost).
-export const DEFAULT_PROTECTED_HOSTS: readonly string[] = ['bugsafari.vercel.app'];
+export const DEFAULT_PROTECTED_HOSTS: readonly string[] = ['bugsafari.me'];
 
 // Loopback, RFC1918, link-local, IPv6 ULA/link-local, mDNS/internal suffixes and
 // container host aliases — none are routable from the engine.

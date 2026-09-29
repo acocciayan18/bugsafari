@@ -64,10 +64,11 @@ export function deliveredOrDevFallback(result: EmailResult): boolean {
 }
 
 // Public base URL for links in emails. Never localhost in production: prefer the
-// explicit FRONTEND_URL, then Render's injected RENDER_EXTERNAL_URL. Trailing
-// slashes are normalized so `${base}/verify-email` never doubles up.
+// explicit FRONTEND_URL, then Render's injected RENDER_EXTERNAL_URL. FRONTEND_URL
+// may be a comma list (multiple dashboard origins for the socket allow-list); the
+// first entry is the canonical origin for links. Trailing slashes are normalized.
 export function resolveBaseUrl(): string {
-  const raw = process.env.FRONTEND_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:5173';
+  const raw = (process.env.FRONTEND_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:5173').split(',')[0].trim();
   return raw.replace(/\/+$/, '');
 }
 
