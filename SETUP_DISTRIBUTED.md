@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "suppress-nav-superseded-failures"
+git commit -m "updated the bugsafari.vercel.app into .me"
 git push origin HEAD:dev --force
 
 
