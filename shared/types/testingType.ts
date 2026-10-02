@@ -215,8 +215,8 @@ export const TESTING_TYPE_CATALOG: TestingTypeOption[] = [
   {
     id: 'concurrency',
     label: 'Overlapping Concurrency Stress',
-    description: 'Zero-wait concurrent click bursts to trigger race conditions and double-submits, plus blind grid clicking to reach overlay and hit-test edges.',
-    scenarios: ['ButtonSpammer', 'CoordinateBombing'],
+    description: 'Zero-wait concurrent click bursts to trigger race conditions and double-submits, a reproducible two-click double-submit probe, plus blind grid clicking to reach overlay and hit-test edges.',
+    scenarios: ['ButtonSpammer', 'DoubleSubmitProbe', 'CoordinateBombing'],
   },
   {
     id: 'navigation',

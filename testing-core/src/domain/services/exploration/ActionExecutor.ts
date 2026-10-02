@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
 import type { InteractiveElement } from '../../entities/InteractiveElement.js';
 import type { StressScenario } from '../../scenarios/types.js';
-import { stressScenarioMap, formBypasser, buttonSpammer, asyncStateRacer, storageTamper } from '../../scenarios/index.js';
+import { stressScenarioMap, formBypasser, buttonSpammer, asyncStateRacer, storageTamper, doubleSubmitProbe } from '../../scenarios/index.js';
 import type { StorageTamperFinding } from '../../scenarios/storageTamper.js';
 import { stripConstraintsSilently } from '../../scenarios/formBypasser.js';
 import { classifyInputElement, benignValueFor } from '../../scenarios/fuzzing/elementClassifier.js';
@@ -772,6 +772,10 @@ export class ActionExecutor {
     } else {
       if (buttonLike) candidates.push(formBypasser);
       if (buttonLike) candidates.push(this.buildButtonSpammerScenario());
+      // Reproducible double-submit: two genuine (non-forced) clicks. Unlike the
+      // force-click burst, its pairs are NOT vetoed by the live DuplicateActionFinder,
+      // so an unguarded commit control (no debounce/disable-on-submit) is actually caught.
+      if (buttonLike) candidates.push(doubleSubmitProbe);
       // Async lifecycle / interruption race — a control that fires async work is the
       // natural target. Ordered after the existing button scenarios so it never
       // starves them; the dedicated asyncRace profile isolates it for guaranteed runs.
@@ -794,15 +798,17 @@ export class ActionExecutor {
       else candidates.push(storageTamperScenario);
     }
 
-    // A control that COMMITS state is the only place an unguarded double-submit
-    // can exist, and the burst is the only probe that surfaces one — so it leads
-    // there instead of waiting for its rotation slot. While traversal itself was
-    // a 30x flood (audit P3-01) every click probed this implicitly; now that
-    // traversal is a single trusted click, the probe has to be scheduled.
+    // A control that COMMITS state is the only place an unguarded double-submit can
+    // exist, so the double-submit probes lead there instead of waiting for a rotation
+    // slot. The reproducible two-click probe leads (its pairs reach the finder), the
+    // force-click burst follows (it also surfaces freeze/leak/lost-update races). Order:
+    // promote the burst first, then the probe, so the probe ends at slot 0.
     const commitSource = `${target.innerText} ${target.id} ${target.type}`;
     if (buttonLike && COMMIT_CONTROL.test(commitSource)) {
       const spammerIndex = candidates.findIndex((candidate) => candidate.name === buttonSpammer.name);
       if (spammerIndex > 0) candidates.unshift(...candidates.splice(spammerIndex, 1));
+      const probeIndex = candidates.findIndex((candidate) => candidate.name === doubleSubmitProbe.name);
+      if (probeIndex > 0) candidates.unshift(...candidates.splice(probeIndex, 1));
     }
 
     // Keep only enabled candidates, preserving heuristic priority order.

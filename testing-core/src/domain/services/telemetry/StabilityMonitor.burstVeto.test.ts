@@ -48,4 +48,15 @@ check('a non-burst scenario does NOT veto (organic duplicates still report)', ()
   ActiveScenarioTracker.reset();
 });
 
+check('a DoubleSubmitProbe does NOT veto — its two genuine clicks must reach the finder', () => {
+  // The probe fires non-forced clicks a real user can reproduce, so (unlike the force
+  // bursts) its pairs are the signal, not an artifact. It must stay out of the veto.
+  ActiveScenarioTracker.reset();
+  ActiveScenarioTracker.begin('DoubleSubmitProbe', 'http://app.test/duplicate-actions');
+  assert.equal(ActiveScenarioTracker.isOffTargetScenarioActive(), false);
+  assert.equal(isRaceScenarioActive(), false);
+  assert.equal(burstVeto(), false);
+  ActiveScenarioTracker.reset();
+});
+
 console.log(`\n${passed} passed`);

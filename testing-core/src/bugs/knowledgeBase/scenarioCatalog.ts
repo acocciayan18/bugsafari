@@ -56,6 +56,12 @@ export const SCENARIO_CATALOG: Record<string, ScenarioDefinition> = {
     signalCategories: ['CLIENT_CRASH'],
     description: 'Clicks a control very fast with no wait to trigger timing bugs.',
   },
+  DoubleSubmitProbe: {
+    testingType: 'concurrency',
+    expectedBugs: ['SPA_STATE_RACE_CONDITION', 'RUNTIME_STABILITY_EXCEPTION'],
+    signalCategories: ['CLIENT_CRASH'],
+    description: 'Clicks a commit control twice with genuine (non-forced) clicks to surface an unguarded double-submit a real user can reproduce.',
+  },
   CoordinateBombing: {
     testingType: 'concurrency',
     expectedBugs: ['SPA_STATE_RACE_CONDITION', 'RUNTIME_STABILITY_EXCEPTION'],

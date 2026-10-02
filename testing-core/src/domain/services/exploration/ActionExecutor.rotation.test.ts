@@ -120,35 +120,44 @@ check('distinct selectors rotate independently', () => {
   assert.equal(a, b, 'each selector starts its own cursor at index 0 → same first scenario');
 });
 
-check('a state-committing control leads with the double-submit burst', () => {
-  // Traversal is a single trusted click now (P3-01), so the burst is the ONLY
-  // probe that can surface an unguarded double-submit — it must not depend on
-  // the timebox happening to revisit the control a second time.
+check('a state-committing control leads with the reproducible double-submit probe', () => {
+  // Traversal is a single trusted click now (P3-01), so a double-submit probe must be
+  // scheduled first, not left to a timebox revisit. The two-click probe leads (its pairs
+  // reach the live finder, unlike the vetoed force burst) and the burst follows at slot 1.
   const exec = makeExecutor(new ScenarioGate());
-  assert.equal(pick(exec, buttonLike('#login-btn', 'Log in')), 'ButtonSpammer');
-  assert.equal(pick(exec, buttonLike('#submit-order', 'Submit order')), 'ButtonSpammer');
+  assert.equal(pick(exec, buttonLike('#login-btn', 'Log in')), 'DoubleSubmitProbe');
+  assert.equal(pick(exec, buttonLike('#submit-order', 'Submit order')), 'DoubleSubmitProbe');
+});
+
+check('a state-committing control still schedules the force burst right after the probe', () => {
+  const exec = makeExecutor(new ScenarioGate());
+  const el = buttonLike('#login-btn', 'Log in');
+  assert.equal(pick(exec, el), 'DoubleSubmitProbe'); // slot 0
+  assert.equal(pick(exec, el), 'ButtonSpammer'); // slot 1
 });
 
 check('a non-committing control keeps its original scenario order', () => {
   const exec = makeExecutor(new ScenarioGate());
-  assert.notEqual(pick(exec, buttonLike('#toggle-theme', 'Toggle theme')), 'ButtonSpammer');
+  const first = pick(exec, buttonLike('#toggle-theme', 'Toggle theme'));
+  assert.notEqual(first, 'ButtonSpammer');
+  assert.notEqual(first, 'DoubleSubmitProbe');
 });
 
-check('a read-modify-write control leads with the burst so a lost-update race is reached', () => {
-  // Regression: /state-races' unguarded increment produced no finding because the
-  // burst (the only probe that overlaps writes into an identical POST the
-  // DuplicateActionFinder flags) was never aimed at a counter-style control.
+check('a read-modify-write control leads with the probe so a lost-update race is reached', () => {
+  // Regression: /state-races' unguarded increment produced no finding because no
+  // double-submit probe was aimed at a counter-style control. Both probes now lead
+  // there; the reproducible two-click probe takes slot 0.
   const exec = makeExecutor(new ScenarioGate());
-  assert.equal(pick(exec, buttonLike('#inc', 'Increment (unguarded)')), 'ButtonSpammer');
-  assert.equal(pick(exec, buttonLike('#up', 'Upvote')), 'ButtonSpammer');
-  assert.equal(pick(exec, buttonLike('#like', 'Like')), 'ButtonSpammer');
+  assert.equal(pick(exec, buttonLike('#inc', 'Increment (unguarded)')), 'DoubleSubmitProbe');
+  assert.equal(pick(exec, buttonLike('#up', 'Upvote')), 'DoubleSubmitProbe');
+  assert.equal(pick(exec, buttonLike('#like', 'Like')), 'DoubleSubmitProbe');
 });
 
 check('a lookalike of a commit verb does not masquerade as one', () => {
-  // vote/like are \b-anchored: "voter"/"likely"/"country" must not promote the burst.
+  // vote/like are \b-anchored: "voter"/"likely"/"country" must not promote a probe.
   const exec = makeExecutor(new ScenarioGate());
-  assert.notEqual(pick(exec, buttonLike('#voters', 'Voter list')), 'ButtonSpammer');
-  assert.notEqual(pick(exec, buttonLike('#country', 'Select country')), 'ButtonSpammer');
+  assert.notEqual(pick(exec, buttonLike('#voters', 'Voter list')), 'DoubleSubmitProbe');
+  assert.notEqual(pick(exec, buttonLike('#country', 'Select country')), 'DoubleSubmitProbe');
 });
 
 check('a utility class name cannot masquerade as a commit control', () => {
@@ -204,8 +213,8 @@ check('a non-semantic clickable div is treated as buttonLike (gets button stress
   const exec = makeExecutor(new ScenarioGate());
   // A generic control gets a button scenario, not coordinate-bombing only.
   assert.notEqual(pick(exec, nonSemanticDiv('#card', 'View more')), 'CoordinateBombing');
-  // A commit-labelled one leads with the double-submit burst, exactly like a <button>.
-  assert.equal(pick(exec, nonSemanticDiv('#fake-login', 'Log in')), 'ButtonSpammer');
+  // A commit-labelled one leads with the double-submit probe, exactly like a <button>.
+  assert.equal(pick(exec, nonSemanticDiv('#fake-login', 'Log in')), 'DoubleSubmitProbe');
 });
 
 check('a plain container div is not buttonLike', () => {

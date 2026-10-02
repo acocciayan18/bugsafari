@@ -10,6 +10,7 @@ import { formBypasser } from './formBypasser.js';
 import { networkSaboteur, armNetworkSabotage, type ArmedSabotage } from './networkSaboteur.js';
 import { asyncStateRacer } from './asyncStateRacer.js';
 import { storageTamper } from './storageTamper.js';
+import { doubleSubmitProbe } from './doubleSubmit/doubleSubmitProbe.js';
 
 // Import element classifier and strategies
 import {
@@ -56,6 +57,7 @@ import {
 export const stressScenarioMap: Record<string, StressScenario> = {
   CoordinateBombing: coordinateBombing,
   ButtonSpammer: buttonSpammer,
+  DoubleSubmitProbe: doubleSubmitProbe,
   AsyncStateRacer: {
     name: asyncStateRacer.name,
     async execute(page: Page, target?: InteractiveElement): Promise<void> {
@@ -87,6 +89,7 @@ export {
   routeTrasher,
   asyncStateRacer,
   storageTamper,
+  doubleSubmitProbe,
   dataFuzzer,
   classifyInputElement,
   type FieldCategory,

@@ -4,7 +4,7 @@ import { defaultOptimizationSettings, GUEST_MAX_TIMEBOX_MS } from '../../../../s
 export { GUEST_MAX_TIMEBOX_MS };
 
 // Testing-type categories a guest may run. The heavy categories — 'concurrency'
-// (ButtonSpammer/CoordinateBombing) and 'navigation' (NetworkSaboteur) — are the
+// (ButtonSpammer/DoubleSubmitProbe/CoordinateBombing) and 'navigation' (NetworkSaboteur) — are the
 // most resource- and disruption-intensive, so anonymous runs are denied them.
 export const GUEST_ALLOWED_TESTING_TYPES: readonly TestingTypeId[] = [
   'dataFuzzing',
