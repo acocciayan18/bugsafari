@@ -1,28 +1,25 @@
 // ═══════════════════════════════════════════════════════════════
 // TestingConfigModal.tsx - CONSOLIDATED PRE-LAUNCH CONFIGURATION
 // ═══════════════════════════════════════════════════════════════
-// Hosts every setting that is fixed at launch time (infiltration matrix, boundary
-// lock, target credentials). Edits write straight through to the caller's state so
-// nothing is lost when the dialog closes; the caller keeps owning persistence.
+// Hosts every setting that is fixed at launch time (boundary lock, target
+// credentials). Edits write straight through to the caller's state so nothing is
+// lost when the dialog closes; the caller keeps owning persistence.
 
 import { useEffect, useState } from 'react';
-import { X, KeyRound, Crosshair, Route, Timer } from 'lucide-react';
+import { X, KeyRound, Route, Timer } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { useAuth } from '../../context/AuthContext';
-import InfiltrationProfileSelector from './InfiltrationProfileSelector';
 import TargetAuthPanel, { isTargetAuthIncomplete, type TargetAuthDraft } from './TargetAuthPanel';
-import { TEST_DURATION_PRESETS, type BoundaryLockMode, type InfiltrationProfileId, type TestDurationId } from '../../types';
+import { TEST_DURATION_PRESETS, type BoundaryLockMode, type TestDurationId } from '../../types';
 
 // Guests are capped at the 5-minute preset; the backend clamp is the authority.
 const GUEST_DURATION_ID: TestDurationId = '5m';
 
-type ConfigTab = 'infiltration' | 'boundary' | 'duration' | 'auth';
+type ConfigTab = 'boundary' | 'duration' | 'auth';
 
 interface TestingConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
-  profile: InfiltrationProfileId;
-  onProfileChange: (next: InfiltrationProfileId) => void;
   boundaryMode: BoundaryLockMode;
   onBoundaryModeChange: (next: BoundaryLockMode) => void;
   duration: TestDurationId;
@@ -31,8 +28,7 @@ interface TestingConfigModalProps {
   onAuthDraftChange: (next: TargetAuthDraft) => void;
 }
 
-const TABS: { id: ConfigTab; label: string; icon: typeof Crosshair }[] = [
-  { id: 'infiltration', label: 'Infiltration', icon: Crosshair },
+const TABS: { id: ConfigTab; label: string; icon: typeof Route }[] = [
   { id: 'boundary', label: 'Navigation', icon: Route },
   { id: 'duration', label: 'Duration', icon: Timer },
   { id: 'auth', label: 'Target Auth', icon: KeyRound },
@@ -59,8 +55,6 @@ const BOUNDARY_OPTIONS: { id: BoundaryLockMode; label: string; description: stri
 export default function TestingConfigModal({
   isOpen,
   onClose,
-  profile,
-  onProfileChange,
   boundaryMode,
   onBoundaryModeChange,
   duration,
@@ -69,7 +63,7 @@ export default function TestingConfigModal({
   onAuthDraftChange,
 }: TestingConfigModalProps) {
   const { isGuestMode } = useAuth();
-  const [activeTab, setActiveTab] = useState<ConfigTab>('infiltration');
+  const [activeTab, setActiveTab] = useState<ConfigTab>('boundary');
   const authIncomplete = isTargetAuthIncomplete(authDraft);
 
   // Guests: Target Auth is disabled and the duration is pinned to 5 minutes.
@@ -79,7 +73,7 @@ export default function TestingConfigModal({
     : TEST_DURATION_PRESETS;
   useEffect(() => {
     if (isGuestMode && duration !== GUEST_DURATION_ID) onDurationChange(GUEST_DURATION_ID);
-    if (isGuestMode && activeTab === 'auth') setActiveTab('infiltration');
+    if (isGuestMode && activeTab === 'auth') setActiveTab('boundary');
   }, [isGuestMode, duration, onDurationChange, activeTab]);
 
   return (
@@ -134,12 +128,6 @@ export default function TestingConfigModal({
 
       {/* Fixed height + inner scroll so the modal never resizes or shifts between tabs. */}
       <div className="custom-scrollbar h-[420px] overflow-y-auto p-3 sm:p-4">
-        {activeTab === 'infiltration' && (
-          <div role="tabpanel" id="config-panel-infiltration" aria-labelledby="config-tab-infiltration" className="space-y-4">
-            <InfiltrationProfileSelector profile={profile} onProfileChange={onProfileChange} />
-          </div>
-        )}
-
         {activeTab === 'boundary' && (
           <div role="tabpanel" id="config-panel-boundary" aria-labelledby="config-tab-boundary">
             <div role="radiogroup" aria-label="Navigation boundary" className="flex flex-col gap-2">

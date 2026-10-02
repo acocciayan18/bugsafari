@@ -165,7 +165,8 @@ function ClinicalForensicsDashboard({
   // draft so operator choices survive runs, reloads, and restarts. First run falls back
   // to sensible defaults. The auth password is never restored — it stays memory-only.
   const [initialConfig] = useState(readLaunchConfigDraft);
-  const [selectedProfile, setSelectedProfile] = useState<InfiltrationProfileId>(initialConfig.profile);
+  // Infiltration Matrix UI removed; profile stays pinned to the launch-draft default.
+  const [selectedProfile] = useState<InfiltrationProfileId>(initialConfig.profile);
   const [boundaryMode, setBoundaryMode] = useState<BoundaryLockMode>(initialConfig.boundaryMode);
   const [duration, setDuration] = useState<TestDurationId>(initialConfig.duration);
   const [authDraft, setAuthDraft] = useState<TargetAuthDraft>(initialConfig.auth);
@@ -500,8 +501,6 @@ function ClinicalForensicsDashboard({
       <TestingConfigModal
         isOpen={showConfigModal}
         onClose={() => setIsConfigOpen(false)}
-        profile={selectedProfile}
-        onProfileChange={setSelectedProfile}
         boundaryMode={boundaryMode}
         onBoundaryModeChange={setBoundaryMode}
         duration={duration}
