@@ -124,8 +124,11 @@ interface TrackedRequest {
   pageUrl?: string;
 }
 
-// Ranks a verdict so a later settlement can upgrade a pair but never downgrade it.
-const VERDICT_RANK: Record<DuplicateVerdict, number> = { GUARDED: 1, SUSPECTED: 2, CONFIRMED_DUPLICATE: 3 };
+// Verdict strength. A later settlement moves a pair UP this scale, never down: a
+// provisional SUSPECTED yields to a confirmed double-commit (CONFIRMED_DUPLICATE) and,
+// just as decisively, to a late-arriving guard rejection (GUARDED) — discovering the app
+// deduped the pair is firm evidence of safety, stronger than a half-settled suspicion.
+const VERDICT_RANK: Record<DuplicateVerdict, number> = { SUSPECTED: 1, GUARDED: 2, CONFIRMED_DUPLICATE: 3 };
 
 /**
  * Two-phase double-submit detector. Pure and event-fed: holds no Playwright references,
@@ -264,11 +267,15 @@ export class DuplicateActionFinder {
     if (firstFailed && first.settledAtMs !== undefined && first.settledAtMs <= second.startedAtMs) return null;
 
     // A rejected repeat that was not the app's own dedupe guard committed nothing.
-    if (second.status !== undefined && second.status >= 400 && !GUARD_STATUSES.has(second.status)) return null;
+    if (this.nonGuardReject(second.status)) return null;
 
     const overlapped = first.settledAtMs === undefined || first.settledAtMs > second.startedAtMs;
     const bothCommitted = this.isSuccess(first.status) && this.isSuccess(second.status);
-    const verdict: DuplicateVerdict = second.status !== undefined && GUARD_STATUSES.has(second.status)
+    // The dedupe guard can land on EITHER request: the probe fires two clicks, but the
+    // server may handle the second-fired one first, so the 409/429 rejection attaches to
+    // whichever request it processed second — not necessarily `second` here.
+    const guardStatus = this.guardStatusOf(first, second);
+    const verdict: DuplicateVerdict = guardStatus !== undefined
       ? 'GUARDED'
       : bothCommitted
         ? 'CONFIRMED_DUPLICATE'
@@ -331,6 +338,7 @@ export class DuplicateActionFinder {
     const faultConfidence = confidenceScore >= 0.75 ? 'CONFIRMED' : confidenceScore >= 0.5 ? 'SIGNAL' : 'INFERRED';
     // Host-stripped path so the message reads `POST /api/checkout`, never a tunnel/proxy URL.
     const endpoint = this.pathOf(second.url);
+    const guardStatus = this.guardStatusOf(first, second);
     const label = interaction?.label || 'the control';
     // The backend guarded the repeat (rejected it), both requests shared an idempotency
     // key the server can dedupe, or the write carries an optimistic-concurrency token
@@ -351,7 +359,7 @@ export class DuplicateActionFinder {
       faultConfidence,
       confidenceScore,
       cwe: BUG_CATALOG.SPA_STATE_RACE_CONDITION.cwe,
-      message: this.messageFor(verdict, second.method, endpoint, intervalMs, overlapped),
+      message: this.messageFor(verdict, second.method, endpoint, intervalMs, overlapped, guardStatus),
       endpoint,
       method: second.method,
       selector: interaction?.selector ?? '',
@@ -359,8 +367,8 @@ export class DuplicateActionFinder {
       // Document URL the control fired from — the page a developer opens to reproduce,
       // never `endpoint` (an API path). Drives the fallback reproduction trace.
       pageUrl: second.pageUrl ?? first.pageUrl,
-      evidence: this.evidenceFor(first, second, verdict, overlapped, intervalMs, occurrence, confidenceScore, interaction),
-      reproductionHint: this.reproductionFor(first, second, verdict, overlapped, label),
+      evidence: this.evidenceFor(first, second, verdict, overlapped, intervalMs, occurrence, confidenceScore, guardStatus, interaction),
+      reproductionHint: this.reproductionFor(first, second, verdict, overlapped, label, guardStatus),
       advice: this.adviceFor(verdict),
       occurrence,
       manifestations,
@@ -392,12 +400,12 @@ export class DuplicateActionFinder {
     return Math.round(Math.min(1, Math.max(0, score)) * 100) / 100;
   }
 
-  private messageFor(verdict: DuplicateVerdict, method: string, endpoint: string, intervalMs: number, overlapped: boolean): string {
+  private messageFor(verdict: DuplicateVerdict, method: string, endpoint: string, intervalMs: number, overlapped: boolean, guardStatus?: number): string {
     const timing = overlapped
       ? `sent again ${intervalMs}ms later while the first was still running`
       : `sent again ${intervalMs}ms later, after the first had already completed`;
     if (verdict === 'GUARDED') {
-      return `[Duplicate request, no browser guard] ${method} ${endpoint} was ${timing}. The server rejected the repeat, but nothing in the browser stopped it.`;
+      return `[Duplicate request, no browser guard] ${method} ${endpoint} was ${timing}. The server rejected the duplicate with HTTP ${guardStatus}, but nothing in the browser stopped it.`;
     }
     if (verdict === 'CONFIRMED_DUPLICATE') {
       return `[Double submit] ${method} ${endpoint} was ${timing}, and both requests succeeded, so the action ran twice.`;
@@ -413,6 +421,7 @@ export class DuplicateActionFinder {
     intervalMs: number,
     occurrence: number,
     confidenceScore: number,
+    guardStatus?: number,
     interaction?: InteractionContext,
   ): string[] {
     const evidence = [
@@ -432,7 +441,7 @@ export class DuplicateActionFinder {
       evidence.push('Neither request carried an idempotency key, so the server has no way to collapse the repeat');
     }
     if (verdict === 'GUARDED') {
-      evidence.push(`The server rejected the repeat with HTTP ${second.status}, so no duplicate record was saved`);
+      evidence.push(`The server rejected the duplicate with HTTP ${guardStatus}, so no duplicate record was saved`);
     }
     if (verdict === 'CONFIRMED_DUPLICATE') {
       evidence.push('Both requests succeeded, so the action was saved twice');
@@ -453,6 +462,7 @@ export class DuplicateActionFinder {
     verdict: DuplicateVerdict,
     overlapped: boolean,
     label: string,
+    guardStatus?: number,
   ): string[] {
     // The control lives on the PAGE the requests fired from — never the API endpoint
     // itself. second.url is a data endpoint the control ISSUES (step 2), not a route a
@@ -476,7 +486,7 @@ export class DuplicateActionFinder {
     ];
     steps.push(
       verdict === 'GUARDED'
-        ? `Watch the server reject it with HTTP ${second.status}. The control was never disabled between clicks`
+        ? `Watch the server reject the duplicate with HTTP ${guardStatus}. The control was never disabled between clicks`
         : verdict === 'CONFIRMED_DUPLICATE'
           ? `Watch both requests succeed (${this.describeOutcome(first)}, ${this.describeOutcome(second)}), so the action is saved twice`
           : 'Watch the repeat reach the server with no browser guard in between',
@@ -499,6 +509,19 @@ export class DuplicateActionFinder {
 
   private isSuccess(status?: number): boolean {
     return status !== undefined && status >= 200 && status < 400;
+  }
+
+  // A 4xx that is NOT a dedupe/rate guard — the request committed nothing.
+  private nonGuardReject(status?: number): boolean {
+    return status !== undefined && status >= 400 && !GUARD_STATUSES.has(status);
+  }
+
+  // The app's dedupe/rate-limit rejection code, from whichever side carries it (the guard
+  // can attach to either overlapping request depending on server processing order).
+  private guardStatusOf(first: TrackedRequest, second: TrackedRequest): number | undefined {
+    if (second.status !== undefined && GUARD_STATUSES.has(second.status)) return second.status;
+    if (first.status !== undefined && GUARD_STATUSES.has(first.status)) return first.status;
+    return undefined;
   }
 
   private pathOf(url: string): string {

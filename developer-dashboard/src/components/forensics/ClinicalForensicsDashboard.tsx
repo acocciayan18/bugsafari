@@ -31,7 +31,7 @@ import { isVerboseTelemetry, createTelemetryDeduper } from '../../../../shared/t
 import { isPrivateTargetUrl, SELF_TARGET_FORBIDDEN_MESSAGE } from '../../../../shared/url.js';
 import { isSelfTargetUrl } from '../../utils/selfTarget';
 import { isLaunchBlocked } from '../../stores/run/launchGating';
-import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE, TEST_DURATION_PRESETS, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId, type BoundaryLockMode, type TestDurationId } from '../../types';
+import { TEST_DURATION_PRESETS, ACCESSIBILITY_BANNER_THRESHOLD, type InfiltrationProfileId, type BoundaryLockMode, type TestDurationId } from '../../types';
 
 // A Pause/Stop that settles within this window shows no transitional label — the
 // control locks instantly (status guards + backend idempotency), but "Pausing…"/
@@ -283,17 +283,9 @@ function ClinicalForensicsDashboard({
   // window — a fast transition finishes with no flash.
   const transitionLabel = useTransitionLabel(testStatus);
 
-  // Falls back to the default profile's own label rather than a hardcoded string,
-  // so renaming a profile in the shared catalog can never leave a stale name here.
-  const currentProfileName =
-    INFILTRATION_PROFILE_CATALOG.find((p) => p.id === selectedProfile)?.label ??
-    INFILTRATION_PROFILE_CATALOG.find((p) => p.id === DEFAULT_INFILTRATION_PROFILE)?.label ??
-    '';
-
   // Trigger-button digest so the collapsed (persisted) settings stay discoverable at a glance.
   const durationLabel = TEST_DURATION_PRESETS.find((p) => p.id === duration)?.label ?? null;
   const configSummary = [
-    currentProfileName,
     boundaryMode === 'exact' ? 'Exact lock' : boundaryMode === 'subtree' ? 'Sub-tree lock' : null,
     durationLabel,
     authDraft.enabled ? 'Auth on' : null,

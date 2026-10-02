@@ -188,7 +188,7 @@ git push origin dev --force
 
 
 git add .
-git commit -m "updated the bugsafari.vercel.app into .me"
+git commit -m "updated"
 git push origin HEAD:dev --force
 
 

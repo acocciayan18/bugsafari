@@ -238,7 +238,7 @@ check('a repeat rejected by a backend dedupe guard (409) reports as LOW/GUARDED'
   assert.equal(defect!.verdict, 'GUARDED');
   assert.equal(defect!.severity, 'LOW');
   assert.ok(defect!.message.includes('no browser guard'));
-  assert.ok(defect!.evidence.some((e) => e.includes('rejected the repeat with HTTP 409')));
+  assert.ok(defect!.evidence.some((e) => e.includes('rejected the duplicate with HTTP 409')));
   assert.equal(h.settle(a, 1400, 201), null, 'the earlier success must not re-open a settled GUARDED verdict as CONFIRMED');
 });
 
@@ -250,6 +250,36 @@ check('429 is treated as a rate-limit guard, not a committed duplicate', () => {
   assert.ok(defect);
   assert.equal(defect!.verdict, 'GUARDED');
   void a;
+});
+
+check('the dedupe guard landing on the FIRST-observed request is still GUARDED (out-of-order processing)', () => {
+  // The /duplicate-actions guarded-control false positive: the probe fires two clicks, the
+  // server handles the second-fired one first (201) and rejects the first-fired one (409).
+  // The 409 attaches to `first`, not the repeat — the guard must still be recognized.
+  const h = new Harness();
+  const a = h.send(1000);
+  const b = h.send(1097);
+  // The repeat commits first, first-fired is still running → provisional SUSPECTED.
+  const provisional = h.settleFull(b, 1200, 201)!;
+  assert.equal(provisional.defect.verdict, 'SUSPECTED');
+  // The first-fired request then returns the guard rejection → supersede to GUARDED.
+  const resolved = h.settleFull(a, 1400, 409)!;
+  assert.equal(resolved.defect.verdict, 'GUARDED');
+  assert.equal(resolved.defect.severity, 'LOW');
+  assert.equal(resolved.defect.protected, true);
+  assert.equal(resolved.upgraded, true, 'the card is patched from SUSPECTED to GUARDED');
+  assert.ok(resolved.defect.message.includes('rejected the duplicate with HTTP 409'));
+  assert.equal(h.finder.totalFound(), 1);
+});
+
+check('a late GUARDED supersedes a provisional SUSPECTED but never a CONFIRMED', () => {
+  // GUARDED outranks SUSPECTED (firm safety evidence) yet CONFIRMED still wins over it.
+  const h = new Harness();
+  const a = h.send(1000);
+  const b = h.send(1100);
+  assert.equal(h.settle(b, 1300, 201)!.verdict, 'SUSPECTED');
+  const confirmed = h.settle(a, 1500, 201)!;
+  assert.equal(confirmed.verdict, 'CONFIRMED_DUPLICATE', 'both committed — a real double submit, not downgraded by any later guard');
 });
 
 check('differing idempotency keys mean two distinct operations — never a candidate', () => {
