@@ -15,7 +15,6 @@ export default function ScenarioLayout({ slug, children }: { slug: string; child
           <span className={`tag sev-${s.expectedSeverity}`}>{s.expectedSeverity}</span>
           <span className="tag">{s.bugClass}</span>
           <span className="tag">{s.cwe}</span>
-          {!s.detected && <span className="tag">NOT DETECTED</span>}
         </div>
       </div>
       {children}

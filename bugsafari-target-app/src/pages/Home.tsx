@@ -25,7 +25,6 @@ export default function Home() {
                   <div className="meta">
                     <span className={`tag sev-${s.expectedSeverity}`}>{s.expectedSeverity}</span>
                     <span className="tag">{s.cwe}</span>
-                    {!s.detected && <span className="tag">NOT DETECTED</span>}
                   </div>
                 </Link>
               ))}

@@ -4,9 +4,12 @@ Deterministic, intentionally-vulnerable SPA that reproduces **every bug class th
 
 React 19 + Vite SPA on a single origin with an Express mock backend. Standalone (not an npm-workspace member).
 
-## Why a tunnel is mandatory
+## Reaching the app from the engine
 
-The engine's SSRF guard (`testing-core/src/serverUtils.ts` → `assertPublicTarget`) is fail-closed and rejects `localhost` / private IPs — re-validated in the worker and reachability probe, with no bypass env. A locally-served target **cannot** be explored over `localhost`. `npm run tunnel` fronts the local app with a public `https://*.trycloudflare.com` URL that you paste into the dashboard start-test form.
+The engine's SSRF guard (`testing-core/src/serverUtils.ts` → `assertPublicTarget`) is fail-closed and rejects `localhost` / private IPs — re-validated in the worker and reachability probe, with no bypass env. A locally-served target **cannot** be explored over `localhost`. Two public-origin options:
+
+- **Vercel (deployed):** `/api/*` is served by a serverless function (`api/[...path].mjs`) wrapping the same Express `createApp()`; `vercel.json` routes non-`/api` paths to the SPA. Paste the deployed URL straight into the start-test form — no tunnel. This is required because a bare static deploy returns **405** to every `POST /api/*`, so no backend-dependent bug (double-submit, injection, constraint-bypass, lost-update, network) is detectable.
+- **Local (tunnel):** `npm run tunnel` fronts the local app with a public `https://*.trycloudflare.com` URL. Same Express API, no deploy.
 
 ## Scripts
 
