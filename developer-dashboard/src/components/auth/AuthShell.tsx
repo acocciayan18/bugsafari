@@ -27,16 +27,16 @@ export default function AuthShell({
       {/* Exploration-graph backdrop (.auth-backdrop): CSS node-grid + signal bloom + scan-sweep,
           token-driven for light/dark, masked and low-opacity so the form stays fully readable. */}
       <div aria-hidden="true" className="auth-backdrop" />
-      <button
-        type="button"
-        onClick={() => navigate('/')}
-        aria-label="Back to home"
-        className="fixed top-3 left-3 sm:top-4 sm:left-4 lg:top-6 lg:left-6 flex items-center gap-1.5 px-3 py-2 text-(--text-tertiary) hover:text-(--text-primary) cursor-pointer transition-colors text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
-      >
-        <Home className="w-4 h-4 shrink-0" strokeWidth={1.75} />
-        Home
-      </button>
       <div className={`w-full ${maxWidth}`}>
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          aria-label="Back to home"
+          className="mb-3 -ml-1 inline-flex items-center gap-1.5 rounded-(--radius-md) px-2 py-1.5 text-(--text-tertiary) hover:text-(--text-primary) cursor-pointer transition-colors text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+        >
+          <Home className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+          Home
+        </button>
         <div className="relative">
           {/* Corner reticle — signature HUD frame */}
          

@@ -23,6 +23,14 @@ const supportTicketSchema = new Schema(
       enum: ['contact', 'ticket', 'feature'],
       index: true,
     },
+    // Issue type chosen by the operator; distinct from the entry-point mode.
+    category: {
+      type: String,
+      required: true,
+      enum: ['bug', 'feature', 'account', 'performance', 'question', 'other'],
+      default: 'other',
+      index: true,
+    },
     subject: {
       type: String,
       required: [true, 'Subject is required'],
@@ -34,6 +42,18 @@ const supportTicketSchema = new Schema(
       required: [true, 'Description is required'],
       trim: true,
       maxlength: [5000, 'Description cannot exceed 5000 characters'],
+    },
+    // Optional error/finding context the operator pasted in.
+    details: {
+      type: String,
+      trim: true,
+      maxlength: [4000, 'Details cannot exceed 4000 characters'],
+      default: null,
+    },
+    // Non-sensitive environment snapshot (version/route/browser). No tokens or PII.
+    diagnostics: {
+      type: Schema.Types.Mixed,
+      default: null,
     },
     status: {
       type: String,
@@ -55,8 +75,11 @@ export interface ISupportTicket extends Document {
   userId: Types.ObjectId | null;
   email: string;
   mode: 'contact' | 'ticket' | 'feature';
+  category: 'bug' | 'feature' | 'account' | 'performance' | 'question' | 'other';
   subject: string;
   description: string;
+  details: string | null;
+  diagnostics: Record<string, string> | null;
   status: 'OPEN' | 'ACKNOWLEDGED' | 'CLOSED';
 }
 

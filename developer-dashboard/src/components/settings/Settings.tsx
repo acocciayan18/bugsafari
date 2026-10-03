@@ -27,8 +27,12 @@ import {
   X,
   CircleQuestionMark,
   CircleCheckBig,
+  LifeBuoy,
 } from 'lucide-react';
 import { toast } from '../../infrastructure/notifications/ToastProvider';
+import SupportModal from '../common/SupportModal';
+import { Button } from '../ui/Button';
+import type { SupportMode } from '../../../../shared/support';
 
 import { useAuth } from '../../hooks/useAuth';
 import { useUserSettings } from '../../hooks/useUserSettings';
@@ -751,6 +755,46 @@ function AccountSection() {
 // CustomEvent in App.tsx — no useUserSettings() call needed here.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Support & feedback — opens the enhanced SupportModal; mailto is the fallback.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SUPPORT_EMAIL = 'programmingcourseph@gmail.com';
+
+function SupportSection() {
+  const [modalMode, setModalMode] = useState<SupportMode | null>(null);
+
+  return (
+    <>
+      <p className="text-sm leading-relaxed text-(--text-secondary)">
+        Hit a bug, have a question, or want to suggest something? Send it straight to the BugSafari team.
+      </p>
+
+      <div className="mt-4 flex flex-col gap-2.5 sm:flex-row">
+        <Button variant="primary" size="sm" className="w-full sm:w-auto" onClick={() => setModalMode('ticket')}>
+          Report a problem
+        </Button>
+        <Button variant="secondary" size="sm" className="w-full sm:w-auto" onClick={() => setModalMode('feature')}>
+          Suggest a feature
+        </Button>
+      </div>
+
+      <p className="mt-4 text-caption text-(--text-tertiary)">
+        Prefer email? Write to{' '}
+        <a
+          href={`mailto:${SUPPORT_EMAIL}`}
+          className="font-medium text-(--text-secondary) underline underline-offset-2 hover:text-(--text-primary)"
+        >
+          {SUPPORT_EMAIL}
+        </a>
+        .
+      </p>
+
+      <SupportModal isOpen={modalMode !== null} onClose={() => setModalMode(null)} mode={modalMode ?? 'contact'} />
+    </>
+  );
+}
+
 export default function Settings() {
   const { user, isAuthenticated } = useAuth();
 
@@ -827,6 +871,15 @@ export default function Settings() {
             description="Appearance and behavior"
           >
             <ApplicationSettingsSection />
+          </SettingsCard>
+
+          <SettingsCard
+            dataTour="settings-support"
+            icon={<LifeBuoy className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}
+            title="Support & feedback"
+            description="Reach the BugSafari team"
+          >
+            <SupportSection />
           </SettingsCard>
         </motion.div>
       </main>

@@ -1,5 +1,6 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { maskEmail } from './authValidation.js';
+import { supportCategoryLabel, type SupportCategory, type SupportDiagnostics } from '../../../../shared/support.js';
 
 import { createLogger } from '../../infrastructure/observability/logger.js';
 
@@ -30,6 +31,8 @@ const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
 const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
 
 export const APP_NAME = process.env.APP_NAME || 'BugSafari';
+// Admin inbox that receives support tickets. Overridable per environment.
+export const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'programmingcourseph@gmail.com';
 // Resend's shared onboarding@resend.dev works without domain verification, so it is a
 // safe development default; production sets SMTP_FROM to a verified-domain sender.
 const SMTP_FROM = process.env.SMTP_FROM || `${APP_NAME} <onboarding@resend.dev>`;
@@ -129,14 +132,14 @@ export async function verifyEmailTransport(): Promise<void> {
 
 // Send via Brevo's transactional HTTP API over 443. Bounded by AbortController so a
 // hung request fails fast like the SMTP path. Never throws — returns an EmailResult.
-async function sendViaBrevoApi(to: string, subject: string, html: string, text: string): Promise<EmailResult> {
+async function sendViaBrevoApi(to: string, subject: string, html: string, text: string, replyTo?: string): Promise<EmailResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15_000);
   try {
     const response = await fetch(BREVO_API_URL, {
       method: 'POST',
       headers: { 'api-key': BREVO_API_KEY, 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ sender: parseSender(), to: [{ email: to }], subject, htmlContent: html, textContent: text }),
+      body: JSON.stringify({ sender: parseSender(), to: [{ email: to }], subject, htmlContent: html, textContent: text, ...(replyTo && { replyTo: { email: replyTo } }) }),
       signal: controller.signal,
     });
     if (!response.ok) {
@@ -159,9 +162,9 @@ async function sendViaBrevoApi(to: string, subject: string, html: string, text: 
 }
 
 // Send via SMTP (nodemailer). Fallback for hosts that permit outbound SMTP.
-async function sendViaSmtp(to: string, subject: string, html: string, text: string): Promise<EmailResult> {
+async function sendViaSmtp(to: string, subject: string, html: string, text: string, replyTo?: string): Promise<EmailResult> {
   try {
-    const info = await getTransporter().sendMail({ from: SMTP_FROM, to, subject, html, text });
+    const info = await getTransporter().sendMail({ from: SMTP_FROM, to, subject, html, text, ...(replyTo && { replyTo }) });
     obsLog.info(`[EMAIL] Sent "${subject.trim()}" to ${maskEmail(to)}: ${info.messageId}`);
     return { ok: true, messageId: info.messageId };
   } catch (error) {
@@ -172,8 +175,8 @@ async function sendViaSmtp(to: string, subject: string, html: string, text: stri
 }
 
 // Core send. Prefers the Brevo HTTP API (egress-safe); falls back to SMTP. Never throws.
-async function sendMail(to: string, subject: string, html: string, text: string): Promise<EmailResult> {
-  return BREVO_API_KEY ? sendViaBrevoApi(to, subject, html, text) : sendViaSmtp(to, subject, html, text);
+async function sendMail(to: string, subject: string, html: string, text: string, replyTo?: string): Promise<EmailResult> {
+  return BREVO_API_KEY ? sendViaBrevoApi(to, subject, html, text, replyTo) : sendViaSmtp(to, subject, html, text, replyTo);
 }
 
 // Dark-header card shared by both operator emails so they read as one brand.
@@ -271,4 +274,78 @@ export async function sendPasswordResetEmail(email: string, resetToken: string):
   );
   const text = `${APP_NAME} - Password Reset\n\nCreate a new password by opening the link below:\n${resetLink}\n\nThis link will expire in ${expiresIn}.\n\nIf you didn't request this, please ignore this email.`;
   return sendMail(email, `Password Reset Request - ${APP_NAME}`, html, text);
+}
+
+// Escape user-supplied content before it enters an HTML email body.
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
+
+export interface SupportTicketEmail {
+  ticketId: string;
+  category: SupportCategory;
+  subject: string;
+  description: string;
+  reporterEmail: string;
+  accountLabel: string;
+  details?: string | null;
+  diagnostics?: SupportDiagnostics | null;
+}
+
+// Notify the admin inbox of a new support ticket. Reply-to is the reporter so a
+// reply reaches them directly. Best-effort: the ticket is already persisted, so a
+// failed send never loses the request — it only delays the notification.
+export async function sendSupportTicketEmail(ticket: SupportTicketEmail): Promise<EmailResult> {
+  const categoryLabel = supportCategoryLabel(ticket.category);
+  const subjectLine = `[Support/${categoryLabel}] ${ticket.subject}`;
+
+  if (!isSmtpConfigured()) {
+    obsLog.warn(`[EMAIL] Email not configured — support ticket ${ticket.ticketId} from ${maskEmail(ticket.reporterEmail)} not emailed (stored in DB).`);
+    return { ok: false, code: 'EMAIL_NOT_CONFIGURED', error: 'SMTP not configured' };
+  }
+
+  const diagRows = ticket.diagnostics
+    ? Object.entries(ticket.diagnostics)
+        .map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#94a3b8;font-size:12px;">${escapeHtml(k)}</td><td style="padding:4px 0;color:#334155;font-size:12px;">${escapeHtml(String(v))}</td></tr>`)
+        .join('')
+    : '';
+  const detailsBlock = ticket.details
+    ? `<h3 style="margin:24px 0 8px;color:#1e293b;font-size:14px;">Attached error / finding</h3><pre style="white-space:pre-wrap;word-break:break-word;background:#f1f5f9;border-radius:8px;padding:12px;color:#334155;font-size:12px;margin:0;">${escapeHtml(ticket.details)}</pre>`
+    : '';
+  const diagBlock = diagRows
+    ? `<h3 style="margin:24px 0 8px;color:#1e293b;font-size:14px;">Diagnostics</h3><table cellpadding="0" cellspacing="0">${diagRows}</table>`
+    : '';
+
+  const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f8fafc;">
+  <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px -1px rgba(0,0,0,.1);">
+    <tr><td style="background:linear-gradient(135deg,#1e293b,#334155);padding:28px 30px;">
+      <h1 style="margin:0;color:#fff;font-size:20px;font-weight:700;">${APP_NAME} Support</h1>
+      <p style="margin:6px 0 0;color:#94a3b8;font-size:13px;">${escapeHtml(categoryLabel)} · ticket ${escapeHtml(ticket.ticketId)}</p>
+    </td></tr>
+    <tr><td style="padding:28px 30px;">
+      <p style="margin:0 0 4px;color:#94a3b8;font-size:12px;">From</p>
+      <p style="margin:0 0 16px;color:#1e293b;font-size:14px;font-weight:600;">${escapeHtml(ticket.reporterEmail)} <span style="color:#94a3b8;font-weight:400;">(${escapeHtml(ticket.accountLabel)})</span></p>
+      <h2 style="margin:0 0 8px;color:#1e293b;font-size:17px;">${escapeHtml(ticket.subject)}</h2>
+      <p style="margin:0;color:#475569;font-size:14px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(ticket.description)}</p>
+      ${detailsBlock}
+      ${diagBlock}
+    </td></tr>
+    <tr><td style="padding:18px 30px;background:#f8fafc;border-top:1px solid #e2e8f0;">
+      <p style="margin:0;color:#94a3b8;font-size:12px;">Reply to this email to respond to ${escapeHtml(ticket.reporterEmail)} directly.</p>
+    </td></tr>
+  </table></td></tr></table></body></html>`;
+
+  const textParts = [
+    `${APP_NAME} Support — ${categoryLabel} (ticket ${ticket.ticketId})`,
+    `From: ${ticket.reporterEmail} (${ticket.accountLabel})`,
+    ``,
+    `Subject: ${ticket.subject}`,
+    ``,
+    ticket.description,
+  ];
+  if (ticket.details) textParts.push(``, `--- Attached error / finding ---`, ticket.details);
+  if (ticket.diagnostics) textParts.push(``, `--- Diagnostics ---`, ...Object.entries(ticket.diagnostics).map(([k, v]) => `${k}: ${v}`));
+
+  return sendMail(SUPPORT_EMAIL, subjectLine, html, textParts.join('\n'), ticket.reporterEmail);
 }
