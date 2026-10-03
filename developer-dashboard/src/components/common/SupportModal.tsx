@@ -263,7 +263,7 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
                   onChange={(e) => setDetails(e.target.value)}
                   placeholder="Paste a finding summary, error text or steps here."
                   rows={4}
-                  className={`${inputFrame} min-h-[88px] py-2.5 font-mono text-body-sm leading-relaxed resize-y border-(--border-hairline)`}
+                  className={`${inputFrame} min-h-[88px] py-2.5 font-mono leading-relaxed resize-y border-(--border-hairline)`}
                 />
               </div>
             )}
