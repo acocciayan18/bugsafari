@@ -838,7 +838,7 @@ export default function Settings() {
           initial="hidden"
           animate="shown"
           variants={{ shown: { transition: { staggerChildren: 0.07 } } }}
-          className="mx-auto flex w-full max-w-5xl flex-col flex-wrap gap-3 p-3 sm:flex-row sm:p-4 lg:p-5"
+          className="flex w-full flex-col flex-wrap gap-3 p-3 sm:flex-row sm:p-4 lg:p-5"
         >
           <SettingsCard
             dataTour="settings-account"

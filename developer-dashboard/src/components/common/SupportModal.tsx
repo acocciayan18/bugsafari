@@ -1,17 +1,16 @@
 // SupportModal.tsx - Support intake
-// Collects category + subject + message (and a contact email for guests), an
-// optional error/finding paste and an opt-in non-sensitive diagnostics snapshot,
-// then submits to POST /api/support/tickets and shows an in-modal confirmation.
+// Collects category + subject + message (and a contact email for guests) plus an
+// optional error/finding paste, then submits to POST /api/support/tickets and
+// shows an in-modal confirmation.
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
-import { X, ChevronDown, CircleCheckBig, ShieldCheck } from 'lucide-react';
+import { X, ChevronDown, CircleCheckBig } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { buildAuthHeaders } from '../../utils/authHeaders';
 import { apiUrl } from '../../utils/apiBase';
-import { collectSupportDiagnostics, diagnosticRows } from '../../utils/supportDiagnostics';
 import {
   SUPPORT_CATEGORIES,
   SUPPORT_LIMITS,
@@ -52,7 +51,7 @@ interface FieldErrors {
 }
 
 export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
-  const { token, user, isGuestMode } = useAuth();
+  const { token, user } = useAuth();
   const [category, setCategory] = useState<SupportCategory>(DEFAULT_CATEGORY[mode]);
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
@@ -60,15 +59,11 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
   const [email, setEmail] = useState('');
   const [details, setDetails] = useState('');
   const [showDetails, setShowDetails] = useState(false);
-  const [includeDiagnostics, setIncludeDiagnostics] = useState(true);
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<{ ticketId: string; emailed: boolean } | null>(null);
 
   const needsEmail = !user;
-  // Snapshot captured once per open so the preview matches what will be sent.
-  const diagnostics = useMemo(() => collectSupportDiagnostics(!user || isGuestMode), [isOpen, user, isGuestMode]);
   const replyTo = user?.email ?? email.trim();
 
   const reset = () => {
@@ -78,8 +73,6 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
     setEmail('');
     setDetails('');
     setShowDetails(false);
-    setIncludeDiagnostics(true);
-    setShowDiagnostics(false);
     setErrors({});
     setResult(null);
   };
@@ -117,7 +110,6 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
           description: description.trim(),
           ...(needsEmail && { email: email.trim() }),
           ...(details.trim() && { details: details.trim() }),
-          ...(includeDiagnostics && { diagnostics }),
         }),
       });
 
@@ -141,7 +133,7 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} titleId="support-modal-title">
-      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-(--border-hairline) bg-(--surface-panel) px-4 py-3.5 sm:px-5">
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-(--border-hairline) bg-(--surface-panel) px-4 py-3 sm:px-5">
         <h3 id="support-modal-title" className="min-w-0 truncate text-sm sm:text-base font-semibold text-(--text-primary)">
           {result ? 'Request received' : TITLES[mode]}
         </h3>
@@ -155,13 +147,13 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
       </div>
 
       {result ? (
-        <div className="flex flex-col items-center gap-4 px-5 py-8 text-center">
+        <div className="flex flex-col items-center gap-4 px-5 py-6 text-center">
           <span className="flex h-12 w-12 items-center justify-center rounded-full bg-(--status-stable-bg) text-(--status-stable-fg)">
             <CircleCheckBig className="h-6 w-6" strokeWidth={1.75} aria-hidden="true" />
           </span>
           <div className="space-y-1">
             <p className="text-base font-semibold text-(--text-primary)">Thanks, we have your request.</p>
-            <p className="text-[13px] leading-relaxed text-(--text-secondary)">
+            <p className="text-body-sm leading-relaxed text-(--text-secondary)">
               {result.emailed
                 ? `We'll reply to ${replyTo} as soon as we can.`
                 : `It's saved and our team will reply to ${replyTo} as soon as we can.`}
@@ -176,7 +168,7 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
         </div>
       ) : (
         <>
-          <div className="space-y-5 p-4 sm:p-5">
+          <div className="space-y-4 p-4">
             {needsEmail && (
               <Input
                 label="Your email"
@@ -191,7 +183,7 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
             )}
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="support-category" className="text-[13px] font-medium text-(--text-primary)">
+              <label htmlFor="support-category" className="text-body-sm font-medium text-(--text-primary)">
                 Category
               </label>
               <div className="relative">
@@ -225,7 +217,7 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
 
             <div className="flex flex-col gap-1.5">
               <div className="flex items-baseline justify-between">
-                <label htmlFor="support-description" className="text-[13px] font-medium text-(--text-primary)">
+                <label htmlFor="support-description" className="text-body-sm font-medium text-(--text-primary)">
                   {mode === 'feature' ? 'Details' : 'Message'}
                 </label>
                 <span className="text-caption text-(--text-tertiary)">
@@ -238,11 +230,11 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
                 maxLength={SUPPORT_LIMITS.description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder={DESCRIPTION_PLACEHOLDERS[mode]}
-                rows={5}
-                className={`${inputFrame} min-h-[120px] py-3 leading-relaxed resize-y ${errors.description ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
+                rows={4}
+                className={`${inputFrame} min-h-[88px] py-2.5 leading-relaxed resize-y ${errors.description ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
                 aria-invalid={!!errors.description}
               />
-              {errors.description && <p className="text-[13px] text-(--status-critical-fg)">{errors.description}</p>}
+              {errors.description && <p className="text-body-sm text-(--status-critical-fg)">{errors.description}</p>}
             </div>
 
             {/* Optional error/finding paste — collapsed by default to keep the form light. */}
@@ -250,14 +242,14 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
               <button
                 type="button"
                 onClick={() => setShowDetails(true)}
-                className="text-[13px] font-medium text-(--text-secondary) underline-offset-2 hover:underline"
+                className="text-body-sm font-medium text-(--text-secondary) underline-offset-2 hover:underline"
               >
                 + Attach error or finding details
               </button>
             ) : (
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-baseline justify-between">
-                  <label htmlFor="support-details" className="text-[13px] font-medium text-(--text-primary)">
+                  <label htmlFor="support-details" className="text-body-sm font-medium text-(--text-primary)">
                     Error or finding details <span className="text-(--text-tertiary)">(optional)</span>
                   </label>
                   <span className="text-caption text-(--text-tertiary)">
@@ -270,57 +262,14 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
                   maxLength={SUPPORT_LIMITS.details}
                   onChange={(e) => setDetails(e.target.value)}
                   placeholder="Paste a finding summary, error text or steps here."
-                  rows={4}
-                  className={`${inputFrame} min-h-[96px] py-3 font-mono text-[13px] leading-relaxed resize-y border-(--border-hairline)`}
+                  rows={3}
+                  className={`${inputFrame} min-h-[72px] py-2.5 font-mono text-body-sm leading-relaxed resize-y border-(--border-hairline)`}
                 />
               </div>
             )}
-
-            {/* Diagnostics: opt-in, fully transparent about what is attached. */}
-            <div className="rounded-(--radius-sm) border border-(--border-hairline) bg-(--surface-inset) p-3">
-              <label className="flex cursor-pointer items-start gap-2.5">
-                <input
-                  type="checkbox"
-                  checked={includeDiagnostics}
-                  onChange={(e) => setIncludeDiagnostics(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-(--surface-invert)"
-                />
-                <span className="min-w-0">
-                  <span className="flex items-center gap-1.5 text-[13px] font-medium text-(--text-primary)">
-                    <ShieldCheck className="h-3.5 w-3.5 text-(--text-tertiary)" aria-hidden="true" />
-                    Include diagnostic info
-                  </span>
-                  <span className="mt-0.5 block text-caption leading-relaxed text-(--text-tertiary)">
-                    Helps us debug faster. No passwords, tokens or page content.
-                  </span>
-                </span>
-              </label>
-
-              {includeDiagnostics && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setShowDiagnostics((v) => !v)}
-                    className="mt-2 pl-6 text-caption font-medium text-(--text-secondary) underline-offset-2 hover:underline"
-                  >
-                    {showDiagnostics ? 'Hide details' : 'See exactly what is sent'}
-                  </button>
-                  {showDiagnostics && (
-                    <dl className="mt-2 space-y-1 pl-6">
-                      {diagnosticRows(diagnostics).map((row) => (
-                        <div key={row.label} className="flex gap-2 text-caption">
-                          <dt className="shrink-0 text-(--text-tertiary)">{row.label}:</dt>
-                          <dd className="min-w-0 break-words text-(--text-secondary)">{row.value}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  )}
-                </>
-              )}
-            </div>
           </div>
 
-          <div className="sticky bottom-0 flex flex-col-reverse gap-2.5 border-t border-(--border-hairline) bg-(--surface-panel) px-4 py-3.5 sm:flex-row sm:justify-end sm:px-5">
+          <div className="sticky bottom-0 flex flex-col-reverse gap-2.5 border-t border-(--border-hairline) bg-(--surface-panel) px-4 py-3 sm:flex-row sm:justify-end sm:px-5">
             <Button variant="ghost" size="sm" className="w-full sm:w-auto" onClick={handleClose} disabled={isSubmitting}>
               Cancel
             </Button>
