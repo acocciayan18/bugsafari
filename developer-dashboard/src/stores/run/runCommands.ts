@@ -44,6 +44,21 @@ function actionEvent(message: string, actionExecuted?: string): TelemetryEvent {
     };
 }
 
+// Longest we wait for a stopped-but-draining previous run to clear before giving up and
+// telling the operator to retry — comfortably past the backend stop watchdog (~20s).
+const PREVIOUS_RUN_DEFER_MAX_WAIT_MS = 45_000;
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Retry spacing (ms) when the backend reports the previous run is still finishing, else null.
+function previousRunRetryMs(error: unknown): number | null {
+    if (!(error instanceof Error)) return null;
+    const e = error as Error & { code?: string; retryAfterSeconds?: number };
+    if (e.code !== 'PREVIOUS_RUN_NOT_CLEARED') return null;
+    const secs = typeof e.retryAfterSeconds === 'number' && e.retryAfterSeconds > 0 ? e.retryAfterSeconds : 3;
+    return Math.min(Math.max(secs * 1000, 2000), 10000);
+}
+
 export async function startRun(
     targetUrl: string,
     optimizationSettings?: OptimizationSettings,
@@ -84,33 +99,62 @@ export async function startRun(
     writeStorage(RUN_CONTROL_STORAGE_KEY, null);
     store.resetForLaunch(timeboxMs, resolvedUrl);
 
+    // The retried POST is itself the "has my previous run cleared?" probe: the backend
+    // answers 409 PREVIOUS_RUN_NOT_CLEARED while the just-stopped run drains, then accepts
+    // the launch the instant it is terminal (or a dead-worker ghost). We never enter QUEUED
+    // behind our own corpse; the latch stays held across the whole loop so Start stays off.
+    const deferDeadline = Date.now() + PREVIOUS_RUN_DEFER_MAX_WAIT_MS;
+    let finishingNotified = false;
     try {
-        const { runId, runCode, jobId, resumed } = await gateway.startTest(resolvedUrl, settings, infiltration, targetAuth);
-        // Persist the server-issued run token so a refresh / reconnect re-attaches
-        if (runId) writeStorage(RUN_ID_STORAGE_KEY, runId);
-        // The run's public code identifies it at save time — always overwrite, so a
-        // new run can never be saved under the previous run's code.
-        writeStorage(RUN_CODE_STORAGE_KEY, runCode);
-        if (jobId) writeStorage(JOB_ID_STORAGE_KEY, jobId);
-        useRunStore.setState({ isLaunching: false });
+        for (;;) {
+            try {
+                const { runId, runCode, jobId, resumed } = await gateway.startTest(resolvedUrl, settings, infiltration, targetAuth);
+                // Persist the server-issued run token so a refresh / reconnect re-attaches
+                if (runId) writeStorage(RUN_ID_STORAGE_KEY, runId);
+                // The run's public code identifies it at save time — always overwrite, so a
+                // new run can never be saved under the previous run's code.
+                writeStorage(RUN_CODE_STORAGE_KEY, runCode);
+                if (jobId) writeStorage(JOB_ID_STORAGE_KEY, jobId);
+                useRunStore.setState({ isLaunching: false });
 
-        // The server matched an existing session we own — hydrate from its snapshot
-        // rather than treating this as a fresh launch.
-        if (resumed) {
-            toast('Reconnected to your existing session. Resuming instead of starting a new one.', { id: STATUS_TOAST_ID });
-            useRunStore.setState({ isInitializing: false });
-            const snapshot = await gateway.fetchActiveSession();
-            if (snapshot) {
-                useRunStore.getState().hydrateFromSnapshot(snapshot);
-                reissuePendingControl(snapshot);
+                // The server matched an existing session we own — hydrate from its snapshot
+                // rather than treating this as a fresh launch.
+                if (resumed) {
+                    toast('Reconnected to your existing session. Resuming instead of starting a new one.', { id: STATUS_TOAST_ID });
+                    useRunStore.setState({ isInitializing: false });
+                    const snapshot = await gateway.fetchActiveSession();
+                    if (snapshot) {
+                        useRunStore.getState().hydrateFromSnapshot(snapshot);
+                        reissuePendingControl(snapshot);
+                    }
+                }
+                // No optimistic QUEUED. subscribeQueue (in gateway.startTest) triggers an
+                // immediate queue push: 'waiting' → QUEUED with a real position for a genuine
+                // wait, 'active' → ACTIVE on instant pickup. Flipping to QUEUED here forced a
+                // transient standby frame that reverted the moment that push landed.
+                return;
+            } catch (error) {
+                const retryMs = previousRunRetryMs(error);
+                if (retryMs !== null && Date.now() + retryMs <= deferDeadline) {
+                    if (!finishingNotified) {
+                        toast('Finishing your previous session — your new run starts automatically.', { id: STATUS_TOAST_ID });
+                        finishingNotified = true;
+                    }
+                    // Pin the finishing state so stray terminal telemetry from the old run
+                    // cannot re-enable Start or flip us into a misleading STOPPED/QUEUED frame.
+                    useRunStore.setState({ status: 'STARTING', isTestRunning: true, isLaunching: true, isInitializing: true, isQueued: false, queuePosition: null });
+                    await sleep(retryMs);
+                    continue;
+                }
+                if (retryMs !== null) {
+                    const stillFinishing = 'Your previous run is still finishing. Please try again in a moment.';
+                    toast.error(stillFinishing, { id: STATUS_TOAST_ID });
+                    useRunStore.getState().markLaunchFailed(stillFinishing);
+                    return;
+                }
+                throw error;
             }
-            return;
         }
-
-        // No optimistic QUEUED. subscribeQueue (in gateway.startTest) triggers an
-        // immediate queue push: 'waiting' → QUEUED with a real position for a genuine
-        // wait, 'active' → ACTIVE on instant pickup. Flipping to QUEUED here forced a
-        // transient standby frame that reverted the moment that push landed.
     } catch (error) {
         // Every failed start signals now — a 502 enqueue fail or a generic 5xx no longer
         // reaches only the telemetry feed. STATUS_TOAST_ID dedupes an upstream toast.

@@ -3,6 +3,7 @@ import { parseTargetUrl, admitTargetChain } from '../../serverUtils.js';
 import { StartExplorationUseCase, type SaveFailureCode } from '../../application/useCases/StartExplorationUseCase.js';
 import { readMaxQueueDepth, type TaskQueue } from '../../infrastructure/queue/TaskQueue.js';
 import { resolveFleetAdmission } from '../../infrastructure/queue/fleetAdmission.js';
+import { classifyOwnerRun, WAITING_STATES } from '../../infrastructure/queue/ownerRunDisposition.js';
 import type { RunRegistry, RunRegistryEntry } from '../../infrastructure/queue/RunRegistry.js';
 import type { ControlBridgePublisher } from '../../infrastructure/queue/controlBridge.js';
 import type { QueueStatusBroadcaster } from '../../infrastructure/queue/QueueStatusBroadcaster.js';
@@ -618,10 +619,12 @@ export function registerRoutes(
   // Encrypted single-use handoff for target credentials on the distributed path.
   authVault?: AuthVault,
 ): void {
-  // BullMQ states meaning "still waiting for a worker".
-  const WAITING_STATES = new Set(['waiting', 'delayed', 'prioritized', 'waiting-children']);
   // Lifecycle states in which the run is still live (controls stay bound to it).
   const LIVE_LIFECYCLES = new Set(['QUEUED', 'STARTING', 'RUNNING', 'PAUSING', 'PAUSED', 'STOPPING', 'INTERRUPTED']);
+  // Lifecycle states meaning the run is on its way out — resuming one is wrong; defer instead.
+  const STOPPING_LIFECYCLES = new Set(['STOPPING']);
+  // Poll spacing hint handed to a client told its previous run is still finishing.
+  const PREVIOUS_RUN_RETRY_AFTER_SECONDS = 3;
 
   // Backlog ceiling for the distributed path, read once at wiring time.
   const maxQueueDepth = readMaxQueueDepth();
@@ -976,26 +979,34 @@ export function registerRoutes(
         return;
       }
       try {
-        // Duplicate-submission guard: if this requester already owns a queued or
-        // running job, hand back its identifiers so the client resumes it.
+        // Duplicate-submission guard: classify the requester's own current run before
+        // joining the line. A live run is resumed; a run the operator just stopped but
+        // that is still draining is DEFERRED (not stacked behind itself in a false
+        // queue — the confusing "Queued, 1 of 1"); a terminal/ghost entry is cleared.
         if (runRegistry) {
-          const existing = request.userId
-            ? await runRegistry.findByOwner(request.userId)
-            : (knownRunId ? await runRegistry.findByRunToken(knownRunId) : null);
-          if (existing && (!existing.userId || existing.userId === (request.userId ?? null))) {
-            const state = await taskQueue.getJobState(existing.jobId).catch(() => 'unknown');
-            // A run the operator already asked to stop is NOT resumable — its job may
-            // still read 'active'/'waiting' for a beat while the worker tears down.
-            // Resuming it here is exactly what re-attached a launch to the just-stopped
-            // run and stranded the next one in a false queue. Clear it and enqueue fresh.
-            if (!existing.stopRequestedAt && (state === 'active' || WAITING_STATES.has(state))) {
-              obsLog.info(`[API] ️ Requester already owns job ${existing.jobId} (${state}) — resuming instead of enqueueing.`);
-              // runToken re-joins run:${runToken}; runId is the public code for display.
-              response.status(202).json({ accepted: true, resumed: true, url: existing.targetUrl, jobId: existing.jobId, runToken: existing.runToken, runId: existing.runCode, queued: state !== 'active' });
-              return;
-            }
-            await runRegistry.clear(existing.runToken, existing.userId);
+          const { entry: existing, jobState, disposition } = await classifyOwnerRun(runRegistry, taskQueue, {
+            userId: request.userId ?? null,
+            runToken: knownRunId,
+          });
+          if (existing && disposition === 'resumable') {
+            obsLog.info(`[API] ️ Requester already owns job ${existing.jobId} (${jobState}) — resuming instead of enqueueing.`);
+            // runToken re-joins run:${runToken}; runId is the public code for display.
+            response.status(202).json({ accepted: true, resumed: true, url: existing.targetUrl, jobId: existing.jobId, runToken: existing.runToken, runId: existing.runCode, queued: jobState !== 'active' });
+            return;
           }
+          if (existing && disposition === 'draining') {
+            obsLog.info(`[API] Requester's previous run ${existing.runCode} is still finishing — deferring launch (no queue stacking).`);
+            response.status(409).json({
+              error: 'PREVIOUS_RUN_NOT_CLEARED',
+              code: 'PREVIOUS_RUN_NOT_CLEARED',
+              message: 'Your previous run is still finishing. The new session will start automatically once it clears.',
+              runToken: existing.runToken,
+              runId: existing.runCode,
+              retryAfterSeconds: PREVIOUS_RUN_RETRY_AFTER_SECONDS,
+            });
+            return;
+          }
+          if (existing) await runRegistry.clear(existing.runToken, existing.userId);
         }
 
         // Fleet gate. QUEUED is a mirror of BullMQ's `waiting` state, so an enqueue into
@@ -1080,6 +1091,20 @@ export function registerRoutes(
       // If the busy run belongs to THIS requester, resume it instead of erroring —
       // a refreshed client that re-submits reconnects to its own live session.
       const owned = sessionManager.getSnapshotFor(request.userId ?? null, knownRunId);
+      // A run the operator just stopped is NOT resumable: it is tearing down. Defer the
+      // new launch (same contract as the queue path) instead of reattaching to a corpse.
+      if (owned && STOPPING_LIFECYCLES.has(owned.status)) {
+        obsLog.info(`[API] Requester's previous run ${owned.runId} is still finishing — deferring launch.`);
+        response.status(409).json({
+          error: 'PREVIOUS_RUN_NOT_CLEARED',
+          code: 'PREVIOUS_RUN_NOT_CLEARED',
+          message: 'Your previous run is still finishing. The new session will start automatically once it clears.',
+          runToken: owned.runToken,
+          runId: owned.runId,
+          retryAfterSeconds: PREVIOUS_RUN_RETRY_AFTER_SECONDS,
+        });
+        return;
+      }
       if (owned && LIVE_LIFECYCLES.has(owned.status)) {
         obsLog.info(`[API] ️ Requester owns the active run ${owned.runId} — resuming instead of rejecting.`);
         response.json({ accepted: true, resumed: true, url: owned.targetUrl, runToken: owned.runToken, runId: owned.runId, queued: false });
