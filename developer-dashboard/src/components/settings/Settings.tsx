@@ -78,8 +78,8 @@ function SettingsCard({ icon, title, description, children, dataTour }: {
       transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
       className="flex flex-col rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-sm"
     >
-      <header className="flex items-start gap-3 border-b border-(--border-hairline) px-4 py-4 sm:px-5">
-        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-(--surface-invert) text-(--text-oninvert)">
+      <header className="flex items-start gap-2.5 border-b border-(--border-hairline) px-4 py-3">
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-(--surface-invert) text-(--text-oninvert)">
           {icon}
         </div>
         <div>
@@ -87,7 +87,7 @@ function SettingsCard({ icon, title, description, children, dataTour }: {
           <p className="text-sm text-(--text-secondary)">{description}</p>
         </div>
       </header>
-      <div className="flex-1 px-4 py-4 sm:px-5 sm:py-5">{children}</div>
+      <div className="flex-1 px-4 py-4">{children}</div>
     </motion.section>
   );
 }
@@ -169,7 +169,7 @@ function PasswordInputField({
           type={showPassword ? 'text' : 'password'}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className={`w-full rounded-lg border bg-(--surface-inset) px-4 py-3 pl-10 pr-10 text-sm text-(--text-primary) placeholder-(--text-disabled) focus:bg-(--surface-panel) focus:outline-none transition-colors ${
+          className={`w-full rounded-lg border bg-(--surface-inset) px-4 py-2.5 pl-10 pr-10 text-sm text-(--text-primary) placeholder-(--text-disabled) focus:bg-(--surface-panel) focus:outline-none transition-colors ${
             error
               ? 'border-(--status-critical-border) focus:border-(--status-critical-fg)'
               : 'border-(--border-hairline) focus:border-(--border-strong)'
@@ -331,7 +331,7 @@ function ApplicationSettingsSection() {
 
   if (isSettingsLoading && !hasLoadedRef.current) {
     return (
-      <div role="status" aria-label="Loading application settings" className="space-y-5">
+      <div role="status" aria-label="Loading application settings" className="space-y-4">
         <div className="space-y-2">
           <Skeleton className="h-4 w-16" />
           <Skeleton className="h-3 w-56 max-w-full" />
@@ -357,7 +357,7 @@ function ApplicationSettingsSection() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div>
         <span className="text-sm font-semibold text-(--text-secondary) uppercase r">Theme</span>
         <p className="mt-0.5 mb-2 text-sm text-(--text-secondary)">Choose how BugSafari looks on this device.</p>
@@ -519,7 +519,7 @@ function SecuritySettingsSection() {
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="flex w-full items-center cursor-pointer justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-3 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+          className="flex w-full items-center cursor-pointer justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-2.5 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
         >
           <KeyRound className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
           Change Password
@@ -586,7 +586,7 @@ function SecuritySettingsSection() {
               <button
                 type="submit"
                 disabled={isPasswordChanging}
-                className="flex-1 rounded-lg bg-(--surface-invert) px-4 py-3 text-sm font-semibold text-(--text-oninvert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 ease-in-out shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+                className="flex-1 rounded-lg bg-(--surface-invert) px-4 py-2.5 text-sm font-semibold text-(--text-oninvert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 ease-in-out shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
               >
                 {isPasswordChanging ? (
                   <span className="flex items-center justify-center gap-2">
@@ -601,7 +601,7 @@ function SecuritySettingsSection() {
                 type="button"
                 onClick={handleCancel}
                 disabled={isPasswordChanging}
-                className="flex items-center justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-3 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) disabled:opacity-40 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+                className="flex items-center justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-2.5 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) disabled:opacity-40 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
               >
                 <X className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
                 Cancel
@@ -643,7 +643,7 @@ function AccountSection() {
   // Guests have no server-side profile — only identity-free actions apply.
   if (isGuestMode) {
     return (
-      <div className="space-y-5">
+      <div className="space-y-4">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-(--surface-inset)">
             <User className="h-5 w-5 text-(--text-secondary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
@@ -673,7 +673,7 @@ function AccountSection() {
 
   if (isProfileLoading) {
     return (
-      <div role="status" aria-label="Loading account" className="space-y-5">
+      <div role="status" aria-label="Loading account" className="space-y-4">
         <div className="flex items-center gap-3">
           <Skeleton className="h-12 w-12 shrink-0 rounded-full" />
           <div className="min-w-0 flex-1 space-y-2">
@@ -690,7 +690,7 @@ function AccountSection() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="flex items-center gap-3">
         <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-(--surface-inset)">
           <Mail className="h-5 w-5 text-(--text-secondary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
@@ -796,7 +796,7 @@ function SupportSection() {
 }
 
 export default function Settings() {
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
 
   // On-demand tour, replayed from the Help (?) control — not auto-launched, so the
   // page never interrupts on arrival.
@@ -822,23 +822,10 @@ export default function Settings() {
           <span className="mx-3 text-(--text-tertiary)">/</span>
           <span className="text-sm font-semibold text-(--text-secondary)">SETTINGS</span>
         </div>
-        {user && (
-          <div className="flex shrink-0 items-center">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--surface-inset)">
-              <User className="h-5 w-5 text-(--text-secondary)" strokeWidth={ICON_STROKE} aria-hidden="true" />
-            </div>
-          </div>
-        )}
       </header>
 
       <main className="custom-scrollbar m-3 flex-1 overflow-auto rounded-md border border-(--border-strong) bg-(--surface-app) sm:m-4 lg:m-5">
-        <div className="flex items-start justify-between gap-3 border-b border-(--border-hairline) px-4 py-4 sm:px-6">
-          <div className="min-w-0">
-            <h2 className="text-h2 font-bold text-(--text-primary)">SETTINGS</h2>
-            <p className="mt-1 text-sm text-(--text-secondary) sm:text-sm">
-              Manage your account preferences and application configuration
-            </p>
-          </div>
+        <div className="flex items-center justify-end border-b border-(--border-hairline) px-4 py-2 sm:px-6">
           <button
             onClick={startTour}
             className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg hover:bg-(--surface-hover) transition-colors"
@@ -853,7 +840,7 @@ export default function Settings() {
           initial="hidden"
           animate="shown"
           variants={{ shown: { transition: { staggerChildren: 0.07 } } }}
-          className="grid w-full grid-cols-1 gap-4 p-3 sm:p-4 lg:grid-cols-2 lg:p-6"
+          className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-3 p-3 sm:p-4 lg:grid-cols-2 lg:p-5"
         >
           <SettingsCard
             dataTour="settings-account"
