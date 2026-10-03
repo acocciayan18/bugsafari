@@ -161,6 +161,12 @@ const SETTINGS_ANCHORS: TourAnchor[] = [
     description: 'Switch between light and dark themes, and turn notifications and auto-save on or off.',
     side: 'top',
   },
+  {
+    selector: '[data-tour="settings-support"]',
+    title: 'Support & feedback',
+    description: 'Report a problem or suggest a feature. It reaches the BugSafari team directly.',
+    side: 'top',
+  },
 ];
 
 export function buildSettingsTourSteps(_isCompact: boolean): DriveStep[] {

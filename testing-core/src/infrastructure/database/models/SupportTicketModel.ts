@@ -35,19 +35,19 @@ const supportTicketSchema = new Schema(
       type: String,
       required: [true, 'Subject is required'],
       trim: true,
-      maxlength: [200, 'Subject cannot exceed 200 characters'],
+      maxlength: [100, 'Subject cannot exceed 100 characters'],
     },
     description: {
       type: String,
       required: [true, 'Description is required'],
       trim: true,
-      maxlength: [5000, 'Description cannot exceed 5000 characters'],
+      maxlength: [2000, 'Description cannot exceed 2000 characters'],
     },
     // Optional error/finding context the operator pasted in.
     details: {
       type: String,
       trim: true,
-      maxlength: [4000, 'Details cannot exceed 4000 characters'],
+      maxlength: [2000, 'Details cannot exceed 2000 characters'],
       default: null,
     },
     // Non-sensitive environment snapshot (version/route/browser). No tokens or PII.

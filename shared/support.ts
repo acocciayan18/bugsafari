@@ -21,9 +21,9 @@ export const SUPPORT_CATEGORY_IDS: readonly SupportCategory[] = SUPPORT_CATEGORI
 
 // Field bounds enforced on both ends. Mirror SupportTicketModel maxlengths.
 export const SUPPORT_LIMITS = {
-  subject: 200,
-  description: 5000,
-  details: 4000,
+  subject: 100,
+  description: 2000,
+  details: 2000,
   email: 254,
 } as const;
 
