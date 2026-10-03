@@ -757,10 +757,8 @@ function AccountSection() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Support & feedback — opens the enhanced SupportModal; mailto is the fallback.
+// Support & feedback — opens the enhanced SupportModal.
 // ─────────────────────────────────────────────────────────────────────────────
-
-const SUPPORT_EMAIL = 'programmingcourseph@gmail.com';
 
 function SupportSection() {
   const [modalMode, setModalMode] = useState<SupportMode | null>(null);
@@ -779,17 +777,6 @@ function SupportSection() {
           Suggest a feature
         </Button>
       </div>
-
-      <p className="mt-4 text-caption text-(--text-tertiary)">
-        Prefer email? Write to{' '}
-        <a
-          href={`mailto:${SUPPORT_EMAIL}`}
-          className="font-medium text-(--text-secondary) underline underline-offset-2 hover:text-(--text-primary)"
-        >
-          {SUPPORT_EMAIL}
-        </a>
-        .
-      </p>
 
       <SupportModal isOpen={modalMode !== null} onClose={() => setModalMode(null)} mode={modalMode ?? 'contact'} />
     </>

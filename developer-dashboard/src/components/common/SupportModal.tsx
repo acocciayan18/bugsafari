@@ -262,8 +262,8 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
                   maxLength={SUPPORT_LIMITS.details}
                   onChange={(e) => setDetails(e.target.value)}
                   placeholder="Paste a finding summary, error text or steps here."
-                  rows={3}
-                  className={`${inputFrame} min-h-[72px] py-2.5 font-mono text-body-sm leading-relaxed resize-y border-(--border-hairline)`}
+                  rows={4}
+                  className={`${inputFrame} min-h-[88px] py-2.5 font-mono text-body-sm leading-relaxed resize-y border-(--border-hairline)`}
                 />
               </div>
             )}
