@@ -28,6 +28,7 @@ const CWE_CATALOG: Record<string, CweInfo> = {
   'CWE-287': { name: 'Improper Authentication', plain: 'The app does not properly keep the signed-in session, so the user is unexpectedly logged out or bounced to the login page.' },
   'CWE-362': { name: 'Race Condition', plain: 'Two actions run at the same time and corrupt shared state that was not protected.' },
   'CWE-400': { name: 'Uncontrolled Resource Consumption', plain: 'The app can use unlimited time or memory, so it hangs or exhausts resources under load.' },
+  'CWE-459': { name: 'Incomplete Cleanup', plain: 'An action that should fully undo itself left state behind, so closing or removing something did not restore the page to how it started.' },
   'CWE-602': { name: 'Client-Side Enforcement of Server-Side Security', plain: 'A security rule is enforced only in the browser, where a user can simply remove it.' },
   'CWE-670': { name: 'Always-Incorrect Control Flow Implementation', plain: 'The navigation logic leads to a dead-end or an unreachable screen, so the user cannot proceed.' },
   'CWE-613': { name: 'Insufficient Session Expiration', plain: 'The login session is not kept or expired correctly, so it can be lost or reused unexpectedly.' },

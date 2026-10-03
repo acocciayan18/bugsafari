@@ -216,6 +216,31 @@ check('asset noise outranks everything — never a finding', () => {
   assert.equal(v.reasonCode, 'ASSET_NOISE');
 });
 
+check('a host-independent DNS failure outranks a coincidental runtime fault (no BROKE_UI)', () => {
+  // Regression: a DNS failure the app cannot cause, correlated with an unrelated runtime fault
+  // from a rapid-click burst, must stay ENVIRONMENT and never promote as a UI break.
+  const v = routeNetworkEvent({ kind: 'TRANSPORT_FAILURE', url: 'https://app.io/api/x', resourceType: 'xhr', failureText: 'net::ERR_NAME_NOT_RESOLVED', causedRuntimeFault: true });
+  assert.equal(v.reasonCode, 'ENVIRONMENT');
+  assert.equal(v.promote, false);
+});
+
+check('a Cloudflare anti-bot challenge request is environment, even with a correlated fault', () => {
+  const v = routeNetworkEvent({ kind: 'TRANSPORT_FAILURE', url: 'https://app.io/cdn-cgi/challenge-platform/h/g/orchestrate/chl', resourceType: 'fetch', failureText: 'net::ERR_NAME_NOT_RESOLVED', causedRuntimeFault: true });
+  assert.equal(v.reasonCode, 'ENVIRONMENT');
+  assert.equal(v.promote, false);
+});
+
+check('an anti-bot challenge still routes to environment when the error is not DNS', () => {
+  const v = routeNetworkEvent({ kind: 'TRANSPORT_FAILURE', url: 'https://challenges.cloudflare.com/turnstile/v0/api.js', resourceType: 'fetch', failureText: 'net::ERR_FAILED', causedRuntimeFault: true });
+  assert.equal(v.reasonCode, 'ENVIRONMENT');
+  assert.equal(v.promote, false);
+});
+
+check('self-caused navigation cancel still outranks the new environment short-circuit', () => {
+  const v = routeNetworkEvent({ kind: 'TRANSPORT_FAILURE', url: 'https://app.io/api/x', resourceType: 'xhr', failureText: 'net::ERR_NAME_NOT_RESOLVED', supersededByNavigation: true });
+  assert.equal(v.reasonCode, 'CANCELLED');
+});
+
 // ── Dashboard re-application ──────────────────────────────────
 
 check('runtime faults are always findings on the client side', () => {

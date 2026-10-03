@@ -9,16 +9,17 @@
 // The rule, in order:
 //   1. Static-asset chatter                       → Network tab only.
 //   2. Request superseded by an engine navigation → Network tab only (self-caused cancel).
-//   3. Chaos-injected failure                     → Finding (the app's handling is under test).
-//   4. Failure that broke the UI / threw at runtime → Finding.
-//   5. Cancelled/aborted request                  → Network tab only.
-//   6. Infrastructure & environment (DNS, offline, TLS/cert, proxy, CORS,
-//      driver timeouts, extension noise)          → Network tab only.
-//   7. HTTP 5xx, or an error payload masked behind a 2xx → Finding.
-//   8. Everything else (4xx, redirects, successes, plain transport failures)
+//   3. Host-independent infra (DNS/offline/TLS/proxy) or a CDN anti-bot challenge → Network tab only.
+//   4. Chaos-injected failure                     → Finding (the app's handling is under test).
+//   5. Failure that broke the UI / threw at runtime → Finding.
+//   6. Cancelled/aborted request                  → Network tab only.
+//   7. Host-dependent transport, CORS, redirect, environment origin → Network tab only.
+//   8. HTTP 5xx, or an error payload masked behind a 2xx → Finding.
+//   9. Everything else (4xx, redirects, successes, plain transport failures)
 //                                                 → Network tab only.
-// Provenance (faultOrigin) answers a DIFFERENT question — whose code is at fault —
-// and feeds step 6 here; it never decides the surface on its own.
+// Rule 3 outranks UI-breakage: a DNS/anti-bot failure can never be the app's defect even when a
+// runtime fault coincides. Provenance (faultOrigin) answers a DIFFERENT question — whose code is at
+// fault — and feeds the later host-dependent step; it never decides the surface on its own.
 
 /** Where an observation belongs. */
 export type TelemetrySurface = 'NETWORK_ONLY' | 'FINDING';
@@ -189,6 +190,16 @@ export const ENVIRONMENT_TRANSPORT_MARKERS: readonly string[] = [
   'err_proxy_connection_failed',
 ];
 
+// CDN anti-bot / managed-challenge requests (Cloudflare Turnstile, cdn-cgi) injected by the
+// edge, not the app; their failures are automated-traffic artifacts, never a target defect.
+export const ANTIBOT_CHALLENGE_URL_MARKERS: readonly string[] = [
+  '/cdn-cgi/challenge-platform/',
+  'challenges.cloudflare.com',
+  '/cdn-cgi/l/chk_jschl',
+  '__cf_chl',
+  '/turnstile/',
+];
+
 /**
  * Transport failures whose ROOT CAUSE depends on which host failed (see faultOrigin).
  * For routing they are still infrastructure: a refused/reset/timed-out request only
@@ -291,6 +302,16 @@ export function isInfrastructureFailure(text: string): boolean {
   );
 }
 
+/** True for a host-independent environment failure (DNS/offline/TLS/proxy) the app can never cause. */
+export function isEnvironmentTransportFailure(text: string): boolean {
+  return includesAny(text, ENVIRONMENT_TRANSPORT_MARKERS);
+}
+
+/** True when the URL is a CDN anti-bot / managed-challenge request, not the app's own traffic. */
+export function isAntiBotChallengeRequest(url: string): boolean {
+  return includesAny(url, ANTIBOT_CHALLENGE_URL_MARKERS);
+}
+
 /** True when the text is a harness/driver/browser artifact rather than app behaviour. */
 export function isHarnessArtifact(text: string, url = ''): boolean {
   return (
@@ -351,6 +372,19 @@ export function routeNetworkEvent(input: NetworkRoutingInput): NetworkRoutingVer
       'INFORMATIONAL',
       'CANCELLED',
       'Request cancelled by an in-run navigation — BugSafari left the page before it completed.',
+    );
+  }
+
+  // DNS/offline/TLS/proxy failures and CDN anti-bot challenges can never be the app's own defect:
+  // infrastructure or automated-traffic artifacts. Outranks BROKE_UI so a coincidental runtime fault
+  // inside the correlation window can't promote them (e.g. a Cloudflare /cdn-cgi/ ERR_NAME_NOT_RESOLVED
+  // under a rapid-click burst). Host-dependent transport failures still route below.
+  if (failed && (isEnvironmentTransportFailure(text) || isAntiBotChallengeRequest(url))) {
+    return verdict(
+      'NETWORK_ONLY',
+      'INFORMATIONAL',
+      'ENVIRONMENT',
+      'Infrastructure, environment, or anti-bot challenge failure (DNS, connectivity, TLS/proxy, or a CDN bot challenge triggered by automated testing). Not an application defect.',
     );
   }
 

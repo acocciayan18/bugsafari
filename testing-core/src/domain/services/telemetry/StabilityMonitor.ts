@@ -38,7 +38,7 @@ import type {
   ReproductionSnapshot,
   StateFingerprint,
 } from '../../../../../shared/types.js';
-import { isActionableNetworkStatus, routeNetworkEvent, NON_TARGET_NETWORK_REASONS, siteRelationship, PLAYWRIGHT_MARKERS, resolveSeverity, NETWORK_ACTION } from '../../../../../shared/types.js';
+import { isActionableNetworkStatus, routeNetworkEvent, NON_TARGET_NETWORK_REASONS, siteRelationship, PLAYWRIGHT_MARKERS, resolveSeverity, NETWORK_ACTION, isEnvironmentTransportFailure, isAntiBotChallengeRequest } from '../../../../../shared/types.js';
 import { NetworkQuarantine } from '../../../infrastructure/monitoring/NetworkQuarantine.js';
 import { initialDegradeState, onTargetFailure, onTargetSuccess, type DegradeState } from './networkDegradeDecision.js';
 import type { StabilityMonitorDeps } from '../exploration/types.js';
@@ -2257,8 +2257,12 @@ export class StabilityMonitor {
       // Infrastructure/environment failure: Network tab only for now. Parked so that
       // if the app throws because this call died within the correlation window, the
       // arbiter hands it back and it is promoted with THIS evidence (see
-      // promotePendingNetworkFaults).
-      this.networkArbiter.hold(url, evidence, failedAtMs);
+      // promotePendingNetworkFaults). Host-independent DNS/TLS and CDN anti-bot failures
+      // are never a target defect, so they are not parked: a coincidental runtime fault
+      // must not reclassify them as a UI break.
+      if (!isEnvironmentTransportFailure(reason.toLowerCase()) && !isAntiBotChallengeRequest(url.toLowerCase())) {
+        this.networkArbiter.hold(url, evidence, failedAtMs);
+      }
     });
   }
 
