@@ -391,7 +391,7 @@ export class ExplorationLoop {
           actionExecuted: 'element-selected',
           selector: target.selector,
           score: Number(target.riskScore.toFixed(4)),
-          message: `Selected target: ${target.tagName}${target.id ? '#' + target.id : ''} with score ${target.riskScore.toFixed(4)}`,
+          message: `Selected target: ${target.tagName}${target.id ? '#' + target.id : ''}`,
         });
 
         // StateGraphNavigator handles node/edge tracking automatically via registerStateAndDecide
@@ -456,7 +456,6 @@ export class ExplorationLoop {
           ranked,
           fingerprint.revisitedPage,
           fingerprint.currentHash,
-          decision.score,
         );
 
         // Timebox/stop that landed DURING the action — halt before any further
@@ -1193,7 +1192,7 @@ export class ExplorationLoop {
     if (stagnation.stagnationScore >= 2 && ctx.penaltyStepsRemaining === 0) {
       const intensity = computePenaltyIntensity(stagnation.stagnationScore, ctx.stagnationForceBacktrack);
       this.deps.telemetry.emitMilestone(
-        ` Stagnation detected (score=${stagnation.stagnationScore}). Applying graduated penalty (${Math.round(intensity * 100)}%) to force deeper exploration.`,
+        ` Stagnation detected. Applying graduated penalty (${Math.round(intensity * 100)}%) to force deeper exploration.`,
       );
       for (const element of ranked) {
         this.deps.scorer.penalize(element.selector, (Math.abs(element.riskScore) + 1) * intensity);
@@ -1817,11 +1816,10 @@ export class ExplorationLoop {
     ranked: InteractiveElement[],
     revisitedPage: boolean,
     currentHash: string,
-    exploreScore: number,
   ): Promise<{ traversalOk: boolean; childHash: string; childStructure: string; landedInvalid: boolean; actionThrew: boolean; interacted: boolean }> {
     // Emit exploration milestone
     const humanTarget = humanizeElement(target);
-    this.deps.telemetry.emitMilestone(` Exploring ${humanTarget} (score: ${exploreScore.toFixed(3)})`);
+    this.deps.telemetry.emitMilestone(` Exploring ${humanTarget}`);
     this.deps.telemetry.emitSystemStatus(`Clicking ${humanTarget}...`);
 
     this.deps.actionExecutor.logHighImpact(target);
@@ -2077,14 +2075,14 @@ export class ExplorationLoop {
       actionExecuted: 'curiosity-decision',
       selector: target.selector,
       score: decisionScore,
-      message: `Curiosity-driven: ${curiosityDriven ? 'EXPLORE' : 'BACKTRACK'} (topScore=${decisionScore.toFixed(2)}, boredomThreshold=${boredomThreshold})`,
+      message: `Curiosity-driven: ${curiosityDriven ? 'EXPLORE' : 'BACKTRACK'}`,
     });
 
     const mlConfidence = this.deps.scorer.getConfidence(target.featureVector);
     this.deps.telemetry.emit('HEURISTIC_SCORE', {
       selector: target.selector,
       score: Number(target.riskScore.toFixed(4)),
-      message: `Target scored ${target.riskScore.toFixed(4)} (ML confidence ${(mlConfidence * 100).toFixed(1)}%) and executed.`,
+      message: `Target evaluated (ML confidence ${(mlConfidence * 100).toFixed(1)}%) and executed.`,
     });
   }
 

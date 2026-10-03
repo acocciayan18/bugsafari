@@ -11,6 +11,7 @@ import { useDashboardController } from './application/useCases/useDashboardContr
 import { useRunNotifications } from './hooks/useRunNotifications';
 import { useSettingsStore } from './stores/settingsStore';
 import { readTargetUrlDraft, writeTargetUrlDraft } from './stores/targetUrlDraft';
+import { hasMeaningfulRunResults } from './utils/runResults';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DarkModeProvider } from './context/DarkModeContext';
 import GuestSavePromptModal from './components/auth/GuestSavePromptModal';
@@ -21,6 +22,8 @@ import ResetPasswordForm from './components/auth/ResetPasswordForm';
 import VerifyEmailForm from './components/auth/VerifyEmailForm';
 import SidebarLayout from './components/layout/SidebarLayout';
 import ConnectionStatusChip from './components/common/ConnectionStatusChip';
+import MobileExperienceNotice from './components/common/MobileExperienceNotice';
+import { useMobileExperienceNotice } from './hooks/useMobileExperienceNotice';
 import BootLoader from './components/common/BootLoader';
 import RouteErrorBoundary from './components/common/RouteErrorBoundary';
 import { ThemeProvider } from './designs/ThemeContext';
@@ -74,6 +77,8 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
 
   useRunNotifications();
 
+  const mobileNotice = useMobileExperienceNotice();
+
   // Auto Save (Settings) — commit a finished run without waiting for the manual press.
   // Guests cannot persist. Exactly one attempt per finished run: a failed save flips
   // isSavingSession back to false, and without the latch that alone would re-trigger
@@ -87,6 +92,14 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
     }
     if (!autoSave || isGuestMode || autoSaveAttemptedRef.current) return;
     if (state.isSessionSaved || state.isSavingSession) return;
+    // Never auto-save an empty run. Don't latch here: if a finding/error lands
+    // after completion (e.g. checkpoint merge) the effect re-evaluates and saves.
+    if (!hasMeaningfulRunResults({
+      incidents: state.incidents,
+      reports: state.reports,
+      networkEvents: state.networkEvents,
+      browserConsole: state.browserConsole,
+    })) return;
 
     autoSaveAttemptedRef.current = true;
     // Route through the shared slot (toast/success/error) so the loading→result
@@ -101,6 +114,10 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
     state.hasRunCompleted,
     state.isSessionSaved,
     state.isSavingSession,
+    state.incidents,
+    state.reports,
+    state.networkEvents,
+    state.browserConsole,
     saveSessionToHistory,
     targetUrl,
   ]);
@@ -140,6 +157,7 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
   return (
     <ThemeProvider>
       <ConnectionStatusChip />
+      <MobileExperienceNotice isOpen={mobileNotice.isOpen} onDismiss={mobileNotice.dismiss} />
 
       <Suspense fallback={<RouteFallback />}>
       <Routes>

@@ -141,7 +141,7 @@ export function createFuzzerTelemetryWrapper(telemetry?: {
         meta: {
           selector,
           score,
-          message: `Heuristic Fuzz Score: ${score.toFixed(4)} for ${category}`,
+          message: `Heuristic fuzz applied for ${category}`,
         },
       });
     },
