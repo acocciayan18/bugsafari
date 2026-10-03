@@ -64,19 +64,20 @@ const CARD_MOTION = { hidden: { opacity: 0, y: 12 }, shown: { opacity: 1, y: 0 }
 // Card shell — every settings group renders inside one of these
 // ─────────────────────────────────────────────────────────────────────────────
 
-function SettingsCard({ icon, title, description, children, dataTour }: {
+function SettingsCard({ icon, title, description, children, dataTour, className = '' }: {
   icon: ReactNode;
   title: string;
   description: string;
   children: ReactNode;
   dataTour?: string;
+  className?: string;
 }) {
   return (
     <motion.section
       data-tour={dataTour}
       variants={CARD_MOTION}
       transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-      className="flex flex-col rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-sm"
+      className={`flex flex-col rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-sm ${className}`}
     >
       <header className="flex items-start gap-2.5 border-b border-(--border-hairline) px-4 py-3">
         <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-(--surface-invert) text-(--text-oninvert)">
@@ -815,35 +816,33 @@ export default function Settings() {
       transition={{ duration: 0.2, ease: 'easeOut' }}
       className="flex h-full w-full min-w-0 flex-col bg-(--surface-panel)"
     >
-      {/* Breadcrumb duplicates the compact top bar — desktop only. */}
-      <header className="hidden items-center justify-between border-b border-(--border-hairline) px-4 py-3 sm:px-6 lg:flex">
+      {/* Breadcrumb bar — help/tour control pinned top-right. */}
+      <header className="flex items-center justify-between border-b border-(--border-hairline) px-4 py-3 sm:px-6">
         <div className="flex min-w-0 items-center">
           <span className="text-sm font-bold  text-(--text-primary)">BUGSAFARI</span>
           <span className="mx-3 text-(--text-tertiary)">/</span>
           <span className="text-sm font-semibold text-(--text-secondary)">SETTINGS</span>
         </div>
+        <button
+          onClick={startTour}
+          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg hover:bg-(--surface-hover) transition-colors"
+          title="Take a tour of this page"
+          aria-label="Take a tour of this page"
+        >
+          <CircleQuestionMark className="h-4 w-4 text-(--text-secondary)" />
+        </button>
       </header>
 
       <main className="custom-scrollbar m-3 flex-1 overflow-auto rounded-md border border-(--border-strong) bg-(--surface-app) sm:m-4 lg:m-5">
-        <div className="flex items-center justify-end border-b border-(--border-hairline) px-4 py-2 sm:px-6">
-          <button
-            onClick={startTour}
-            className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg hover:bg-(--surface-hover) transition-colors"
-            title="Take a tour of this page"
-            aria-label="Take a tour of this page"
-          >
-            <CircleQuestionMark className="h-4 w-4 text-(--text-secondary)" />
-          </button>
-        </div>
-
         <motion.div
           initial="hidden"
           animate="shown"
           variants={{ shown: { transition: { staggerChildren: 0.07 } } }}
-          className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-3 p-3 sm:p-4 lg:grid-cols-2 lg:p-5"
+          className="mx-auto flex w-full max-w-5xl flex-col flex-wrap gap-3 p-3 sm:flex-row sm:p-4 lg:p-5"
         >
           <SettingsCard
             dataTour="settings-account"
+            className="min-w-[300px] flex-1 basis-[320px]"
             icon={<User className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}
             title="Account"
             description="Your profile, security, and identity"
@@ -853,6 +852,7 @@ export default function Settings() {
 
           <SettingsCard
             dataTour="settings-app"
+            className="min-w-[300px] flex-1 basis-[320px]"
             icon={<Palette className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}
             title="Application"
             description="Appearance and behavior"
@@ -862,6 +862,7 @@ export default function Settings() {
 
           <SettingsCard
             dataTour="settings-support"
+            className="min-w-[300px] flex-1 basis-[320px]"
             icon={<LifeBuoy className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />}
             title="Support & feedback"
             description="Reach the BugSafari team"
