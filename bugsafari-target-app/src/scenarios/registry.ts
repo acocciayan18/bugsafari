@@ -10,6 +10,7 @@ import InputFuzzing from '../pages/InputFuzzing';
 import XssInjection from '../pages/XssInjection';
 import SqlInjection from '../pages/SqlInjection';
 import NoSqlInjection from '../pages/NoSqlInjection';
+import NoSqlInjectionFirestore from '../pages/NoSqlInjectionFirestore';
 import Accessibility from '../pages/Accessibility';
 
 export type Severity = 'INFO' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
@@ -160,6 +161,18 @@ export const SCENARIOS: Scenario[] = [
     summary: 'Query operators survive into the datastore, bypassing auth or leaking a MongoError.',
     reproduction: 'Login with {"$ne":null}; auth is bypassed at 200 where the benign value failed.',
     component: NoSqlInjection
+  },
+  {
+    slug: 'nosql-injection-firestore',
+    title: 'NoSQL Injection (Firestore)',
+    category: 'Security',
+    bugClass: 'NOSQL_INJECTION',
+    cwe: 'CWE-943',
+    expectedSeverity: 'CRITICAL',
+    detector: 'noSqlInjectionFinder + injectionDifferentialFinder',
+    summary: 'Firestore-backed login; query operators survive into the datastore, bypassing auth or leaking a MongoError.',
+    reproduction: 'Login with {"$ne":null}; auth bypasses at 200 where the benign value 401s, and {"$where":...} leaks a driver error.',
+    component: NoSqlInjectionFirestore
   },
   {
     slug: 'accessibility',

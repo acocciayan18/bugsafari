@@ -72,7 +72,7 @@
   /* Bounded B&W Typography Tree (Optimized for deep terminal reading readability) */
   --text-primary: #18181b;      /* Bounded zinc black for readability */
   --text-secondary: #52525b;    /* Muted graphite gray for subtitles */
-  --text-tertiary: #71717a;     /* Soft slate metadata labels */
+  --text-tertiary: #6a6a73;     /* Soft slate metadata labels (AA on inset surfaces) */
   --text-disabled: #a1a1aa;     /* Disarmed trace elements */
 
   /* Inverted Elements Control Group */
@@ -148,7 +148,7 @@
   /* Dark Theme Typography Hierarchy */
   --text-primary: #f4f4f5;      /* Off-white text to limit optical bleeding */
   --text-secondary: #a1a1aa;    /* Clean soft readable slate body content */
-  --text-tertiary: #72727b;     /* Muted code trace metadata indicators */
+  --text-tertiary: #8a8a92;     /* Muted code trace metadata indicators (AA on dark panels) */
   --text-disabled: #3f3f46;     /* Locked control items */
 
   /* Dark Theme Inverted Actions */

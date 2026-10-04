@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Component, Fragment, type ErrorInfo, type ReactNode } from 'react';
 import { RotateCw, TriangleAlert } from 'lucide-react';
 import { logger } from '../../utils/logger';
 
@@ -11,6 +11,8 @@ interface RouteErrorBoundaryProps {
 
 interface RouteErrorBoundaryState {
   error: Error | null;
+  // Bumped on retry to force a true remount of the children subtree.
+  nonce: number;
 }
 
 // Route-scoped error boundary. A render throw in a live panel used to unmount the
@@ -18,9 +20,9 @@ interface RouteErrorBoundaryState {
 // are module singletons that outlive this subtree, so "Reload panel" remounts the
 // children and they rehydrate from the still-live active-session state.
 export default class RouteErrorBoundary extends Component<RouteErrorBoundaryProps, RouteErrorBoundaryState> {
-  state: RouteErrorBoundaryState = { error: null };
+  state: RouteErrorBoundaryState = { error: null, nonce: 0 };
 
-  static getDerivedStateFromError(error: Error): RouteErrorBoundaryState {
+  static getDerivedStateFromError(error: Error): Partial<RouteErrorBoundaryState> {
     return { error };
   }
 
@@ -34,10 +36,11 @@ export default class RouteErrorBoundary extends Component<RouteErrorBoundaryProp
     logger.error(`[${this.props.label ?? 'RouteErrorBoundary'}] Render error:`, error, info.componentStack);
   }
 
-  private readonly retry = (): void => this.setState({ error: null });
+  private readonly retry = (): void =>
+    this.setState((s) => ({ error: null, nonce: s.nonce + 1 }));
 
   render(): ReactNode {
-    if (!this.state.error) return this.props.children;
+    if (!this.state.error) return <Fragment key={this.state.nonce}>{this.props.children}</Fragment>;
 
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-(--surface-app) p-8 text-center">

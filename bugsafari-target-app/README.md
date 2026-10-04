@@ -33,7 +33,7 @@ Each route maps to one detected bug class; the page header shows the expected bu
 - Network: `/network-errors`, `/api-hang`
 - State: `/duplicate-actions`, `/state-races`
 - Navigation: `/navigation-defects`
-- Security: `/constraint-bypass`, `/input-fuzzing`, `/xss-injection`, `/sql-injection`, `/nosql-injection`, `/info-leak`, `/broken-access-control`, `/session-integrity`
+- Security: `/constraint-bypass`, `/input-fuzzing`, `/xss-injection`, `/sql-injection`, `/nosql-injection`, `/nosql-injection-firestore`, `/info-leak`, `/broken-access-control`, `/session-integrity`
 - Accessibility: `/accessibility`
 - Future (documented but NOT detected today, clearly labeled): `/future/back-nav-state-loss`, `/future/route-mutation`, `/future/cascading-network`
 
@@ -44,6 +44,12 @@ Each route maps to one detected bug class; the page header shows the expected bu
 3. If it needs a backend behavior, add a handler under `server/routes/`.
 
 Routing and the home index update automatically.
+
+## Firestore NoSQL scenario (credentials optional)
+
+`/nosql-injection-firestore` is backed by Firebase Firestore via `firebase-admin`. It runs with **no credentials** on in-memory mock test data and stays fully BugSafari-detectable. To back the benign login path with a live Firestore, copy `.env.example` and fill in the `FIREBASE_*` service-account values (Firebase Console → Project settings → Service accounts → Generate new private key). On Vercel, set the same keys as project env vars. Without `firebase-admin` installed or credentials set, the scenario silently uses the mock store.
+
+The vulnerable endpoint mirrors the Mongo-operator contract BugSafari's `noSqlInjectionFinder` + `injectionDifferentialFinder` confirm on: an operator object (`{"$ne":null}`) bypasses auth to 200, `{"$where":...}` leaks a MongoError at 500, and a benign string 401s.
 
 ## Run alongside the engine (optional)
 

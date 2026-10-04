@@ -6,10 +6,14 @@ import { registerHang } from './routes/hang.mjs';
 import { registerDuplicate } from './routes/duplicate.mjs';
 import { registerState } from './routes/state.mjs';
 import { registerInjection } from './routes/injection.mjs';
+import { registerInjectionFirestore } from './routes/injectionFirestore.mjs';
 import { registerAuth } from './routes/auth.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const distDir = join(here, '..', 'dist');
+
+// Load local secrets when present; harmless on Vercel where env is injected.
+try { process.loadEnvFile(join(here, '..', '.env.local')); } catch { /* no .env.local */ }
 
 export function createApp({ serveStatic = false } = {}) {
   const app = express();
@@ -20,6 +24,7 @@ export function createApp({ serveStatic = false } = {}) {
   registerDuplicate(app);
   registerState(app);
   registerInjection(app);
+  registerInjectionFirestore(app);
   registerAuth(app);
 
   if (serveStatic) {
