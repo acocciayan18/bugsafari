@@ -3,8 +3,9 @@
 // Themed via CSS-variable design tokens (auto light/dark, no dark: variants needed).
 
 import { useNavigate } from 'react-router-dom';
-import { PanelLeft, LayoutDashboard, Settings, History, Menu, X } from 'lucide-react';
+import { PanelLeft, LayoutDashboard, Settings, History, Menu, X, LogOut, LogIn, UserRound, Lock } from 'lucide-react';
 import { useHistoryStore } from '../../stores/history/historyStore';
+import { lock } from '../../utils/accessLock';
 
 interface User {
   id: string;
@@ -26,6 +27,10 @@ interface SidebarProps {
   /** Drawer-only: closes the overlay after a navigation or on the close button. */
   onDismiss?: () => void;
   displayName?: string | null;
+  /** Guest session — no account to show; offer Sign in instead of Log out. */
+  isGuest?: boolean;
+  /** Ends the session (also used to exit a guest session). */
+  onLogout?: () => void;
 }
 
 interface NavItem {
@@ -54,13 +59,15 @@ function navItemClass(isActive: boolean, isRail: boolean) {
 }
 
 export default function Sidebar({
-  
+  user,
   isLoggedIn,
   activeView = 'dashboard',
   isCollapsed = false,
   onToggleCollapse,
   isDrawer = false,
   onDismiss,
+  isGuest = false,
+  onLogout,
 }: SidebarProps) {
   const navigate = useNavigate();
   const pinnedReportId = useHistoryStore((s) => s.pinnedReportId);
@@ -84,6 +91,12 @@ export default function Sidebar({
       navigate(item.path);
     }
     onDismiss?.();
+  };
+
+  // Dev system lock — clear the access secret and reload back to the gate.
+  const handleLock = () => {
+    lock();
+    window.location.reload();
   };
 
   return (
@@ -143,7 +156,55 @@ export default function Sidebar({
         </ul>
       </nav>
 
-      
+      {/* Account footer — identity + session exit, surfaced directly in the nav (and the
+          mobile drawer) rather than buried under Settings. */}
+      <div className={`shrink-0 border-t border-(--border-hairline) ${isRail ? 'p-1.5' : 'p-2'}`}>
+        <button
+          onClick={handleLock}
+          title={isRail ? 'Lock access' : undefined}
+          aria-label="Lock access"
+          className={`mb-1 flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-sm font-medium text-(--text-secondary) transition-colors hover:cursor-pointer hover:bg-(--surface-hover) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) ${isRail ? 'justify-center px-2' : ''}`}
+        >
+          <Lock className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+          {!isRail && <span className="whitespace-nowrap">Lock access</span>}
+        </button>
+
+        {!isRail && (
+          <div className="flex items-center gap-2.5 px-2 py-1.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--surface-inset) text-(--text-secondary)">
+              <UserRound className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-semibold text-(--text-primary) leading-tight">
+                {user?.name || user?.email || (isGuest ? 'Guest session' : 'Account')}
+              </p>
+              <p className="truncate text-xs text-(--text-tertiary) leading-tight">
+                {isGuest ? 'Not signed in' : user?.name && user?.email ? user.email : 'Signed in'}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {isGuest ? (
+          <button
+            onClick={() => { navigate('/login'); onDismiss?.(); }}
+            title={isRail ? 'Sign in' : undefined}
+            className={`mt-1 flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-sm font-medium text-(--text-secondary) transition-colors hover:cursor-pointer hover:bg-(--surface-hover) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) ${isRail ? 'justify-center px-2' : ''}`}
+          >
+            <LogIn className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+            {!isRail && <span className="whitespace-nowrap">Sign in</span>}
+          </button>
+        ) : (
+          <button
+            onClick={() => { onLogout?.(); onDismiss?.(); }}
+            title={isRail ? 'Log out' : undefined}
+            className={`mt-1 flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-sm font-medium text-(--text-secondary) transition-colors hover:cursor-pointer hover:bg-(--status-critical-bg) hover:text-(--status-critical-fg) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) ${isRail ? 'justify-center px-2' : ''}`}
+          >
+            <LogOut className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+            {!isRail && <span className="whitespace-nowrap">Log out</span>}
+          </button>
+        )}
+      </div>
     </section>
   );
 }

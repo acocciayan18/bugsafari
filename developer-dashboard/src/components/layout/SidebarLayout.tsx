@@ -9,7 +9,7 @@ import Sidebar from './Sidebar';
 import { useIsCompact } from '../../hooks/useMediaQuery';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { useHideOnScroll } from '../../hooks/useHideOnScroll';
-import type { AuthUser } from '../../context/AuthContext';
+import { useAuth, type AuthUser } from '../../context/AuthContext';
 
 type ViewType = 'dashboard' | 'history' | 'settings';
 
@@ -45,6 +45,7 @@ export default function SidebarLayout({
   children,
   contentClassName,
 }: SidebarLayoutProps) {
+  const { logout, isGuestMode } = useAuth();
   const isCompact = useIsCompact();
   const [isCollapsed, setIsCollapsed] = useState(readCollapsed);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -90,6 +91,8 @@ export default function SidebarLayout({
         <Sidebar
           user={user}
           isLoggedIn={isAuthenticated}
+          isGuest={isGuestMode}
+          onLogout={logout}
           activeView={activeView}
           isCollapsed={isCollapsed}
           onToggleCollapse={toggleCollapse}
@@ -118,6 +121,8 @@ export default function SidebarLayout({
             <Sidebar
               user={user}
               isLoggedIn={isAuthenticated}
+              isGuest={isGuestMode}
+              onLogout={logout}
               activeView={activeView}
               isDrawer
               onDismiss={closeDrawer}

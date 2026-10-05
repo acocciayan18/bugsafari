@@ -15,16 +15,13 @@ import type { TestSessionStatus } from '../../application/useCases/useDashboardC
 import type { RunTerminationOutcome } from '../../types';
 import LiveFeedConnected from '../common/LiveFeedConnected';
 import SessionTimerLive from '../common/SessionTimerLive';
-import RunProgressBar from '../common/RunProgressBar';
 import QueueStandbyChip from '../common/QueueStandbyChip';
 import PublicTargetNotice from '../common/PublicTargetNotice';
 import JumpToBottomButton from '../common/JumpToBottomButton';
 import LongOperationProgressCard from '../common/LongOperationProgressCard';
-import ReconnectingBanner from '../common/ReconnectingBanner';
 import StopRunConfirmDialog from '../common/StopRunConfirmDialog';
 import ShortcutsCheatSheet from '../common/ShortcutsCheatSheet';
-import MobileRunActionBar, { type MobileRunAction } from '../common/MobileRunActionBar';
-import { Tooltip } from '../ui/Tooltip';
+import MobileRunActionBar from '../common/MobileRunActionBar';
 import { useDashboardShortcuts } from '../../hooks/useDashboardShortcuts';
 import { useSwipe } from '../../hooks/useSwipe';
 import { isCleanTermination } from '../../../../shared/types.js';
@@ -355,23 +352,18 @@ function ClinicalForensicsDashboard({
     enabled: !showConfigModal && !showStopConfirm && !showShortcuts,
   });
 
-  // Single most-relevant run action for the mobile bottom bar.
-  const mobileAction: MobileRunAction =
-    transitionLabel ? null
-    : isQueued ? 'cancel'
-    : isActiveSession ? 'stop'
-    : hasRunCompleted ? 'save'
-    : 'start';
-  const mobileActionDisabled =
-    mobileAction === 'start' ? launchBlocked
-    : mobileAction === 'save' ? isSessionSaved
-    : false;
+  // Session phase the mobile bottom bar renders against. A completed run shows BOTH
+  // Save and Start (new test), so finishing a run never strands the operator without a
+  // clear way to start the next one; a settling transition hides the bar (controls locked).
+  const mobileSession: 'idle' | 'queued' | 'active' | 'completed' | 'transition' =
+    transitionLabel ? 'transition'
+    : isQueued ? 'queued'
+    : isActiveSession ? 'active'
+    : hasRunCompleted ? 'completed'
+    : 'idle';
 
   return (
     <div className="flex flex-col overflow-visible lg:flex-1 lg:overflow-hidden bg-(--surface-app)">
-
-      {/* Dropped socket mid-run — louder than the corner chip, with manual Retry. */}
-      <ReconnectingBanner active={isActiveSession} />
 
       {/* ═══════════════════════════════════════════════════════════════
           TOP CONTROLS: COMMAND CENTER LAYER
@@ -416,9 +408,6 @@ function ClinicalForensicsDashboard({
                   isPaused={testStatus !== 'ACTIVE'}
                 />
               )}
-              {/* Determinate elapsed/total against the duration cap — the timer counts
-                  down but never shows how close the run is to its budget. */}
-              {!isQueued && isActiveSession && <RunProgressBar />}
               {/* Standby indicator — job is waiting for a free worker; all controls locked. */}
               {isQueued && <QueueStandbyChip />}
               {/* Transitional indicator — the backend is settling in-flight tasks; all
@@ -480,8 +469,8 @@ function ClinicalForensicsDashboard({
   title={isSessionSaved ? 'Session already saved' : 'Save session to history'}
   className={`hidden lg:flex items-center gap-2 rounded-lg border px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors ${
     isSessionSaved
-      ? 'border-(--border-default) text-(--text-primary) hover:cursor-not-allowed opacity-80'
-      : 'border-(--border-default) text-(--text-primary) hover:cursor-pointer hover:bg-(--surface-hover) hover:text-(--text-primary)'
+      ? 'border-(--border-strong) text-(--text-primary) hover:cursor-not-allowed opacity-80'
+      : 'border-(--border-strong) text-(--text-primary) hover:cursor-pointer hover:bg-(--surface-hover) hover:text-(--text-primary)'
   }`}
 >
   {isSessionSaved && (
@@ -638,13 +627,13 @@ function ClinicalForensicsDashboard({
 
             <div className="flex shrink-0 items-center gap-1 pr-2">
               {activeTab === 'telemetry' && (
-                <Tooltip label={showVerbose ? 'Hide per-step execution trace' : 'Show full execution trace (debug)'} side="bottom">
                 <button
   type="button"
   data-tour="verbose-toggle"
   onClick={() => setShowVerbose((v) => !v)}
   aria-pressed={showVerbose}
   aria-label="Toggle verbose execution trace"
+  title={showVerbose ? 'Hide per-step execution trace' : 'Show full execution trace (debug)'}
   className={`inline-flex items-center cursor-pointer justify-center rounded-md border p-1.5 transition-colors ${
     showVerbose
       ? 'border-(--border-strong) bg-(--surface-invert) text-(--text-oninvert)'
@@ -653,7 +642,6 @@ function ClinicalForensicsDashboard({
 >
   <Workflow className="h-3.5 w-3.5" aria-hidden="true" />
 </button>
-                </Tooltip>
               )}
               <TelemetryHelpModal activeTab={activeTab} />
             </div>
@@ -740,10 +728,11 @@ function ClinicalForensicsDashboard({
       {/* Clears the fixed mobile action bar so the last content is never hidden under it. */}
       <div className="h-20 shrink-0 lg:hidden" aria-hidden="true" />
 
-      {/* Primary run action within thumb reach on phones; desktop keeps the top row. */}
+      {/* Primary run controls within thumb reach on phones; desktop keeps the top row. */}
       <MobileRunActionBar
-        action={mobileAction}
-        disabled={mobileActionDisabled}
+        session={mobileSession}
+        startDisabled={launchBlocked}
+        saveDisabled={isSessionSaved}
         onStart={handleInitialize}
         onStopRequest={handleStopRequest}
         onCancelQueued={() => onStop?.()}
