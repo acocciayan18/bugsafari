@@ -20,6 +20,7 @@ interface SettingsResponse {
     notifications: boolean;
     autoSave: boolean;
     onboardingCompleted?: boolean;
+    mobileNoticeDismissed?: boolean;
 }
 
 interface SettingsState {
@@ -41,7 +42,7 @@ interface SettingsState {
     fetchProfile: () => Promise<void>;
     fetchSettings: () => Promise<void>;
     updateProfile: (data: ProfileUpdateData) => Promise<boolean>;
-    updateSettings: (patch: Partial<UserSettings>) => Promise<boolean>;
+    updateSettings: (patch: Partial<UserSettings>, options?: { silent?: boolean }) => Promise<boolean>;
     changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
     clearErrors: () => void;
     clearPasswordSuccess: () => void;
@@ -53,6 +54,7 @@ function normalize(data: SettingsResponse): UserSettings {
         notifications: data.notifications ?? true,
         autoSave: data.autoSave ?? true,
         onboardingCompleted: data.onboardingCompleted === true,
+        mobileNoticeDismissed: data.mobileNoticeDismissed === true,
     };
 }
 
@@ -200,7 +202,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         }
     },
 
-    updateSettings: async (patch) => {
+    updateSettings: async (patch, options) => {
         const previous = { ...get().settings };
 
         // Guest mode: localStorage only, no API call
@@ -231,13 +233,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
             const data: ApiResponse<SettingsResponse> = await response.json();
             if (data.data) get().applyServerSettings(normalize(data.data));
 
-            toast.success('Settings saved');
+            if (!options?.silent) toast.success('Settings saved');
             return true;
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Failed to update settings';
             set({ settingsError: message });
             get().applyServerSettings(previous);
-            toast.error(message);
+            if (!options?.silent) toast.error(message);
             console.error('[settingsStore] Update settings error:', error);
             return false;
         } finally {

@@ -339,6 +339,7 @@ export interface UserSettings {
   notifications: boolean;
   autoSave: boolean;
   onboardingCompleted?: boolean;
+  mobileNoticeDismissed?: boolean;
 }
 
 export interface PasswordChangeForm {

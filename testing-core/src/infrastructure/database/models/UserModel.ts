@@ -19,6 +19,7 @@ export interface IUser extends Document {
     notifications: boolean;
     autoSave: boolean;
     onboardingCompleted?: boolean;
+    mobileNoticeDismissed?: boolean;
   };
   createdAt: Date;
   updatedAt: Date;
@@ -76,6 +77,8 @@ const userSchema = new Schema(
       autoSave: { type: Boolean, default: true },
       // No default: absent means not-yet-onboarded; first-run tour sets `true`.
       onboardingCompleted: { type: Boolean, default: undefined },
+      // No default: absent means the phone advisory has not been dismissed yet.
+      mobileNoticeDismissed: { type: Boolean, default: undefined },
     },
   },
   {

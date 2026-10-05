@@ -23,6 +23,7 @@ export function loadGuestSettings(): UserSettings {
             theme,
             notifications: typeof parsed.notifications === 'boolean' ? parsed.notifications : DEFAULT_SETTINGS.notifications,
             autoSave: typeof parsed.autoSave === 'boolean' ? parsed.autoSave : DEFAULT_SETTINGS.autoSave,
+            mobileNoticeDismissed: parsed.mobileNoticeDismissed === true,
         };
     } catch {
         return { ...DEFAULT_SETTINGS, theme };

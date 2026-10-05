@@ -24,6 +24,7 @@ export interface UserSettings {
     notifications: boolean;
     autoSave: boolean;
     onboardingCompleted?: boolean;
+    mobileNoticeDismissed?: boolean;
 }
 
 /**
@@ -264,6 +265,7 @@ export async function handleGetSettings(
             notifications: userSettings?.notifications ?? true,
             autoSave: userSettings?.autoSave ?? true,
             onboardingCompleted: userSettings?.onboardingCompleted === true,
+            mobileNoticeDismissed: userSettings?.mobileNoticeDismissed === true,
         };
 
         jsonResponse(res, 200, { data: settings });
@@ -291,11 +293,12 @@ export async function handleUpdateSettings(
             return;
         }
 
-        const { theme, notifications, autoSave, onboardingCompleted } = request.body as {
+        const { theme, notifications, autoSave, onboardingCompleted, mobileNoticeDismissed } = request.body as {
             theme?: string;
             notifications?: boolean;
             autoSave?: boolean;
             onboardingCompleted?: boolean;
+            mobileNoticeDismissed?: boolean;
         };
 
         // Validate and sanitize inputs
@@ -341,6 +344,16 @@ export async function handleUpdateSettings(
             }
         }
 
+        // Mobile notice flag validation
+        if (mobileNoticeDismissed !== undefined) {
+            if (typeof mobileNoticeDismissed === 'boolean') {
+                updateData['settings.mobileNoticeDismissed'] = mobileNoticeDismissed;
+            } else {
+                errorResponse(res, 400, 'MobileNoticeDismissed must be a boolean');
+                return;
+            }
+        }
+
         // Update user settings
         const user = await UserModel.findByIdAndUpdate(
             userId,
@@ -359,6 +372,7 @@ export async function handleUpdateSettings(
             notifications: userSettings?.notifications ?? true,
             autoSave: userSettings?.autoSave ?? true,
             onboardingCompleted: userSettings?.onboardingCompleted === true,
+            mobileNoticeDismissed: userSettings?.mobileNoticeDismissed === true,
         };
 
         jsonResponse(res, 200, { data: settings });

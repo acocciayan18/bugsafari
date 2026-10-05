@@ -15,6 +15,7 @@ import { hasMeaningfulRunResults } from './utils/runResults';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DarkModeProvider } from './context/DarkModeContext';
 import GuestSavePromptModal from './components/auth/GuestSavePromptModal';
+import { MobileDesktopNotice } from './components/common/MobileDesktopNotice';
 import LoginForm from './components/auth/LoginForm';
 import SignupForm from './components/auth/SignupForm';
 import ForgotPasswordForm from './components/auth/ForgotPasswordForm';
@@ -24,6 +25,7 @@ import SidebarLayout from './components/layout/SidebarLayout';
 import ConnectionStatusChip from './components/common/ConnectionStatusChip';
 import BootLoader from './components/common/BootLoader';
 import RouteErrorBoundary from './components/common/RouteErrorBoundary';
+import { useMobileNotice } from './hooks/useMobileNotice';
 import { ThemeProvider } from './designs/ThemeContext';
 import LandingPage from './designs/LandingPage';
 import { ExplorePage, FeaturesPage, CommunityPage, AboutPage } from './pages/InfoPages';
@@ -74,6 +76,9 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
     useDashboardController();
 
   useRunNotifications();
+
+  // Phone-only, once-per-user advisory on the dashboard route only. Advisory — nothing gated.
+  const mobileNotice = useMobileNotice(activeView === 'dashboard');
 
   // Auto Save (Settings) — commit a finished run without waiting for the manual press.
   // Guests cannot persist. Exactly one attempt per finished run: a failed save flips
@@ -246,6 +251,8 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
           navigate('/signup');
         }}
       />
+
+      <MobileDesktopNotice isOpen={mobileNotice.isOpen} onDismiss={mobileNotice.dismiss} />
     </ThemeProvider>
   );
 }
