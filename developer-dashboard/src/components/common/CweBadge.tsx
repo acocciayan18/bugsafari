@@ -36,6 +36,7 @@ const CWE_CATALOG: Record<string, CweInfo> = {
   'CWE-755': { name: 'Improper Handling of Exceptional Conditions', plain: 'The server hit an error it did not handle (a 5xx), so the request failed instead of returning a proper result.' },
   'CWE-834': { name: 'Excessive Iteration', plain: 'Code runs a loop or re-render far more than it should, so it blocks the page from responding or repainting.' },
   'CWE-835': { name: "Loop with Unreachable Exit Condition ('Infinite Loop')", plain: 'A loop or redirect chain has no way out, so it never settles.' },
+  'CWE-837': { name: 'Improper Enforcement of a Single, Unique Action', plain: 'An action meant to run once was allowed to run twice because nothing guarded the repeat, so it submitted again.' },
   'CWE-943': { name: 'Improper Neutralization of Data Query Logic (NoSQL Injection)', plain: 'Query operators from user input reach the database untouched and change what the query returns.' },
 };
 

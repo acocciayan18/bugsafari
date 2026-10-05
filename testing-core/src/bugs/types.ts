@@ -24,6 +24,7 @@ export type BugClass =
   | 'SESSION_SYNC_FAULT'
   | 'METAMORPHIC_STATE_LEAK'
   | 'NON_IDEMPOTENT_ACTION'
+  | 'DUPLICATE_ACTION'
   | 'RELOAD_STATE_CORRUPTION';
 
 export interface BugFinding {

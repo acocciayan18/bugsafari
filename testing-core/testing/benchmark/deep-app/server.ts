@@ -52,7 +52,7 @@ const HTML = `<!doctype html>
 
   <script>
     document.getElementById('login-btn').addEventListener('click', function () {
-      // No disable-on-submit guard → rapid re-clicks double-submit (SPA_STATE_RACE).
+      // No disable-on-submit guard → rapid re-clicks double-submit (DUPLICATE_ACTION).
       fetch('/api/login', { method: 'POST' }).catch(function () {});
     });
     document.getElementById('pay-now').addEventListener('click', function () {

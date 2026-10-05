@@ -89,7 +89,7 @@ export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
   },
   SPA_STATE_RACE_CONDITION: {
     title: 'Fast repeated actions corrupted the page state',
-    description: 'Interactions that fired at the same time got out of sync, or a control submitted twice before its guard kicked in.',
+    description: 'Interactions that fired at the same time got out of sync, so overlapping async work left the page in a bad state.',
     defaultSeverity: 'HIGH',
     cwe: 'CWE-362',
     remediation: remediation(
@@ -97,6 +97,18 @@ export const BUG_CATALOG: Record<BugClass, BugDefinition> = {
       '1. Disable or debounce the control after the first interaction until it finishes',
       '2. Make each state change safe to run more than once under overlapping events',
       '3. Add a test that fires a fast burst and confirms only one result is committed',
+    ),
+  },
+  DUPLICATE_ACTION: {
+    title: 'A control submitted the same action twice',
+    description: 'A control fired the same state-changing request twice with no debounce or disable-on-submit guard, so a single intended action was submitted more than once.',
+    defaultSeverity: 'HIGH',
+    cwe: 'CWE-837',
+    remediation: remediation(
+      'Suggested fix: enforce a single submission per action',
+      '1. Disable or debounce the control on the first submit until the request settles',
+      '2. Send an idempotency key the server can dedupe, or guard the write with an optimistic-concurrency token',
+      '3. Add a test that double-clicks the control and confirms the backend commits the action only once',
     ),
   },
   STRUCTURAL_NAVIGATION_LOGIC: {

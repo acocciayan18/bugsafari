@@ -1262,7 +1262,7 @@ export class StabilityMonitor {
   }
 
   // Report one judged duplicate state-changing request. Direct emit — the knowledge-base
-  // classifier has no path to SPA_STATE_RACE_CONDITION, and the finder's two-phase
+  // classifier has no path to DUPLICATE_ACTION, and the finder's two-phase
   // response validation already self-gates, so this bypasses verifyFault and reports with
   // the finder's stable, signature-derived bugId. A recurrence re-registers under the same
   // bugId so the persisted record carries the final occurrence count and verdict.
@@ -1275,7 +1275,7 @@ export class StabilityMonitor {
 
     // The backend correctly protected the duplicate (rejected 409/425/429, or deduped a
     // shared idempotency key). The app behaved as designed, so surface it as a Network
-    // observation only and never register a SPA_STATE_RACE_CONDITION finding.
+    // observation only and never register a DUPLICATE_ACTION finding.
     if (defect.protected) {
       t.emit('NETWORK', {
         url,
@@ -1920,7 +1920,7 @@ export class StabilityMonitor {
         // Skip duplicate pairing while a synthetic burst fires: the ConcurrentClicker / race
         // bursts use force:true clicks that bypass the app's disable-on-submit, so a "double
         // submit" they provoke is an engine artifact a real user cannot reproduce — not a
-        // SPA_STATE_RACE_CONDITION. Organic double-clicks (no burst active) are still observed.
+        // DUPLICATE_ACTION. Organic double-clicks (no burst active) are still observed.
         if (!ActiveScenarioTracker.isOffTargetScenarioActive() && !isRaceScenarioActive()) {
         this.duplicateFinder.observeRequest({
           requestId: this.requestIdFor(request),

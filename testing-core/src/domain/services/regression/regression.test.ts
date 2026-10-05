@@ -648,6 +648,7 @@ check('replay-detectable classes verifiable; oracle/timing classes are not', () 
   // whether the server still accepts it (2xx) or now rejects it (4xx).
   assert.ok(isReplayVerifiable('CLIENT_SIDE_CONSTRAINT_BYPASS'));
   assert.ok(!isReplayVerifiable('SPA_STATE_RACE_CONDITION'));
+  assert.ok(!isReplayVerifiable('DUPLICATE_ACTION'));
   assert.ok(!isReplayVerifiable('CASCADING_STATE_FAILURE'));
   assert.ok(!isReplayVerifiable(''));
 });

@@ -72,8 +72,8 @@ check('identical POST issued while the first is in flight, both 2xx → CONFIRME
   assert.ok(defect);
   assert.equal(defect!.verdict, 'CONFIRMED_DUPLICATE');
   assert.equal(defect!.severity, 'HIGH');
-  assert.equal(defect!.bugClass, 'SPA_STATE_RACE_CONDITION');
-  assert.equal(defect!.cwe, 'CWE-362');
+  assert.equal(defect!.bugClass, 'DUPLICATE_ACTION');
+  assert.equal(defect!.cwe, 'CWE-837');
   assert.equal(defect!.overlapped, true);
   assert.equal(defect!.intervalMs, 150);
   assert.equal(h.finder.totalFound(), 1);
@@ -516,7 +516,7 @@ check('advice carries the catalog remediation', () => {
   const b = h.send(1100);
   h.settle(b, 1300, 201);
   const defect = h.settle(a, 1400, 201);
-  assert.ok(defect!.advice.includes('Suggested fix: guard against overlapping actions'));
+  assert.ok(defect!.advice.includes('Suggested fix: enforce a single submission per action'));
 });
 
 console.log('\nDuplicateActionFinder — scoring, collapse & bounds');

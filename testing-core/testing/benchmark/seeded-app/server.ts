@@ -43,7 +43,7 @@ const HTML = `<!doctype html>
       fetch('/api/pay').catch(function () {});
     });
     // SEEDED: no disable-on-submit guard — rapid re-clicks fire overlapping POSTs
-    // (SPA_STATE_RACE_CONDITION), plus the 200 soft-fail body (NOSQL_INJECTION).
+    // (DUPLICATE_ACTION), plus the 200 soft-fail body (NOSQL_INJECTION).
     document.getElementById('login-btn').addEventListener('click', function () {
       fetch('/api/login', { method: 'POST' }).catch(function () {});
     });

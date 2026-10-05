@@ -76,7 +76,7 @@ export type DuplicateVerdict = 'CONFIRMED_DUPLICATE' | 'SUSPECTED' | 'GUARDED';
 // A duplicate state-changing request that survived retry/idempotency/rejection filtering.
 export interface DuplicateActionDefect {
   bugId: string;
-  bugClass: 'SPA_STATE_RACE_CONDITION';
+  bugClass: 'DUPLICATE_ACTION';
   verdict: DuplicateVerdict;
   severity: 'HIGH' | 'MEDIUM' | 'LOW';
   faultConfidence: 'CONFIRMED' | 'SIGNAL' | 'INFERRED';
@@ -353,12 +353,12 @@ export class DuplicateActionFinder {
 
     return {
       bugId,
-      bugClass: 'SPA_STATE_RACE_CONDITION',
+      bugClass: 'DUPLICATE_ACTION',
       verdict,
       severity,
       faultConfidence,
       confidenceScore,
-      cwe: BUG_CATALOG.SPA_STATE_RACE_CONDITION.cwe,
+      cwe: BUG_CATALOG.DUPLICATE_ACTION.cwe,
       message: this.messageFor(verdict, second.method, endpoint, intervalMs, overlapped, guardStatus),
       endpoint,
       method: second.method,
@@ -498,7 +498,7 @@ export class DuplicateActionFinder {
     const lead = verdict === 'GUARDED'
       ? 'The control fired the same state-changing request twice with no client guard; only the backend prevented a duplicate commit.'
       : 'The control fired the same state-changing request twice with no debounce or disable-on-submit guard.';
-    return `${lead}\n${BUG_CATALOG.SPA_STATE_RACE_CONDITION.remediation}`;
+    return `${lead}\n${BUG_CATALOG.DUPLICATE_ACTION.remediation}`;
   }
 
   private describeOutcome(r: TrackedRequest): string {

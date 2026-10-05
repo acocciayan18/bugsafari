@@ -58,7 +58,7 @@ export const SCENARIO_CATALOG: Record<string, ScenarioDefinition> = {
   },
   DoubleSubmitProbe: {
     testingType: 'concurrency',
-    expectedBugs: ['SPA_STATE_RACE_CONDITION', 'RUNTIME_STABILITY_EXCEPTION'],
+    expectedBugs: ['DUPLICATE_ACTION', 'RUNTIME_STABILITY_EXCEPTION'],
     signalCategories: ['CLIENT_CRASH'],
     description: 'Clicks a commit control twice with genuine (non-forced) clicks to surface an unguarded double-submit a real user can reproduce.',
   },
