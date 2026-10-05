@@ -7,6 +7,7 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from './infrastructure/notifications/ToastProvider';
+import { TOAST_ID } from './infrastructure/notifications/toastId';
 import { useDashboardController } from './application/useCases/useDashboardController';
 import { useRunNotifications } from './hooks/useRunNotifications';
 import { useSettingsStore } from './stores/settingsStore';
@@ -107,7 +108,8 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
     // transition replaces one node in place instead of stacking a fresh promise toast.
     toast('Auto-saving session...', { duration: Infinity });
     void saveSessionToHistory(targetUrl)
-      .then(() => toast.success('Session auto-saved to history'))
+      // Reuse the shared status slot so this replaces the "Auto-saving…" loader in place.
+      .then(() => toast.action('Session auto-saved to history', { label: 'View in history', onClick: () => navigate('/history') }, { id: TOAST_ID }))
       .catch(() => toast.error("Couldn't auto-save. Use Save Session to try again."));
   }, [
     autoSave,
@@ -121,6 +123,7 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
     state.browserConsole,
     saveSessionToHistory,
     targetUrl,
+    navigate,
   ]);
 
   // Keep the target field in sync with a restored or live run so a refresh shows the
@@ -148,7 +151,8 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
     }
     toast('Saving session...', { duration: Infinity });
     void saveSessionToHistory(targetUrl)
-      .then(() => toast.success('Session saved to history!'))
+      // Reuse the shared status slot so this replaces the "Saving…" loader in place.
+      .then(() => toast.action('Session saved to history!', { label: 'View in history', onClick: () => navigate('/history') }, { id: TOAST_ID }))
       .catch(() => toast.error('Failed to save session'));
   };
 

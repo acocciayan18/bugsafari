@@ -15,10 +15,19 @@ import type { TestSessionStatus } from '../../application/useCases/useDashboardC
 import type { RunTerminationOutcome } from '../../types';
 import LiveFeedConnected from '../common/LiveFeedConnected';
 import SessionTimerLive from '../common/SessionTimerLive';
+import RunProgressBar from '../common/RunProgressBar';
 import QueueStandbyChip from '../common/QueueStandbyChip';
 import PublicTargetNotice from '../common/PublicTargetNotice';
 import JumpToBottomButton from '../common/JumpToBottomButton';
 import LongOperationProgressCard from '../common/LongOperationProgressCard';
+import ReconnectingBanner from '../common/ReconnectingBanner';
+import StopRunConfirmDialog from '../common/StopRunConfirmDialog';
+import ShortcutsCheatSheet from '../common/ShortcutsCheatSheet';
+import MobileRunActionBar, { type MobileRunAction } from '../common/MobileRunActionBar';
+import { Tooltip } from '../ui/Tooltip';
+import { useDashboardShortcuts } from '../../hooks/useDashboardShortcuts';
+import { useSwipe } from '../../hooks/useSwipe';
+import { isCleanTermination } from '../../../../shared/types.js';
 import { readLaunchConfigDraft, writeLaunchConfigDraft } from '../../stores/launchConfigDraft';
 import { useStickyScroll } from '../../hooks/useStickyScroll';
 import { useScrollAffordance } from '../../hooks/useScrollAffordance';
@@ -174,6 +183,10 @@ function ClinicalForensicsDashboard({
   const [authDraft, setAuthDraft] = useState<TargetAuthDraft>(initialConfig.auth);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [noticeDismissed, setNoticeDismissed] = useState(false);
+  // Confirm before ending an ACTIVE run; `?` cheat-sheet overlay.
+  const [showStopConfirm, setShowStopConfirm] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const urlInputRef = useRef<HTMLInputElement>(null);
 
   // Persist launch choices on every change (password stripped inside the store).
   useEffect(() => {
@@ -309,8 +322,56 @@ function ClinicalForensicsDashboard({
     console: browserConsole.length,
   }), [errorCount, networkEvents, browserConsole.length]);
 
+  // The one stop that discards remaining exploration — queued cancel and transitional
+  // states are not confirmed (nothing has been explored yet / already settling).
+  const isLiveStop = isActiveSession && !isQueued && !transitionLabel;
+
+  // A run that ended on a healthy outcome with zero findings earns the deliberate
+  // "clean run" closure instead of the neutral "no findings yet" placeholder.
+  const cleanRun = hasRunCompleted && !isActiveSession && errorCount === 0
+    && terminationOutcome != null && isCleanTermination(terminationOutcome);
+
+  // Tab navigation shared by keyboard shortcuts (1-4) and touch swipe.
+  const tabOrder = TERMINAL_TABS.map((t) => t.id);
+  const shiftTab = (dir: 1 | -1) => {
+    const i = tabOrder.indexOf(activeTab);
+    setActiveTab(tabOrder[(i + dir + tabOrder.length) % tabOrder.length]);
+  };
+  const swipeHandlers = useSwipe({ onSwipeLeft: () => shiftTab(1), onSwipeRight: () => shiftTab(-1) });
+
+  const handleStopRequest = () => setShowStopConfirm(true);
+  // `s` starts an idle run or requests a stop on a live one — the single run toggle.
+  const handleToggleRun = () => {
+    if (isLiveStop) { setShowStopConfirm(true); return; }
+    if (!isActiveSession && !isQueued && !launchBlocked) handleInitialize();
+  };
+
+  useDashboardShortcuts({
+    onFocusUrl: () => urlInputRef.current?.focus(),
+    onToggleRun: handleToggleRun,
+    onOpenConfig: () => { if (!isActiveSession) setIsConfigOpen(true); },
+    onSelectTab: (i) => { const id = tabOrder[i]; if (id) setActiveTab(id); },
+    onToggleHelp: () => setShowShortcuts((v) => !v),
+    enabled: !showConfigModal && !showStopConfirm && !showShortcuts,
+  });
+
+  // Single most-relevant run action for the mobile bottom bar.
+  const mobileAction: MobileRunAction =
+    transitionLabel ? null
+    : isQueued ? 'cancel'
+    : isActiveSession ? 'stop'
+    : hasRunCompleted ? 'save'
+    : 'start';
+  const mobileActionDisabled =
+    mobileAction === 'start' ? launchBlocked
+    : mobileAction === 'save' ? isSessionSaved
+    : false;
+
   return (
     <div className="flex flex-col overflow-visible lg:flex-1 lg:overflow-hidden bg-(--surface-app)">
+
+      {/* Dropped socket mid-run — louder than the corner chip, with manual Retry. */}
+      <ReconnectingBanner active={isActiveSession} />
 
       {/* ═══════════════════════════════════════════════════════════════
           TOP CONTROLS: COMMAND CENTER LAYER
@@ -355,6 +416,9 @@ function ClinicalForensicsDashboard({
                   isPaused={testStatus !== 'ACTIVE'}
                 />
               )}
+              {/* Determinate elapsed/total against the duration cap — the timer counts
+                  down but never shows how close the run is to its budget. */}
+              {!isQueued && isActiveSession && <RunProgressBar />}
               {/* Standby indicator — job is waiting for a free worker; all controls locked. */}
               {isQueued && <QueueStandbyChip />}
               {/* Transitional indicator — the backend is settling in-flight tasks; all
@@ -392,7 +456,7 @@ function ClinicalForensicsDashboard({
               {isQueued && !transitionLabel && onStop && (
                 <button
                   onClick={onStop}
-                  className="flex items-center cursor-pointer gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
+                  className="hidden lg:flex items-center cursor-pointer gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
                 >
                   <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Cancel Queued Run
@@ -400,8 +464,8 @@ function ClinicalForensicsDashboard({
               )}
               {isActiveSession && !transitionLabel && !isQueued && onStop && (
                 <button
-                  onClick={onStop}
-                  className="flex items-center cursor-pointer  gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
+                  onClick={handleStopRequest}
+                  className="hidden lg:flex items-center cursor-pointer  gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
                 >
                   <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Stop
@@ -414,7 +478,7 @@ function ClinicalForensicsDashboard({
   onClick={onSaveSessionToHistory}
   disabled={isSessionSaved}
   title={isSessionSaved ? 'Session already saved' : 'Save session to history'}
-  className={`flex items-center gap-2 rounded-lg border px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors ${
+  className={`hidden lg:flex items-center gap-2 rounded-lg border px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors ${
     isSessionSaved
       ? 'border-(--border-default) text-(--text-primary) hover:cursor-not-allowed opacity-80'
       : 'border-(--border-default) text-(--text-primary) hover:cursor-pointer hover:bg-(--surface-hover) hover:text-(--text-primary)'
@@ -441,6 +505,7 @@ function ClinicalForensicsDashboard({
               aria-hidden="true"
             />
             <input
+              ref={urlInputRef}
               type="url"
               inputMode="url"
               autoComplete="url"
@@ -482,7 +547,7 @@ function ClinicalForensicsDashboard({
                     ? 'Enter a username and password, or turn off target authentication'
                     : undefined
             }
-            className="flex h-11 w-full sm:w-auto hover:cursor-pointer items-center justify-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) text-(--text-oninvert) px-5 text-[13px] font-semibold uppercase  font-sans shrink-0 transition-all duration-100 disabled:opacity-50 disabled:hover:bg-(--surface-invert) disabled:cursor-not-allowed"
+            className="hidden lg:flex h-11 w-full sm:w-auto hover:cursor-pointer items-center justify-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) text-(--text-oninvert) px-5 text-[13px] font-semibold uppercase  font-sans shrink-0 transition-all duration-100 disabled:opacity-50 disabled:hover:bg-(--surface-invert) disabled:cursor-not-allowed"
           >
             <BugPlay className="h-5 w-5 shrink-0" />
             <span>Start Testing</span>
@@ -573,13 +638,13 @@ function ClinicalForensicsDashboard({
 
             <div className="flex shrink-0 items-center gap-1 pr-2">
               {activeTab === 'telemetry' && (
+                <Tooltip label={showVerbose ? 'Hide per-step execution trace' : 'Show full execution trace (debug)'} side="bottom">
                 <button
   type="button"
   data-tour="verbose-toggle"
   onClick={() => setShowVerbose((v) => !v)}
   aria-pressed={showVerbose}
   aria-label="Toggle verbose execution trace"
-  title={showVerbose ? 'Hide per-step execution trace' : 'Show full execution trace (debug)'}
   className={`inline-flex items-center cursor-pointer justify-center rounded-md border p-1.5 transition-colors ${
     showVerbose
       ? 'border-(--border-strong) bg-(--surface-invert) text-(--text-oninvert)'
@@ -588,6 +653,7 @@ function ClinicalForensicsDashboard({
 >
   <Workflow className="h-3.5 w-3.5" aria-hidden="true" />
 </button>
+                </Tooltip>
               )}
               <TelemetryHelpModal activeTab={activeTab} />
             </div>
@@ -602,6 +668,7 @@ function ClinicalForensicsDashboard({
               id="terminal-tabpanel"
               aria-labelledby={`terminal-tab-${activeTab}`}
               tabIndex={0}
+              {...swipeHandlers}
               className="custom-scrollbar h-full overflow-y-auto overflow-x-hidden overscroll-contain bg-(--surface-panel) p-3 pb-10 sm:p-4 sm:pb-10 font-mono text-[13px] border border-(--border-hairline) border-t-0"
             >
               {activeTab === 'telemetry' && (
@@ -661,7 +728,7 @@ function ClinicalForensicsDashboard({
                 </div>
               )}
 
-              {activeTab === 'errors' && <ErrorTabPanel errors={errors} />}
+              {activeTab === 'errors' && <ErrorTabPanel errors={errors} cleanRun={cleanRun} />}
               {activeTab === 'network' && <NetworkTabPanel events={networkEvents} />}
               {activeTab === 'console' && <ConsoleTabPanel browserConsole={browserConsole} filter="all" />}
             </div>
@@ -669,6 +736,27 @@ function ClinicalForensicsDashboard({
           </div>
         </div>
       </div>
+
+      {/* Clears the fixed mobile action bar so the last content is never hidden under it. */}
+      <div className="h-20 shrink-0 lg:hidden" aria-hidden="true" />
+
+      {/* Primary run action within thumb reach on phones; desktop keeps the top row. */}
+      <MobileRunActionBar
+        action={mobileAction}
+        disabled={mobileActionDisabled}
+        onStart={handleInitialize}
+        onStopRequest={handleStopRequest}
+        onCancelQueued={() => onStop?.()}
+        onSave={() => onSaveSessionToHistory?.()}
+      />
+
+      <StopRunConfirmDialog
+        isOpen={showStopConfirm}
+        onClose={() => setShowStopConfirm(false)}
+        onConfirm={() => onStop?.()}
+      />
+
+      <ShortcutsCheatSheet isOpen={showShortcuts} onClose={() => setShowShortcuts(false)} />
     </div>
   );
 }

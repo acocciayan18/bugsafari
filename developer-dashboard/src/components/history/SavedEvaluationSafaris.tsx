@@ -157,23 +157,13 @@ function pageItems(current: number, total: number): (number | 'gap')[] {
 const UNDO_TOAST_ID = 'bugsafari-history-undo';
 
 // Toast with an inline Undo affordance — used after reversible archive/trash so the
-// operator can revert without hunting for the row in another bucket.
+// operator can revert without hunting for the row in another bucket. Routed through the
+// shared actionable-toast primitive so every View/Undo toast reads identically.
 function emitUndoToast(message: string, onUndo: () => void): void {
-  toast.custom(
-    (id) => (
-      <div className="flex items-center justify-between w-full gap-3">
-        <span className="toast-message break-words flex-1 min-w-0">{message}</span>
-        <button
-          type="button"
-          onClick={() => { toast.dismiss(id); onUndo(); }}
-          className="shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-semibold text-(--text-primary) hover:bg-(--surface-hover)"
-        >
-          <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />
-          Undo
-        </button>
-      </div>
-    ),
-    { id: UNDO_TOAST_ID, duration: 6000 },
+  toast.action(
+    message,
+    { label: 'Undo', onClick: onUndo, icon: <Undo2 className="h-3.5 w-3.5" aria-hidden="true" /> },
+    { id: UNDO_TOAST_ID },
   );
 }
 

@@ -7,12 +7,23 @@ import { TOAST_ID } from './toastId';
 // Dedicated slot for generic network-error toasts — separate from the run-status
 // shared slot so the two never overwrite each other.
 const NETWORK_TOAST_ID = 'bugsafari-network-toast';
+// Dedicated slot for actionable toasts (View / Undo) so a user-driven confirmation
+// never gets clobbered by, or clobbers, the high-churn run-status shared slot.
+const ACTION_TOAST_ID = 'bugsafari-action-toast';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Toast Types
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export type ToastVariant = 'success' | 'telemetry' | 'error' | 'network';
+
+// Optional inline affordance on a toast — e.g. "View in history" / "Undo". Fires once,
+// then the toast dismisses. Kept minimal: one action per toast by design.
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+  icon?: ReactNode;
+}
 
 export interface ToastOptions {
   variant?: ToastVariant;
@@ -21,6 +32,8 @@ export interface ToastOptions {
   // Opt-in leading glyph. Telemetry toasts stay icon-less by design; only
   // surfaces that need a severity cue at a glance (auth) pass one.
   icon?: ReactNode;
+  // Optional inline action (View / Undo). Lands in a dedicated slot by default.
+  action?: ToastAction;
   // Fired whichever way the toast goes away (✕, swipe, timeout) so callers can
   // release the id they are holding.
   onDismiss?: () => void;
@@ -42,21 +55,33 @@ export interface ToastContextValue {
 interface CustomToastProps {
   message: string;
   icon?: ReactNode;
+  action?: ToastAction;
   onClose: () => void;
 }
 
 // The sonner wrapper already carries `.toast-custom` from TOAST_OPTIONS — rendering
 // another shell here would nest a second border inside it.
-function CustomToast({ message, icon, onClose }: CustomToastProps) {
+function CustomToast({ message, icon, action, onClose }: CustomToastProps) {
   return (
-    <div className="flex items-center justify-between w-full gap-3">
+    <div className="flex items-center justify-between w-full gap-2">
       {icon && <span className="shrink-0 flex items-center" aria-hidden="true">{icon}</span>}
       <div className="toast-content flex-1 min-w-0">
         <span className="toast-message break-words">{message}</span>
       </div>
+      {action && (
+        // Runs the action then closes — the toast's job is done once it's acted on.
+        <button
+          type="button"
+          className="toast-action-btn shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-semibold text-(--text-primary) hover:bg-(--surface-hover)"
+          onClick={() => { action.onClick(); onClose(); }}
+        >
+          {action.icon}
+          {action.label}
+        </button>
+      )}
       <button
         type="button"
-        className="toast-dismiss-btn shrink-0 ml-auto"
+        className="toast-dismiss-btn shrink-0"
         onClick={onClose}
         aria-label="Dismiss notification"
       >
@@ -76,6 +101,7 @@ interface RenderToastOptions {
   duration?: number;
   id?: string | number;
   icon?: ReactNode;
+  action?: ToastAction;
   onDismiss?: () => void;
 }
 
@@ -87,11 +113,13 @@ let activeSlotMessage: string | null = null;
 // new call replaces the old one in place — never a second stacked toast, and never
 // a stale render bleeding through (the failure of mixing custom + title paths).
 function renderToast(options: RenderToastOptions): string | undefined {
-  const { message, variant = 'telemetry', icon, onDismiss } = options;
+  const { message, variant = 'telemetry', icon, action, onDismiss } = options;
   // Generic network errors get their own slot + tint so they read as distinct from
   // run-status telemetry and never clobber (or get clobbered by) the shared slot.
-  const targetId = options.id ?? (variant === 'network' ? NETWORK_TOAST_ID : TOAST_ID);
-  const duration = options.duration ?? (variant === 'error' || variant === 'network' ? 5000 : 2500);
+  // Actionable toasts likewise own a slot so a "View / Undo" prompt survives run churn.
+  const targetId = options.id ?? (action ? ACTION_TOAST_ID : variant === 'network' ? NETWORK_TOAST_ID : TOAST_ID);
+  // Actions need a longer dwell so the affordance is reachable before auto-close.
+  const duration = options.duration ?? (action ? 6000 : variant === 'error' || variant === 'network' ? 5000 : 2500);
   const isSharedSlot = targetId === TOAST_ID;
 
   // Duplicate suppression: same message already occupying the slot → no-op.
@@ -106,7 +134,7 @@ function renderToast(options: RenderToastOptions): string | undefined {
   // sonner hands the render callback the toast id, not a close handler — the ✕
   // must dismiss by that id.
   const toastId = sonnerToast.custom(
-    (id) => <CustomToast message={message} icon={icon} onClose={() => sonnerToast.dismiss(id)} />,
+    (id) => <CustomToast message={message} icon={icon} action={action} onClose={() => sonnerToast.dismiss(id)} />,
     { id: targetId, duration, onDismiss: releaseSlot, onAutoClose: releaseSlot, unstyled: true, className: variant === 'network' ? 'toast-custom toast-network' : 'toast-custom' },
   );
 
@@ -235,6 +263,13 @@ export const toast = Object.assign(
   {
     success: (message: string, data?: ExternalToast) => emit(message, 'success', data),
     error: (message: string, data?: ExternalToast) => emit(message, 'error', data),
+    // Toast carrying one inline affordance (View in history / Undo). Routed through the
+    // shared renderer so it shares the same shell, ✕, and dismissal plumbing.
+    action: (
+      message: string,
+      action: ToastAction,
+      data?: { variant?: ToastVariant; duration?: number; id?: string; icon?: ReactNode; onDismiss?: () => void },
+    ) => renderToast({ message, action, variant: data?.variant ?? 'success', duration: data?.duration, id: data?.id, icon: data?.icon, onDismiss: data?.onDismiss }),
     // Generic transient network/connectivity error — distinct from the persistent
     // connection chip, which owns live Connected/Reconnecting/Offline/Slow status.
     network: (message: string, data?: ExternalToast) => emit(message, 'network', data),

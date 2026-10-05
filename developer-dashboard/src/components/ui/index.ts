@@ -5,4 +5,5 @@ export type { BadgeVariant } from './Badge';
 export { Card } from './Card';
 export { Input } from './Input';
 export { Modal } from './Modal';
+export { Tooltip } from './Tooltip';
 export { Skeleton } from './Skeleton';
