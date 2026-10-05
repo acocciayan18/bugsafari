@@ -109,7 +109,7 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
     toast('Auto-saving session...', { duration: Infinity });
     void saveSessionToHistory(targetUrl)
       // Reuse the shared status slot so this replaces the "Auto-saving…" loader in place.
-      .then(() => toast.action('Session auto-saved to history', { label: 'View in history', onClick: () => navigate('/history') }, { id: TOAST_ID }))
+      .then((saved) => toast.action('Session auto-saved to history', { label: 'View in history', onClick: () => navigate(saved?.sessionId ? `/history/forensic-report/${saved.sessionId}` : '/history') }, { id: TOAST_ID }))
       .catch(() => toast.error("Couldn't auto-save. Use Save Session to try again."));
   }, [
     autoSave,
@@ -152,7 +152,7 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
     toast('Saving session...', { duration: Infinity });
     void saveSessionToHistory(targetUrl)
       // Reuse the shared status slot so this replaces the "Saving…" loader in place.
-      .then(() => toast.action('Session saved to history!', { label: 'View in history', onClick: () => navigate('/history') }, { id: TOAST_ID }))
+      .then((saved) => toast.action('Session saved to history!', { label: 'View in history', onClick: () => navigate(saved?.sessionId ? `/history/forensic-report/${saved.sessionId}` : '/history') }, { id: TOAST_ID }))
       .catch(() => toast.error('Failed to save session'));
   };
 

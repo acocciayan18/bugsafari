@@ -1341,7 +1341,7 @@ export function registerRoutes(
 obsLog.info('[API] Saved to sessions:', result.message, '| runId:', result.runId ?? 'n/a', '| ownerType:', ownerType, '| userId:', userId);
       // Explicitly return 201 Created status for resource creation. runId is the
       // saved doc's public RUN- code for the client to display/deep-link.
-      response.status(201).json({ ok: true, message: result.message, runId: result.runId, ownerType });
+      response.status(201).json({ ok: true, message: result.message, runId: result.runId, sessionId: result.sessionId, ownerType });
     } catch (error) {
       // Reached only on a fault outside manualSaveToHistory's own handling (a
       // dynamic import, a dropped connection). Correlate, don't describe.

@@ -267,10 +267,10 @@ export async function refreshHistory(): Promise<void> {
     useRunStore.getState().setSessionHistory(history);
 }
 
-export async function saveRun(inputTargetUrl: string): Promise<void> {
+export async function saveRun(inputTargetUrl: string): Promise<{ runId?: string; sessionId?: string }> {
     const store = useRunStore.getState();
     // Idempotent by design — an in-flight or already-committed save is a no-op
-    if (store.isSavingSession || store.isSessionSaved) return;
+    if (store.isSavingSession || store.isSessionSaved) return {};
 
     store.setSavingSession(true);
     try {
@@ -302,7 +302,7 @@ export async function saveRun(inputTargetUrl: string): Promise<void> {
             : (runRefs.runStartWallClock > 0 ? Date.now() - runRefs.runStartWallClock : 0);
 
         // Save requires authentication (throws 403 for guests)
-        await saveSessionToHistory(runtimeUrl.trim(), {
+        const saved = await saveSessionToHistory(runtimeUrl.trim(), {
             initialUrl: inputTargetUrl.trim(),
             // Identifies the run server-side, so a repeated save rewrites its document
             // instead of minting a second one under a fresh code.
@@ -316,6 +316,7 @@ export async function saveRun(inputTargetUrl: string): Promise<void> {
         useRunStore.getState().markSessionSaved();
         await refreshHistory();
         useRunStore.getState().pushTelemetry(actionEvent('Session has been committed to history.', 'session-saved'));
+        return saved;
     } catch (error) {
         const err = error as Error & { code?: string; status?: number };
         const isGuestRejection = err?.code === 'GUEST_FORBIDDEN' || err?.status === 403;

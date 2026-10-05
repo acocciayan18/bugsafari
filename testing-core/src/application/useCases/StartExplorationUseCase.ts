@@ -270,7 +270,7 @@ export class StartExplorationUseCase {
             clientNetworkLog?: Record<string, unknown>[];
             clientConsoleLog?: Record<string, unknown>[];
         },
-    ): Promise<{ success: boolean; message: string; runId?: string; code?: SaveFailureCode }> {
+    ): Promise<{ success: boolean; message: string; runId?: string; sessionId?: string; code?: SaveFailureCode }> {
         // A run in progress owns the engine's live bug memory (getConfirmedBugsFromMemory
         // reads the active engine first). Serving a save for a DIFFERENT run while one is
         // active would persist the live run's findings under the requested run's identity.
@@ -563,7 +563,7 @@ export class StartExplorationUseCase {
                 obsLog.error(`[StartExplorationUseCase]  Network/console log flush failed: ${logError instanceof Error ? logError.message : String(logError)}`);
             }
 
-            return { success: true, message: `Saved as ${savedDocument._id}`, runId: savedDocument.runId };
+            return { success: true, message: `Saved as ${savedDocument._id}`, runId: savedDocument.runId, sessionId: String(savedDocument._id) };
         } catch (persistError) {
             const errorMessage = persistError instanceof Error ? persistError.message : String(persistError);
             const name = persistError instanceof Error ? persistError.name : 'UnknownError';

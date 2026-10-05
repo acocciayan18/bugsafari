@@ -96,7 +96,7 @@ export async function saveSessionToHistory(
     networkLog?: unknown[];
     consoleLog?: unknown[];
   }
-): Promise<void> {
+): Promise<{ runId?: string; sessionId?: string }> {
   const token = localStorage.getItem('bugsafari_token');
   console.log('[historyService]  saveSessionToHistory called', token ? '(authenticated)' : '(anonymous mode)');
 
@@ -172,8 +172,10 @@ if (!response.ok) {
     throw err;
   }
 
-  const responseData = await response.json() as { ok?: boolean; message?: string };
+  const responseData = await response.json() as { ok?: boolean; message?: string; runId?: string; sessionId?: string };
   console.log('[historyService] Session saved:', responseData.message ?? 'success');
+  // Saved doc refs let the caller deep-link straight to this session's report.
+  return { runId: responseData.runId, sessionId: responseData.sessionId };
 }
 
 /**
