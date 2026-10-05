@@ -77,7 +77,7 @@ const SEVERITY_DOT_CLASS: Record<string, string> = {
 
 // Compact filter dropdown — trigger shows the active choice, popover lists the rest.
 // Menu behavior (dismiss/keyboard) reuses the shared RowActionMenu pattern for consistency.
-function FilterDropdown<T extends string>({ options, value, onChange, ariaLabel, dataTour, icon, dots }: {
+function FilterDropdown<T extends string>({ options, value, onChange, ariaLabel, dataTour, icon, dots, className = '' }: {
   options: readonly { value: T; label: string }[];
   value: T;
   onChange: (value: T) => void;
@@ -85,6 +85,7 @@ function FilterDropdown<T extends string>({ options, value, onChange, ariaLabel,
   dataTour?: string;
   icon: React.ReactNode;
   dots?: Record<string, string>;
+  className?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -93,7 +94,7 @@ function FilterDropdown<T extends string>({ options, value, onChange, ariaLabel,
   const active = options.find((o) => o.value === value);
 
   return (
-    <div ref={menuRef} data-tour={dataTour} className="relative">
+    <div ref={menuRef} data-tour={dataTour} className={`relative ${className}`}>
       <button
         ref={buttonRef}
         type="button"
@@ -101,11 +102,11 @@ function FilterDropdown<T extends string>({ options, value, onChange, ariaLabel,
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         aria-label={ariaLabel}
-        className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] pl-2 pr-1.5 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-focus)]"
+        className="flex h-10 w-full cursor-pointer items-center justify-between gap-1.5 rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] pl-2.5 pr-2 text-[13px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--surface-hover)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--border-focus)] sm:h-8 sm:w-auto sm:justify-start sm:pl-2 sm:pr-1.5"
       >
         <span className="text-[var(--text-tertiary)]">{icon}</span>
         {dots && <span className={`h-2 w-2 shrink-0 rounded-full ${dots[value] ?? dots.ALL}`} aria-hidden="true" />}
-        <span className="truncate">{active?.label ?? ''}</span>
+        <span className="flex-1 truncate text-left sm:flex-initial">{active?.label ?? ''}</span>
         <ChevronDown className={`h-4 w-4 shrink-0 text-[var(--text-tertiary)] transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
 
@@ -118,7 +119,7 @@ function FilterDropdown<T extends string>({ options, value, onChange, ariaLabel,
             transition={{ duration: 0.14, ease: 'easeOut' }}
             role="listbox"
             aria-label={ariaLabel}
-            className="absolute left-0 top-full z-50 mt-2 min-w-[10rem] origin-top overflow-hidden rounded-lg border border-[var(--border-hairline)] bg-[var(--surface-panel)] py-1 shadow-lg"
+            className="absolute left-0 top-full z-50 mt-2 min-w-full max-w-[calc(100vw-2rem)] origin-top overflow-hidden rounded-lg border border-[var(--border-strong)] bg-[var(--surface-raised)] py-1 shadow-xl sm:min-w-[10rem]"
           >
             {options.map((opt) => (
               <li key={opt.value} role="option" aria-selected={opt.value === value}>
@@ -386,6 +387,7 @@ export default function SavedEvaluationSafaris() {
                   Sort by
                 </label>
                 <FilterDropdown
+                  className="flex-1 sm:flex-initial"
                   ariaLabel="Sort by field"
                   icon={<ArrowDownUp className="h-4 w-4" />}
                   options={SORT_FIELD_TABS}
@@ -394,7 +396,7 @@ export default function SavedEvaluationSafaris() {
                 />
                 <button
                   onClick={() => setSortConfig((prev) => ({ ...prev, direction: prev.direction === 'asc' ? 'desc' : 'asc' }))}
-                  className="flex h-8 items-center gap-1 cursor-pointer rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] px-2 text-[13px] font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors"
+                  className="flex h-10 shrink-0 items-center gap-1 cursor-pointer rounded-md border border-[var(--border-hairline)] bg-[var(--surface-app)] px-3 text-[13px] font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors sm:h-8 sm:px-2"
                   title={sortConfig.direction === 'asc' ? 'Ascending' : 'Descending'}
                   aria-label={`Sort direction: ${sortConfig.direction === 'asc' ? 'ascending' : 'descending'}`}
                 >
@@ -406,6 +408,7 @@ export default function SavedEvaluationSafaris() {
               {/* Lifecycle + severity filters — compact dropdowns, grouped so they stay paired on wrap. */}
               <div className="flex items-center gap-2">
                 <FilterDropdown
+                  className="flex-1 sm:flex-initial"
                   dataTour="history-buckets"
                   ariaLabel="Filter by lifecycle state"
                   icon={<Layers className="h-4 w-4" />}
@@ -414,6 +417,7 @@ export default function SavedEvaluationSafaris() {
                   onChange={setStateFilter}
                 />
                 <FilterDropdown
+                  className="flex-1 sm:flex-initial"
                   dataTour="history-filters"
                   ariaLabel="Filter by severity"
                   icon={<SignalHigh className="h-4 w-4" />}
@@ -520,7 +524,7 @@ export default function SavedEvaluationSafaris() {
                 >
                   {/* Metadata wraps instead of overflowing; separators are drawn by the
                       wrapper so a wrapped line never starts with a stray bullet. */}
-                  <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
+                  <div className="relative flex flex-col gap-3 px-4 py-4 pr-16 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:pr-6">
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-base font-medium text-[var(--text-primary)]">
                         {evalItem.targetUrl}
@@ -552,8 +556,8 @@ export default function SavedEvaluationSafaris() {
                       >
                         {evalItem.severityCount} {evalItem.severity}
                       </div>
-                      {/* Row Action Menu — isolate clicks so they don't bubble to the row's navigation handler */}
-                      <div onClick={(e) => e.stopPropagation()}>
+                      {/* Row Action Menu — pinned top-right on mobile, inline on desktop. Isolate clicks so they don't bubble to the row's navigation handler */}
+                      <div className="absolute right-3 top-3 sm:static" onClick={(e) => e.stopPropagation()}>
                         <RowActionMenu
                           recordId={evalItem.id}
                           targetUrl={evalItem.targetUrl}
