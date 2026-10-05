@@ -32,6 +32,7 @@ import {
 import { toast } from '../../infrastructure/notifications/ToastProvider';
 import SupportModal from '../common/SupportModal';
 import { Button } from '../ui/Button';
+import { Modal } from '../ui/Modal';
 import type { SupportMode } from '../../../../shared/support';
 
 import { useAuth } from '../../hooks/useAuth';
@@ -637,6 +638,7 @@ function AccountSection() {
   }, [profile]);
 
   const handleLogout = () => {
+    setShowLogoutConfirm(false);
     logout();
     toast.info('Signed out successfully');
   };
@@ -718,34 +720,42 @@ function AccountSection() {
       </div>
 
       <div className="pt-4 border-t border-(--border-hairline)">
-        {showLogoutConfirm ? (
-          <div className="space-y-3">
-            <p className="text-sm text-(--text-secondary)">Are you sure you want to sign out?</p>
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <button
-                onClick={handleLogout}
-                className="rounded-lg cursor-pointer bg-(--status-critical-fg) px-4 py-2 text-sm font-semibold text-(--text-oninvert) hover:opacity-90 active:opacity-80 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
-              >
-                Yes, Sign Out
-              </button>
-              <button
-                onClick={() => setShowLogoutConfirm(false)}
-                className="rounded-lg border  cursor-pointer border-(--border-strong) px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button
-            onClick={() => setShowLogoutConfirm(true)}
-            className="inline-flex w-fit cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-strong) bg-(--surface-raised) px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors"
-          >
-            <LogOut className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
-            Sign Out
-          </button>
-        )}
+        <button
+          onClick={() => setShowLogoutConfirm(true)}
+          className="inline-flex w-fit cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-strong) bg-(--surface-raised) px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors"
+        >
+          <LogOut className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
+          Sign Out
+        </button>
       </div>
+
+      <Modal
+        isOpen={showLogoutConfirm}
+        onClose={() => setShowLogoutConfirm(false)}
+        titleId="settings-signout-title"
+        maxWidthClassName="max-w-sm"
+      >
+        <div className="p-5">
+          <h2 id="settings-signout-title" className="text-base font-semibold text-(--text-primary)">
+            Sign out
+          </h2>
+          <p className="mt-2 text-sm text-(--text-secondary)">Are you sure you want to sign out?</p>
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <button
+              onClick={() => setShowLogoutConfirm(false)}
+              className="rounded-lg border cursor-pointer border-(--border-strong) px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleLogout}
+              className="rounded-lg cursor-pointer bg-(--status-critical-fg) px-4 py-2 text-sm font-semibold text-(--text-oninvert) hover:opacity-90 active:opacity-80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+            >
+              Yes, Sign Out
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

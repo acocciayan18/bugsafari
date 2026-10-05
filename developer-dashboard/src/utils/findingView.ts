@@ -16,7 +16,7 @@ import type { BugCategory, ConstraintBypassDetail, FindingAttribution } from '..
 import { resolveCategory, resolveSeverity } from '../../../shared/types.js';
 import { actionRecordsToSteps, isApiEndpointLabel, isDescriptiveControlName, isSelectorLike, semanticFallbackFromSelector } from '../../../shared/reproduction.js';
 import { liveFaultSignature } from './errorDeduplication';
-import { splitObservations, toMarkdownChecklist } from './reproductionFormat';
+import { actionStepsToMarkdown, splitObservations, toMarkdownChecklist } from './reproductionFormat';
 import { formatReportDateTime } from './datetime';
 
 export interface FindingView {
@@ -196,8 +196,13 @@ export function resolveEndpointLabel(explicit: string | undefined): string | und
 // Driven by the normalized view so a live fault and its saved counterpart copy
 // out byte-identically.
 export function buildFindingSummary(view: FindingView, index: number): string {
+  // Mirror the card's Reproduction Guide source exactly: the structured actionSteps
+  // playbook when present (outcome woven inline per step), else the narrative playbook
+  // with its observations listed. Copy must never diverge from what is displayed.
+  const hasStructured = view.actionSteps != null && view.actionSteps.length > 0;
   const { steps: narrativeSteps, observations } = splitObservations(view.reproductionSteps);
-  const repro = toMarkdownChecklist(narrativeSteps, []);
+  const repro = hasStructured ? actionStepsToMarkdown(view.actionSteps!) : toMarkdownChecklist(narrativeSteps, []);
+  const observed = hasStructured ? [] : observations;
   return [
     `Finding #${index + 1}: ${humanizeFindingTitle(view.title)}`,
     view.message ? `Message: ${view.message}` : '',
@@ -206,7 +211,7 @@ export function buildFindingSummary(view: FindingView, index: number): string {
     `Detected: ${formatReportDateTime(view.timestamp)}`,
     view.advice ? `\nSuggested Fix:\n${view.advice}` : '',
     repro ? `\nReproduction Steps:\n${repro}` : '',
-    observations.length ? `\nObserved:\n${observations.map((o) => `> ${o}`).join('\n')}` : '',
+    observed.length ? `\nObserved:\n${observed.map((o) => `> ${o}`).join('\n')}` : '',
   ].filter(Boolean).join('\n');
 }
 
