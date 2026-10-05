@@ -3,10 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Radar, Brain, ClipboardCheck, Link2, Play, Eye, FileText, Sun, Moon, Menu, X } from 'lucide-react';
 import { ExploreContent, FeaturesContent, CommunityContent, AboutContent } from '../pages/InfoPages';
 import { SECTION_META } from '../pages/sectionMeta';
-import WelcomeModal from '../components/common/WelcomeModal';
 import { LegalDocModal } from '../components/legal/LegalDocModal';
 import type { LegalDocId } from '../legal/content';
-import { useWelcomeNotice } from '../hooks/useWelcomeNotice';
 import { useDarkMode } from '../context/DarkModeContext';
 import { BrowserFrame } from '../components/marketing/ProductShot';
 
@@ -264,7 +262,6 @@ const LandingPage = () => {
     const [legalDoc, setLegalDoc] = useState<LegalDocId | null>(null);
     const [menuOpen, setMenuOpen] = useState(false);
     const mainRef = useRef<HTMLElement>(null);
-    const welcome = useWelcomeNotice();
 
     const goToSection = useCallback((id: SectionId) => {
         setActiveSection(id);
@@ -281,7 +278,6 @@ const LandingPage = () => {
     return (
         <div className="bg-[var(--surface-app)] text-[var(--text-primary)] min-h-screen font-sans selection:bg-[var(--surface-invert)] selection:text-[var(--text-oninvert)]">
             <div className="landing-backdrop" aria-hidden="true" />
-            <WelcomeModal isOpen={welcome.isOpen} onDismiss={welcome.dismiss} />
             <LegalDocModal docId={legalDoc} onClose={() => setLegalDoc(null)} />
 
             {/* Top nav, stays mounted across every in-page section switch */}
