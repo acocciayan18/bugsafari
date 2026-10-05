@@ -2,10 +2,11 @@
 // Handles navigation only - no telemetry logic.
 // Themed via CSS-variable design tokens (auto light/dark, no dark: variants needed).
 
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PanelLeft, LayoutDashboard, Settings, History, Menu, X, LogOut, LogIn, UserRound, Lock } from 'lucide-react';
+import { PanelLeft, LayoutDashboard, Settings, History, Menu, X, LogOut, LogIn, UserRound } from 'lucide-react';
 import { useHistoryStore } from '../../stores/history/historyStore';
-import { lock } from '../../utils/accessLock';
+import { Modal } from '../ui';
 
 interface User {
   id: string;
@@ -27,7 +28,7 @@ interface SidebarProps {
   /** Drawer-only: closes the overlay after a navigation or on the close button. */
   onDismiss?: () => void;
   displayName?: string | null;
-  /** Guest session — no account to show; offer Sign in instead of Log out. */
+  /** Guest session — no account to show; offer Sign in instead of Sign out. */
   isGuest?: boolean;
   /** Ends the session (also used to exit a guest session). */
   onLogout?: () => void;
@@ -70,6 +71,7 @@ export default function Sidebar({
   onLogout,
 }: SidebarProps) {
   const navigate = useNavigate();
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
   const pinnedReportId = useHistoryStore((s) => s.pinnedReportId);
   const setPinnedReportId = useHistoryStore((s) => s.setPinnedReportId);
   // A drawer overlays the content, so it always shows labels regardless of rail state.
@@ -93,13 +95,15 @@ export default function Sidebar({
     onDismiss?.();
   };
 
-  // Dev system lock — clear the access secret and reload back to the gate.
-  const handleLock = () => {
-    lock();
-    window.location.reload();
+  // Confirmed sign-out: tear down the session, then close the drawer.
+  const handleConfirmSignOut = () => {
+    setConfirmSignOut(false);
+    onLogout?.();
+    onDismiss?.();
   };
 
   return (
+    <>
     <section
       data-tour="sidebar-nav"
       className={`${width} h-full shrink-0 flex flex-col border-r border-(--border-hairline) bg-(--surface-panel) transition-[width] duration-200 ease-in-out overflow-hidden`}
@@ -159,16 +163,6 @@ export default function Sidebar({
       {/* Account footer — identity + session exit, surfaced directly in the nav (and the
           mobile drawer) rather than buried under Settings. */}
       <div className={`shrink-0 border-t border-(--border-hairline) ${isRail ? 'p-1.5' : 'p-2'}`}>
-        <button
-          onClick={handleLock}
-          title={isRail ? 'Lock access' : undefined}
-          aria-label="Lock access"
-          className={`mb-1 flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-sm font-medium text-(--text-secondary) transition-colors hover:cursor-pointer hover:bg-(--surface-hover) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) ${isRail ? 'justify-center px-2' : ''}`}
-        >
-          <Lock className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-          {!isRail && <span className="whitespace-nowrap">Lock access</span>}
-        </button>
-
         {!isRail && (
           <div className="flex items-center gap-2.5 px-2 py-1.5">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--surface-inset) text-(--text-secondary)">
@@ -196,15 +190,45 @@ export default function Sidebar({
           </button>
         ) : (
           <button
-            onClick={() => { onLogout?.(); onDismiss?.(); }}
-            title={isRail ? 'Log out' : undefined}
+            onClick={() => setConfirmSignOut(true)}
+            title={isRail ? 'Sign out' : undefined}
+            aria-label="Sign out"
             className={`mt-1 flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-sm font-medium text-(--text-secondary) transition-colors hover:cursor-pointer hover:bg-(--status-critical-bg) hover:text-(--status-critical-fg) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) ${isRail ? 'justify-center px-2' : ''}`}
           >
             <LogOut className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-            {!isRail && <span className="whitespace-nowrap">Log out</span>}
+            {!isRail && <span className="whitespace-nowrap">Sign out</span>}
           </button>
         )}
       </div>
     </section>
+
+    <Modal
+      isOpen={confirmSignOut}
+      onClose={() => setConfirmSignOut(false)}
+      titleId="sidebar-signout-title"
+      maxWidthClassName="max-w-sm"
+    >
+      <div className="p-5">
+        <h2 id="sidebar-signout-title" className="text-base font-semibold text-(--text-primary)">
+          Sign out
+        </h2>
+        <p className="mt-2 text-sm text-(--text-secondary)">Are you sure you want to sign out?</p>
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <button
+            onClick={() => setConfirmSignOut(false)}
+            className="rounded-lg border cursor-pointer border-(--border-strong) px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleConfirmSignOut}
+            className="rounded-lg cursor-pointer bg-(--status-critical-fg) px-4 py-2 text-sm font-semibold text-(--text-oninvert) hover:opacity-90 active:opacity-80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+          >
+            Yes, Sign Out
+          </button>
+        </div>
+      </div>
+    </Modal>
+    </>
   );
 }
