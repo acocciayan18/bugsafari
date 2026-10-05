@@ -108,7 +108,7 @@ export function RowActionMenu({
         }}
         onKeyDown={handleKeyDown}
         disabled={disabled || isLoading}
-        className={`flex h-11 w-11 shrink-0 items-center cursor-pointer justify-center rounded-full border border-(--border-hairline) bg-(--surface-app) transition-colors duration-200 ease-in-out sm:border-0 sm:bg-transparent ${
+        className={`flex h-11 w-11 shrink-0 items-center cursor-pointer justify-center rounded-full transition-colors duration-200 ease-in-out ${
           disabled || isLoading
             ? 'cursor-not-allowed opacity-40'
             : 'hover:bg-(--surface-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2'
@@ -132,7 +132,7 @@ export function RowActionMenu({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: flipUp ? 4 : -4 }}
           transition={{ duration: 0.14, ease: 'easeOut' }}
-          className={`absolute z-50 w-48 max-w-[calc(100vw-1rem)] rounded-lg border border-(--border-strong) bg-(--surface-raised) py-1 shadow-xl ${
+          className={`absolute z-50 w-48 max-w-[calc(100vw-1rem)] rounded-lg border border-(--border-strong) bg-(--surface-raised) py-1 shadow-md ${
             flipUp ? 'bottom-full mb-1 origin-bottom' : 'top-full mt-1 origin-top'
           } ${alignLeft ? 'left-0' : 'right-0'}`}
           role="menu"

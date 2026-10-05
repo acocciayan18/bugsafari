@@ -119,7 +119,7 @@ function FilterDropdown<T extends string>({ options, value, onChange, ariaLabel,
             transition={{ duration: 0.14, ease: 'easeOut' }}
             role="listbox"
             aria-label={ariaLabel}
-            className="absolute left-0 top-full z-50 mt-2 min-w-full max-w-[calc(100vw-2rem)] origin-top overflow-hidden rounded-lg border border-[var(--border-strong)] bg-[var(--surface-raised)] py-1 shadow-xl sm:min-w-[10rem]"
+            className="absolute left-0 top-full z-50 mt-2 min-w-full max-w-[calc(100vw-2rem)] origin-top overflow-hidden rounded-lg border border-[var(--border-strong)] bg-[var(--surface-raised)] py-1 shadow-md sm:min-w-[10rem]"
           >
             {options.map((opt) => (
               <li key={opt.value} role="option" aria-selected={opt.value === value}>
