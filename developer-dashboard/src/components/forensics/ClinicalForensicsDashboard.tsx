@@ -2,7 +2,7 @@
 // ClinicalForensicsDashboard.tsx - FORENSIC TELEMETRY VIEW
 // ═══════════════════════════════════════════════════════════════
 
-import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { Check, BugPlay, LoaderCircle, Pause, Play,Workflow, Square, Activity, TriangleAlert, Network, Terminal, SlidersHorizontal, Globe } from 'lucide-react';
 import type { TelemetryEvent, ForensicCrashReport, IncidentReport, BrowserConsoleMessage, TargetAuthConfig } from '../../types';
 import {
@@ -21,6 +21,7 @@ import JumpToBottomButton from '../common/JumpToBottomButton';
 import LongOperationProgressCard from '../common/LongOperationProgressCard';
 import { readLaunchConfigDraft, writeLaunchConfigDraft } from '../../stores/launchConfigDraft';
 import { useStickyScroll } from '../../hooks/useStickyScroll';
+import { useScrollAffordance } from '../../hooks/useScrollAffordance';
 import { useDashboardTour } from '../../tour/useDashboardTour';
 import { ErrorTabPanel, AccessibilityWarningBanner, NetworkTabPanel, ConsoleTabPanel, AiDiagnosticCard, TelemetryHelpModal } from '../telemetry';
 import EmptyState from '../common/EmptyState';
@@ -142,6 +143,7 @@ function ClinicalForensicsDashboard({
   const tabRefs = useRef<Record<TerminalTab, HTMLButtonElement | null>>({
     telemetry: null, errors: null, network: null, console: null,
   });
+  const { scrollRef: tabRailRef, edges: tabEdges } = useScrollAffordance<HTMLDivElement>();
 
   // WCAG 4.1.2 tabs: arrow/Home/End move selection and focus (roving tabindex).
   const handleTabKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
@@ -538,7 +540,13 @@ function ClinicalForensicsDashboard({
 
           {/* Terminal header — tabs scroll horizontally rather than wrapping or clipping */}
           <div className="flex items-center justify-between gap-1 border-b border-(--border-hairline) bg-(--surface-raised) h-[46px] shrink-0">
-            <div className="scroll-rail flex" role="tablist" aria-label="Telemetry streams">
+            <div
+              ref={tabRailRef}
+              className="scroll-rail flex"
+              style={{ '--fade-l': tabEdges.start ? '1.5rem' : '0px', '--fade-r': tabEdges.end ? '1.5rem' : '0px' } as CSSProperties}
+              role="tablist"
+              aria-label="Telemetry streams"
+            >
               {TERMINAL_TABS.map(({ id, label, Icon }) => {
                 const selected = activeTab === id;
                 return (
