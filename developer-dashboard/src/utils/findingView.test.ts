@@ -11,6 +11,7 @@ import {
   incidentToFindingView,
   caughtBugToFindingView,
   buildFindingSummary,
+  capFindingMessage,
 } from './findingView';
 import { actionRecordsToSteps } from '../../../shared/reproduction.js';
 import type { ActionRecord } from '../../../shared/types.js';
@@ -267,6 +268,36 @@ check('a saved 5xx finding escalates to HIGH on render, matching its live twin',
     attribution: { bugClass: 'BOUNDARY_STRESS_FAILURE', verificationStatus: 'NEEDS_VERIFICATION' },
   } as unknown as ForensicCaughtBug;
   assert.equal(caughtBugToFindingView(bug).severity, 'HIGH', '5xx outranks the low-confidence MEDIUM cap');
+});
+
+// ── Oversized message is capped for render/copy; raw source is untouched ──────
+check('a short message passes through capFindingMessage unchanged', () => {
+  assert.equal(capFindingMessage('Server returned 500'), 'Server returned 500');
+});
+
+check('an oversized message is truncated with an explicit indicator', () => {
+  const huge = 'x'.repeat(1_000_000);
+  const capped = capFindingMessage(huge);
+  assert.ok(capped.length < huge.length, 'capped is shorter than the source');
+  assert.ok(capped.includes('truncated'), 'the cut is clearly indicated');
+  assert.ok(/998,000 more characters/.test(capped), 'reports the omitted count');
+});
+
+check('an oversized finding message is capped on the view and in Copy output; raw stays intact', () => {
+  const huge = 'y'.repeat(999_999);
+  const inc = {
+    timestamp: '2026-10-05T00:00:00.000Z',
+    reason: huge,
+    url: 'http://app.test/x',
+    steps: [],
+  } as unknown as IncidentReport;
+  const view = incidentToFindingView(inc);
+  assert.ok(view.message.length < huge.length, 'view message is capped');
+  assert.ok(view.message.includes('truncated'), 'view message indicates truncation');
+  assert.equal(inc.reason, huge, 'raw source finding is NOT mutated');
+  const summary = buildFindingSummary(view, 0);
+  assert.ok(summary.includes('truncated'), 'Copy output carries the capped message');
+  assert.ok(summary.length < huge.length, 'Copy output is not overwhelmed by the payload');
 });
 
 console.log(`\n${passed} assertions passed.`);

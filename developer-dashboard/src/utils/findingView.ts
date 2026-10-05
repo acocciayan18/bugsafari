@@ -92,6 +92,18 @@ export function extractLeadingTag(message: string | undefined): { badge?: string
   return { badge: badge || undefined, message: raw.slice(match[0].length) };
 }
 
+// Hard cap on the RENDERED/EXPORTED finding message. A fuzz payload echoed into a
+// fault reason can be 10^6+ chars and would freeze the card, bloat Copy output, and
+// swell the AI request. Display-only: the raw source finding (reason/message) is never
+// mutated. The suffix makes the cut explicit so a reader knows text was dropped.
+const MAX_MESSAGE_CHARS = 2000;
+
+export function capFindingMessage(message: string): string {
+  if (message.length <= MAX_MESSAGE_CHARS) return message;
+  const omitted = message.length - MAX_MESSAGE_CHARS;
+  return `${message.slice(0, MAX_MESSAGE_CHARS)}… [truncated, ${omitted.toLocaleString()} more characters]`;
+}
+
 const isRealSelector = (s: string | undefined): s is string => Boolean(s && s.trim() && s !== 'N/A');
 
 // A fragile structural path (body > … > tag:nth-of-type(n)) — the engine keeps it to
@@ -201,7 +213,9 @@ export function buildFindingSummary(view: FindingView, index: number): string {
   // with its observations listed. Copy must never diverge from what is displayed.
   const hasStructured = view.actionSteps != null && view.actionSteps.length > 0;
   const { steps: narrativeSteps, observations } = splitObservations(view.reproductionSteps);
-  const repro = hasStructured ? actionStepsToMarkdown(view.actionSteps!) : toMarkdownChecklist(narrativeSteps, []);
+  // Plain bullets for paste — strip the `- [ ]` task-checkbox marker that reads as empty brackets.
+  const toBullets = (md: string): string => md.replace(/^- \[ \] /gm, '- ');
+  const repro = toBullets(hasStructured ? actionStepsToMarkdown(view.actionSteps!) : toMarkdownChecklist(narrativeSteps, []));
   const observed = hasStructured ? [] : observations;
   return [
     `Finding #${index + 1}: ${humanizeFindingTitle(view.title)}`,
@@ -209,9 +223,10 @@ export function buildFindingSummary(view: FindingView, index: number): string {
     view.elementLabel ? `Element: ${view.elementLabel}` : '',
     !view.elementLabel && view.endpointLabel ? `Endpoint: ${view.endpointLabel}` : '',
     `Detected: ${formatReportDateTime(view.timestamp)}`,
-    view.advice ? `\nSuggested Fix:\n${view.advice}` : '',
-    repro ? `\nReproduction Steps:\n${repro}` : '',
+    // Reproduction before fix; advice already carries its own "Suggested fix:" heading.
+    repro ? `\nReproduction Guide:\n${repro}` : '',
     observed.length ? `\nObserved:\n${observed.map((o) => `> ${o}`).join('\n')}` : '',
+    view.advice ? `\n${view.advice}` : '',
   ].filter(Boolean).join('\n');
 }
 
@@ -221,7 +236,7 @@ export function incidentToFindingView(inc: IncidentReport, occurrences = inc.occ
   return {
     key: liveFaultSignature(inc),
     title: inc.attribution?.bugClass || 'Runtime Incident',
-    message,
+    message: capFindingMessage(message),
     badge,
     severity: resolveSeverity({
       severity: inc.severity,
@@ -255,7 +270,7 @@ export function reportToFindingView(rep: ForensicCrashReport, occurrences = rep.
   return {
     key: liveFaultSignature(rep),
     title: rep.attribution?.bugClass || 'Console Error',
-    message,
+    message: capFindingMessage(message),
     badge,
     severity: resolveSeverity({
       severity: rep.severity,
@@ -287,7 +302,7 @@ export function caughtBugToFindingView(bug: ForensicCaughtBug, occurrences = bug
   return {
     key: bug.bugId,
     title: bug.attribution?.bugClass || bug.type || 'UNKNOWN',
-    message,
+    message: capFindingMessage(message),
     badge,
     severity: resolveSeverity({
       severity: bug.severity,
