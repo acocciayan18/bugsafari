@@ -308,7 +308,7 @@ function ClinicalForensicsDashboard({
   }), [errorCount, networkEvents, browserConsole.length]);
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-(--surface-app)">
+    <div className="flex flex-col overflow-visible lg:flex-1 lg:overflow-hidden bg-(--surface-app)">
 
       {/* ═══════════════════════════════════════════════════════════════
           TOP CONTROLS: COMMAND CENTER LAYER
@@ -507,7 +507,7 @@ function ClinicalForensicsDashboard({
           Stacked mode gives the feed a fixed aspect block and lets the
           terminal take the remaining height, so both stay visible at 375px.
           ═══════════════════════════════════════════════════════════════ */}
-      <div className="flex flex-1 min-h-0 flex-col overflow-y-auto lg:overflow-hidden lg:flex-row bg-(--surface-panel)">
+      <div className="flex flex-col lg:flex-1 lg:min-h-0 lg:overflow-hidden lg:flex-row bg-(--surface-panel)">
 
         {/* FEED PANEL: Browser Frame Viewport */}
         <div className="flex w-full shrink-0 flex-col overflow-hidden border-b border-(--border-hairline) lg:h-full lg:w-[55%] lg:shrink lg:border-b-0 lg:border-r">
@@ -534,7 +534,7 @@ function ClinicalForensicsDashboard({
         </div>
 
         {/* TERMINAL PANEL: Streams output workspace */}
-        <div className="flex min-h-[320px] w-full flex-1 flex-col overflow-hidden lg:h-full lg:min-h-0 lg:w-[45%] lg:flex-none lg:shrink-0">
+        <div className="flex min-h-[320px] w-full flex-col overflow-hidden lg:h-full lg:min-h-0 lg:w-[45%] lg:flex-none lg:shrink-0">
 
           {/* Terminal header — tabs scroll horizontally rather than wrapping or clipping */}
           <div className="flex items-center justify-between gap-1 border-b border-(--border-hairline) bg-(--surface-raised) h-[46px] shrink-0">
@@ -585,8 +585,9 @@ function ClinicalForensicsDashboard({
             </div>
           </div>
 
-          {/* Core Logs Output Viewer Container */}
-          <div className="relative min-h-0 flex-1 overflow-hidden">
+          {/* Core Logs Output Viewer Container — capped height on mobile so the live
+              stream stays a bounded, auto-pinning viewport inside the page scroll. */}
+          <div className="relative h-[60dvh] overflow-hidden lg:h-auto lg:min-h-0 lg:flex-1">
             <div
               ref={logContainerRef}
               role="tabpanel"

@@ -338,6 +338,7 @@ export interface UserSettings {
   theme: 'light' | 'dark' | 'system';
   notifications: boolean;
   autoSave: boolean;
+  onboardingCompleted?: boolean;
 }
 
 export interface PasswordChangeForm {

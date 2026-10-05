@@ -49,7 +49,11 @@ export function Modal({
 
     previouslyFocused.current = document.activeElement as HTMLElement | null;
     const panel = panelRef.current;
-    panel?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)?.focus();
+    // Tall panels (and the under-`sm` bottom sheet) can mount already scrolled — pin
+    // to the top so the title/header is what the viewer sees first, then focus without
+    // letting the browser scroll the focused control back into a lower position.
+    panel?.scrollTo({ top: 0 });
+    panel?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)?.focus({ preventScroll: true });
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {

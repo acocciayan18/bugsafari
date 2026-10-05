@@ -311,16 +311,16 @@ export default function SavedEvaluationSafaris() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2, ease: 'easeOut' }}
-      className="flex h-full w-full flex-col bg-[var(--surface-app)]"
+      className="flex w-full flex-col bg-[var(--surface-app)] lg:h-full"
     >
-      <header className="flex items-center justify-between border-b border-[var(--border-hairline)] px-4 py-3 sm:px-6 sm:py-3">
-        {/* Breadcrumb duplicates the compact top bar — desktop only, actions always stay. */}
-        <div className="hidden min-w-0 items-center lg:flex">
-          <span className="text-sm font-bold  text-[var(--text-primary)]">
+      <header className="flex items-center justify-between gap-3 border-b border-[var(--border-hairline)] px-4 py-3 sm:px-6 sm:py-3">
+        {/* Breadcrumb stays visible on mobile; it truncates before it can crowd the actions. */}
+        <div className="flex min-w-0 items-center">
+          <span className="shrink-0 text-body-sm font-bold text-[var(--text-primary)] sm:text-sm">
             BUGSAFARI
           </span>
-          <span className="mx-3 text-[var(--text-tertiary)]">/</span>
-          <span className="truncate text-sm font-semibold text-[var(--text-secondary)]">
+          <span className="mx-2 shrink-0 text-[var(--text-tertiary)] sm:mx-3">/</span>
+          <span className="truncate text-body-sm font-semibold text-[var(--text-secondary)] sm:text-sm">
             HISTORY SESSION
           </span>
         </div>
@@ -344,7 +344,7 @@ export default function SavedEvaluationSafaris() {
         </div>
       </header>
 
-      <main className="custom-scrollbar m-3 mb-5 flex-1 overflow-auto rounded-md border border-[var(--border-strong)] bg-[var(--surface-panel)] sm:m-4 sm:mb-5 lg:m-5 lg:mb-5">
+      <main className="custom-scrollbar m-3 mb-5 overflow-visible rounded-md border border-[var(--border-strong)] bg-[var(--surface-panel)] sm:m-4 sm:mb-5 lg:m-5 lg:mb-5 lg:flex-1 lg:overflow-auto">
         <div className="border-b border-[var(--border-hairline)] px-4 py-4  sm:px-6">
           {/* Title + controls stack into rows until there's width for a single line. */}
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">

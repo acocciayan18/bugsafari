@@ -8,6 +8,7 @@ import { Menu } from 'lucide-react';
 import Sidebar from './Sidebar';
 import { useIsCompact } from '../../hooks/useMediaQuery';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { useHideOnScroll } from '../../hooks/useHideOnScroll';
 import type { AuthUser } from '../../context/AuthContext';
 
 type ViewType = 'dashboard' | 'history' | 'settings';
@@ -47,6 +48,9 @@ export default function SidebarLayout({
   const isCompact = useIsCompact();
   const [isCollapsed, setIsCollapsed] = useState(readCollapsed);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  // On mobile the content column is the single page scroll; the header rides it,
+  // hiding on scroll-down and revealing on scroll-up.
+  const { scrollRef, hidden: headerHidden } = useHideOnScroll<HTMLDivElement>(isCompact);
 
   const closeDrawer = useCallback(() => setIsDrawerOpen(false), []);
 
@@ -122,9 +126,16 @@ export default function SidebarLayout({
         </>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div
+        ref={isCompact ? scrollRef : undefined}
+        className={`flex min-w-0 flex-1 flex-col ${isCompact ? 'overflow-y-auto overflow-x-hidden' : 'overflow-hidden'}`}
+      >
         {isCompact && (
-          <header className="flex h-14 shrink-0 items-center gap-3 border-b border-(--border-hairline) bg-(--surface-panel) px-3">
+          <header
+            className={`sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-(--border-hairline) bg-(--surface-panel) px-3 transition-transform duration-200 ease-out ${
+              headerHidden ? '-translate-y-full' : 'translate-y-0'
+            }`}
+          >
             <button
               data-tour="nav-toggle"
               onClick={() => setIsDrawerOpen(true)}

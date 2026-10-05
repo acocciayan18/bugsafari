@@ -8,6 +8,7 @@ import 'driver.js/dist/driver.css';
 import './tour.css';
 import { useAuth } from '../context/AuthContext';
 import { useIsCompact } from '../hooks/useMediaQuery';
+import { useSettingsStore } from '../stores/settingsStore';
 import { hasCompletedTour, markTourCompleted } from './tourStorage';
 
 interface TourOptions {
@@ -22,9 +23,27 @@ export function useTour({ tourId, buildSteps, enabled }: TourOptions): { startTo
   const { user } = useAuth();
   const isCompact = useIsCompact();
   const userId = user?.id ?? null;
+  const isAuthenticated = userId !== null;
+
+  // Authenticated users persist the first-run flag to the account (cross-device);
+  // guests fall back to device-local storage.
+  const accountCompleted = useSettingsStore((s) => s.settings.onboardingCompleted === true);
+  const settingsLoading = useSettingsStore((s) => s.isLoading);
+  const updateSettings = useSettingsStore((s) => s.updateSettings);
 
   const driverRef = useRef<Driver | null>(null);
   const startedRef = useRef(false);
+
+  const hasCompleted = useCallback(
+    () => (isAuthenticated ? accountCompleted : hasCompletedTour(tourId, userId)),
+    [isAuthenticated, accountCompleted, tourId, userId],
+  );
+
+  const markCompleted = useCallback(() => {
+    // Stamp the device regardless so this browser stays consistent even offline.
+    markTourCompleted(tourId, userId);
+    if (isAuthenticated) void updateSettings({ onboardingCompleted: true });
+  }, [isAuthenticated, tourId, userId, updateSettings]);
 
   const startTour = useCallback(() => {
     // Idempotent — a second call (StrictMode re-run, replay double-click) is a no-op.
@@ -32,7 +51,7 @@ export function useTour({ tourId, buildSteps, enabled }: TourOptions): { startTo
     const steps = buildSteps(isCompact);
     // Only the elementless welcome survived — nothing to highlight, so don't start.
     if (steps.length <= 1) {
-      markTourCompleted(tourId, userId);
+      markCompleted();
       return;
     }
     startedRef.current = true;
@@ -54,23 +73,25 @@ export function useTour({ tourId, buildSteps, enabled }: TourOptions): { startTo
       steps,
       // Any exit (finish, skip, Esc, overlay) counts as seen — never re-nag.
       onDestroyStarted: () => {
-        markTourCompleted(tourId, userId);
+        markCompleted();
         startedRef.current = false;
         instance.destroy();
       },
     });
     driverRef.current = instance;
     instance.drive();
-  }, [buildSteps, isCompact, tourId, userId]);
+  }, [buildSteps, isCompact, markCompleted]);
 
   useEffect(() => {
     if (!enabled || startedRef.current) return;
-    if (hasCompletedTour(tourId, userId)) return;
+    // Wait for the account flag to load so an authenticated user is never re-nagged.
+    if (isAuthenticated && settingsLoading) return;
+    if (hasCompleted()) return;
     // Let the route transition and first paint settle so anchors measure correctly.
     // Idempotency lives in startedRef, so StrictMode's throwaway pass can reschedule.
     const timer = window.setTimeout(startTour, 400);
     return () => window.clearTimeout(timer);
-  }, [enabled, tourId, userId, startTour]);
+  }, [enabled, isAuthenticated, settingsLoading, hasCompleted, startTour]);
 
   useEffect(() => () => driverRef.current?.destroy(), []);
 

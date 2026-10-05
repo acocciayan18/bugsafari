@@ -801,14 +801,14 @@ export default function Settings() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2, ease: 'easeOut' }}
-      className="flex h-full w-full min-w-0 flex-col bg-(--surface-panel)"
+      className="flex w-full min-w-0 flex-col bg-(--surface-panel) lg:h-full"
     >
       {/* Breadcrumb bar — help/tour control pinned top-right. */}
       <header className="flex items-center justify-between border-b border-(--border-hairline) px-4 py-3 sm:px-6">
         <div className="flex min-w-0 items-center">
-          <span className="text-sm font-bold  text-(--text-primary)">BUGSAFARI</span>
-          <span className="mx-3 text-(--text-tertiary)">/</span>
-          <span className="text-sm font-semibold text-(--text-secondary)">SETTINGS</span>
+          <span className="shrink-0 text-body-sm font-bold text-(--text-primary) sm:text-sm">BUGSAFARI</span>
+          <span className="mx-2 shrink-0 text-(--text-tertiary) sm:mx-3">/</span>
+          <span className="truncate text-body-sm font-semibold text-(--text-secondary) sm:text-sm">SETTINGS</span>
         </div>
         <button
           onClick={startTour}
@@ -820,7 +820,7 @@ export default function Settings() {
         </button>
       </header>
 
-      <main className="custom-scrollbar m-3 flex-1 overflow-auto rounded-md border border-(--border-strong) bg-(--surface-app) sm:m-4 lg:m-5">
+      <main className="custom-scrollbar m-3 overflow-visible rounded-md border border-(--border-strong) bg-(--surface-app) sm:m-4 lg:m-5 lg:flex-1 lg:overflow-auto">
         <motion.div
           initial="hidden"
           animate="shown"

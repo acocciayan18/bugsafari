@@ -126,8 +126,9 @@ export default function TestingConfigModal({
         ))}
       </div>
 
-      {/* Fixed height + inner scroll so the modal never resizes or shifts between tabs. */}
-      <div className="custom-scrollbar h-[420px] overflow-y-auto p-3 sm:p-4">
+      {/* Fixed height at sm+ so the modal never shifts between tabs; on phones cap to the
+          viewport instead so it does not double-scroll inside the sheet. */}
+      <div className="custom-scrollbar max-h-[55dvh] overflow-y-auto p-3 sm:h-[420px] sm:max-h-none sm:p-4">
         {activeTab === 'boundary' && (
           <div role="tabpanel" id="config-panel-boundary" aria-labelledby="config-tab-boundary">
             <div role="radiogroup" aria-label="Navigation boundary" className="flex flex-col gap-2">

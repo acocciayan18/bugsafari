@@ -23,6 +23,7 @@ export interface UserSettings {
     theme: 'light' | 'dark' | 'system';
     notifications: boolean;
     autoSave: boolean;
+    onboardingCompleted?: boolean;
 }
 
 /**
@@ -262,6 +263,7 @@ export async function handleGetSettings(
             theme: userSettings?.theme || 'light',
             notifications: userSettings?.notifications ?? true,
             autoSave: userSettings?.autoSave ?? true,
+            onboardingCompleted: userSettings?.onboardingCompleted === true,
         };
 
         jsonResponse(res, 200, { data: settings });
@@ -289,10 +291,11 @@ export async function handleUpdateSettings(
             return;
         }
 
-        const { theme, notifications, autoSave } = request.body as {
+        const { theme, notifications, autoSave, onboardingCompleted } = request.body as {
             theme?: string;
             notifications?: boolean;
             autoSave?: boolean;
+            onboardingCompleted?: boolean;
         };
 
         // Validate and sanitize inputs
@@ -328,6 +331,16 @@ export async function handleUpdateSettings(
             }
         }
 
+        // Onboarding flag validation
+        if (onboardingCompleted !== undefined) {
+            if (typeof onboardingCompleted === 'boolean') {
+                updateData['settings.onboardingCompleted'] = onboardingCompleted;
+            } else {
+                errorResponse(res, 400, 'OnboardingCompleted must be a boolean');
+                return;
+            }
+        }
+
         // Update user settings
         const user = await UserModel.findByIdAndUpdate(
             userId,
@@ -345,6 +358,7 @@ export async function handleUpdateSettings(
             theme: userSettings?.theme || 'light',
             notifications: userSettings?.notifications ?? true,
             autoSave: userSettings?.autoSave ?? true,
+            onboardingCompleted: userSettings?.onboardingCompleted === true,
         };
 
         jsonResponse(res, 200, { data: settings });

@@ -18,6 +18,7 @@ export interface IUser extends Document {
     theme: 'light' | 'dark' | 'system';
     notifications: boolean;
     autoSave: boolean;
+    onboardingCompleted?: boolean;
   };
   createdAt: Date;
   updatedAt: Date;
@@ -73,6 +74,8 @@ const userSchema = new Schema(
       theme: { type: String, enum: ['light', 'dark', 'system'], default: 'light' },
       notifications: { type: Boolean, default: true },
       autoSave: { type: Boolean, default: true },
+      // No default: absent means not-yet-onboarded; first-run tour sets `true`.
+      onboardingCompleted: { type: Boolean, default: undefined },
     },
   },
   {

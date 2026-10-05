@@ -19,6 +19,7 @@ interface SettingsResponse {
     theme: 'light' | 'dark' | 'system';
     notifications: boolean;
     autoSave: boolean;
+    onboardingCompleted?: boolean;
 }
 
 interface SettingsState {
@@ -51,6 +52,7 @@ function normalize(data: SettingsResponse): UserSettings {
         theme: data.theme || 'light',
         notifications: data.notifications ?? true,
         autoSave: data.autoSave ?? true,
+        onboardingCompleted: data.onboardingCompleted === true,
     };
 }
 
@@ -336,7 +338,40 @@ async function bootstrapForToken(token: string | null): Promise<void> {
     }
 
     await Promise.all([store.fetchProfile(), store.fetchSettings()]);
+
+    // Grandfather pre-flag users: a device that already saw the first-run tour carries
+    // it to the account once, so they never re-see it on a fresh device.
+    void migrateLegacyOnboarding(token);
+
     useSettingsStore.setState({ isLoading: false });
+}
+
+// One-shot, silent (no toast) sync of the device-local first-run flag to the account.
+async function migrateLegacyOnboarding(token: string): Promise<void> {
+    const { settings } = useSettingsStore.getState();
+    if (settings.onboardingCompleted) return;
+
+    const userId = useAuthStore.getState().user?.id;
+    if (!userId) return;
+
+    let seenLocally = false;
+    try {
+        seenLocally = localStorage.getItem(`bugsafari_tour_done:dashboard:${userId}`) === 'true';
+    } catch {
+        seenLocally = false;
+    }
+    if (!seenLocally) return;
+
+    useSettingsStore.getState().applyServerSettings({ ...settings, onboardingCompleted: true });
+    try {
+        await fetch(`${API_BASE_URL}/api/settings`, {
+            method: 'PUT',
+            headers: buildAuthHeaders(token),
+            body: JSON.stringify({ onboardingCompleted: true }),
+        });
+    } catch {
+        // Non-fatal; the device flag still suppresses the tour on this device.
+    }
 }
 
 let initialized = false;

@@ -22,8 +22,6 @@ import ResetPasswordForm from './components/auth/ResetPasswordForm';
 import VerifyEmailForm from './components/auth/VerifyEmailForm';
 import SidebarLayout from './components/layout/SidebarLayout';
 import ConnectionStatusChip from './components/common/ConnectionStatusChip';
-import MobileExperienceNotice from './components/common/MobileExperienceNotice';
-import { useMobileExperienceNotice } from './hooks/useMobileExperienceNotice';
 import BootLoader from './components/common/BootLoader';
 import RouteErrorBoundary from './components/common/RouteErrorBoundary';
 import { ThemeProvider } from './designs/ThemeContext';
@@ -76,8 +74,6 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
     useDashboardController();
 
   useRunNotifications();
-
-  const mobileNotice = useMobileExperienceNotice();
 
   // Auto Save (Settings) — commit a finished run without waiting for the manual press.
   // Guests cannot persist. Exactly one attempt per finished run: a failed save flips
@@ -157,7 +153,6 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
   return (
     <ThemeProvider>
       <ConnectionStatusChip />
-      <MobileExperienceNotice isOpen={mobileNotice.isOpen} onDismiss={mobileNotice.dismiss} />
 
       <Suspense fallback={<RouteFallback />}>
       <Routes>
@@ -166,7 +161,8 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
           element={
             <SidebarLayout {...shellProps}>
               {/* Purified Viewport pipeline: Direct layout rendering without nested wrapper container layers */}
-              <div className="flex flex-col flex-1 min-h-0">
+              {/* Mobile flows into the shell page scroll; desktop keeps the fixed-height split. */}
+              <div className="flex flex-col lg:flex-1 lg:min-h-0">
                 <RouteErrorBoundary resetKey={location.pathname} label="Dashboard">
                 <ClinicalForensicsDashboard
                   targetUrl={targetUrl}
@@ -207,7 +203,7 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
         <Route
           path="/history"
           element={!isAuthenticated ? <Navigate to="/dashboard" replace /> : (
-            <SidebarLayout {...shellProps} contentClassName="flex flex-1 min-h-0">
+            <SidebarLayout {...shellProps} contentClassName="flex flex-col lg:flex-1 lg:min-h-0">
               <RouteErrorBoundary resetKey={location.pathname} label="History">
                 <SavedEvaluationSafaris />
               </RouteErrorBoundary>
@@ -217,7 +213,7 @@ function DashboardWorkspace({ user, isAuthenticated, isGuestMode, activeView }: 
         <Route
           path="/settings"
           element={
-            <SidebarLayout {...shellProps} contentClassName="flex flex-1 min-h-0">
+            <SidebarLayout {...shellProps} contentClassName="flex flex-col lg:flex-1 lg:min-h-0">
               <RouteErrorBoundary resetKey={location.pathname} label="Settings">
                 <Settings />
               </RouteErrorBoundary>
