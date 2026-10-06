@@ -475,7 +475,7 @@ export default function SavedEvaluationSafaris() {
               >
                 <div
                   ref={(el) => { if (el) cardRefs.current.set(evalItem.id, el); else cardRefs.current.delete(evalItem.id); }}
-                  className="cursor-pointer rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-raised) shadow-(--shadow-sm) transition-all duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] hover:-translate-y-0.5 hover:border-(--border-strong) hover:shadow-(--shadow-md) active:translate-y-0 active:bg-(--surface-hover) focus:outline-none focus:ring-2 focus:ring-(--border-focus)"
+                  className="cursor-pointer rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-raised) shadow-(--shadow-sm) transition-[color,background-color,border-color,box-shadow] duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] hover:border-(--accent-border) hover:shadow-(--shadow-md) active:bg-(--surface-hover) focus:outline-none focus:ring-2 focus:ring-(--border-focus)"
                   role="button"
                   tabIndex={0}
                   aria-label={`View forensic report for ${evalItem.targetUrl}`}
