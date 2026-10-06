@@ -54,9 +54,9 @@ function formatCreated(iso: string): string {
 }
 
 const BADGE: Record<LinkState, { label: string; className: string }> = {
-  active: { label: 'Active', className: 'bg-(--status-stable-bg) text-(--status-stable-fg) border-(--status-stable-border)' },
+  active: { label: 'Active', className: 'bg-(--accent-soft-bg) text-(--accent-soft-fg) border-(--accent-border)' },
   revoked: { label: 'Revoked', className: 'bg-(--status-critical-bg) text-(--status-critical-fg) border-(--status-critical-border)' },
-  expired: { label: 'Expired', className: 'bg-(--status-warning-bg) text-(--status-warning-fg) border-(--status-warning-border)' },
+  expired: { label: 'Expired', className: 'bg-(--status-neutral-bg) text-(--status-neutral-fg) border-(--status-neutral-border)' },
 };
 
 // View-only share surface: mint a self-expiring, revocable link and manage the record's
@@ -213,8 +213,8 @@ export function ShareLinkModal({ recordId, isOpen, onClose }: ShareLinkModalProp
 
         {/* Freshly minted link, featured for immediate copy */}
         {freshUrl && (
-          <div role="status" className="flex flex-col gap-2.5 rounded-(--radius-md) border border-(--status-stable-border) bg-(--status-stable-bg) p-3.5">
-            <div className="flex items-center gap-1.5 text-[13px] font-semibold text-(--status-stable-fg)">
+          <div role="status" className="flex flex-col gap-2.5 rounded-(--radius-md) border border-(--accent-border) bg-(--accent-soft-bg) p-3.5">
+            <div className="flex items-center gap-1.5 text-[13px] font-semibold text-(--accent-soft-fg)">
               <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden="true" /> New link ready to share
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
@@ -235,7 +235,7 @@ export function ShareLinkModal({ recordId, isOpen, onClose }: ShareLinkModalProp
                   : <><Copy className="h-4 w-4 shrink-0" aria-hidden="true" /> Copy link</>}
               </button>
             </div>
-            <p className="flex items-center gap-1.5 text-[12px] text-(--status-stable-fg)/80">
+            <p className="flex items-center gap-1.5 text-[12px] text-(--accent-soft-fg)/80">
               <Eye className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> Opens a read-only snapshot. No sign-in required.
             </p>
           </div>

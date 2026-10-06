@@ -48,7 +48,7 @@ export function NetworkFailureCard({ row }: { row: NetworkFailureRow }) {
       : 'bg-(--surface-panel)';
 
   return (
-    <div className={`border ${borderColor} ${bgColor} rounded-lg overflow-hidden shadow-sm`}>
+    <div className={`border ${borderColor} ${bgColor} rounded-(--radius-lg) overflow-hidden shadow-(--shadow-md)`}>
       <div className="px-3 py-2 flex items-center justify-between gap-2 border-b border-(--border-hairline)">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <span className="font-mono text-[13px] font-bold text-(--status-critical-fg)">

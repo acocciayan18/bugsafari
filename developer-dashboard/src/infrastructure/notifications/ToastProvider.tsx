@@ -72,7 +72,7 @@ function CustomToast({ message, icon, action, onClose }: CustomToastProps) {
         // Runs the action then closes — the toast's job is done once it's acted on.
         <button
           type="button"
-          className="toast-action-btn shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-semibold text-(--text-primary) hover:bg-(--surface-hover) cursor-pointer"
+          className="toast-action-btn shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[13px] font-semibold text-(--accent) hover:bg-(--surface-hover) cursor-pointer"
           onClick={() => { action.onClick(); onClose(); }}
         >
           {action.icon}

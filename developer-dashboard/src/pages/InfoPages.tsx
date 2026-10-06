@@ -48,7 +48,7 @@ const PageShell = ({ title, subtitle, children }: { title: string; subtitle: str
                                     key={l.to}
                                     onClick={() => navigate(l.to)}
                                     aria-current={title.includes(l.match) ? 'page' : undefined}
-                                    className={`font-mono text-sm font-semibold transition-colors bg-transparent border-none cursor-pointer ${title.includes(l.match) ? 'text-[var(--text-primary)] border-b border-[var(--text-primary)] pb-1' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'}`}
+                                    className={`font-mono text-sm font-semibold transition-colors bg-transparent border-none cursor-pointer ${title.includes(l.match) ? 'text-[var(--accent)] border-b border-[var(--accent)] pb-1' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'}`}
                                 >
                                     {l.label}
                                 </button>
@@ -59,7 +59,7 @@ const PageShell = ({ title, subtitle, children }: { title: string; subtitle: str
                         <ThemeToggle />
                         <button
                             onClick={() => navigate('/login')}
-                            className="hidden sm:inline-flex px-5 py-2 font-mono text-sm font-semibold bg-[var(--surface-invert)] text-[var(--text-oninvert)] rounded-lg hover:bg-[var(--surface-invert-hover)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:outline-none cursor-pointer"
+                            className="hidden sm:inline-flex px-5 py-2 font-mono text-sm font-semibold bg-[var(--accent)] text-[var(--accent-fg)] rounded-lg hover:bg-[var(--accent-hover)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:outline-none cursor-pointer"
                         >
                             Log In
                         </button>
@@ -82,14 +82,14 @@ const PageShell = ({ title, subtitle, children }: { title: string; subtitle: str
                                 key={l.to}
                                 onClick={() => { setMenuOpen(false); navigate(l.to); }}
                                 aria-current={title.includes(l.match) ? 'page' : undefined}
-                                className={`block w-full text-left px-3 py-3 rounded-lg font-mono text-sm font-medium transition-colors cursor-pointer ${title.includes(l.match) ? 'bg-[var(--surface-hover)] text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]'}`}
+                                className={`block w-full text-left px-3 py-3 rounded-lg font-mono text-sm font-medium transition-colors cursor-pointer ${title.includes(l.match) ? 'bg-[var(--accent-soft-bg)] text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]'}`}
                             >
                                 {l.label}
                             </button>
                         ))}
                         <button
                             onClick={() => { setMenuOpen(false); navigate('/login'); }}
-                            className="block w-full mt-3 px-4 py-3 font-mono text-sm font-semibold bg-[var(--surface-invert)] text-[var(--text-oninvert)] rounded-lg hover:bg-[var(--surface-invert-hover)] transition-colors cursor-pointer"
+                            className="block w-full mt-3 px-4 py-3 font-mono text-sm font-semibold bg-[var(--accent)] text-[var(--accent-fg)] rounded-lg hover:bg-[var(--accent-hover)] transition-colors cursor-pointer"
                         >
                             Log In
                         </button>
@@ -136,7 +136,7 @@ function SplitSection({ eyebrow, heading, description, bullets, image, imageAlt,
                 <ul className="space-y-3 pt-2">
                     {bullets.map((b) => (
                         <li key={b} className="flex gap-3 text-sm text-[var(--text-secondary)]">
-                            <span className="w-1.5 h-1.5 mt-2.5 rounded-full bg-[var(--surface-invert)] shrink-0" aria-hidden="true" />
+                            <span className="w-1.5 h-1.5 mt-2.5 rounded-full bg-[var(--accent)] shrink-0" aria-hidden="true" />
                             {b}
                         </li>
                     ))}
@@ -145,7 +145,7 @@ function SplitSection({ eyebrow, heading, description, bullets, image, imageAlt,
             <div className="relative">
                 <BrowserFrame base={image} alt={imageAlt} label={frameLabel} />
                 {badge && (
-                    <div className="absolute -bottom-6 -left-6 bg-[var(--surface-invert)] text-[var(--text-oninvert)] rounded-xl p-5 shadow-xl hidden sm:block">
+                    <div className="absolute -bottom-6 -left-6 bg-[var(--accent)] text-[var(--accent-fg)] rounded-xl p-5 shadow-xl hidden sm:block">
                         <div className="text-xl font-extrabold">{badge.value}</div>
                         <div className="text-sm font-mono uppercase tracking-wide opacity-70">{badge.label}</div>
                     </div>
@@ -174,7 +174,7 @@ function FaqAccordion({ items }: { items: { q: string; a: string }[] }) {
 function DarkCta({ heading, sub }: { heading: string; sub: string }) {
     const navigate = useNavigate();
     return (
-        <div className="bg-[var(--surface-invert)] text-[var(--text-oninvert)] rounded-2xl p-8 lg:p-12 text-center space-y-5">
+        <div className="bg-[var(--accent)] text-[var(--accent-fg)] rounded-2xl p-8 lg:p-12 text-center space-y-5">
             <h2 className="text-xl lg:text-3xl font-extrabold uppercase tracking-tight">{heading}</h2>
             <p className="text-base opacity-80 max-w-xl mx-auto">{sub}</p>
             <button
@@ -201,7 +201,7 @@ function ProfileTabs() {
                         role="tab"
                         aria-selected={active === i}
                         onClick={() => setActive(i)}
-                        className={`px-5 py-4 font-mono text-sm font-semibold uppercase whitespace-nowrap border-b-2 transition-colors bg-transparent cursor-pointer ${active === i ? 'border-[var(--text-primary)] text-[var(--text-primary)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
+                        className={`px-5 py-4 font-mono text-sm font-semibold uppercase whitespace-nowrap border-b-2 transition-colors bg-transparent cursor-pointer ${active === i ? 'border-[var(--accent)] text-[var(--accent)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
                     >
                         {p.label}
                     </button>
@@ -247,7 +247,7 @@ function BugTaxonomyGrid() {
 
 function IconTile({ children }: { children: React.ReactNode }) {
     return (
-        <div className="w-12 h-12 bg-[var(--surface-invert)] text-[var(--text-oninvert)] rounded-lg flex items-center justify-center shrink-0">
+        <div className="w-12 h-12 bg-[var(--accent)] text-[var(--accent-fg)] rounded-lg flex items-center justify-center shrink-0">
             {children}
         </div>
     );
@@ -266,7 +266,7 @@ function TeamGrid() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {TEAM_MEMBERS.map((m) => (
                 <div key={m.name} className="flex flex-col items-center text-center gap-4 p-6 border border-[var(--border-hairline)] rounded-xl bg-[var(--surface-panel)] shadow-sm">
-                    <div className="w-16 h-16 rounded-full bg-[var(--surface-invert)] text-[var(--text-oninvert)] flex items-center justify-center font-mono text-lg font-bold" aria-hidden="true">
+                    <div className="w-16 h-16 rounded-full bg-[var(--accent)] text-[var(--accent-fg)] flex items-center justify-center font-mono text-lg font-bold" aria-hidden="true">
                         {m.initials}
                     </div>
                     <div className="font-bold text-sm text-[var(--text-primary)] [text-wrap:balance]">{m.name}</div>
@@ -412,28 +412,28 @@ export function FeaturesContent() {
                 <h2 className="text-xl lg:text-2xl font-extrabold uppercase tracking-tight text-[var(--text-primary)]">More Ways It Helps You</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="flex gap-4 items-start bg-[var(--surface-panel)] p-6 rounded-xl border border-[var(--border-hairline)]">
-                        <div className="w-9 h-9 rounded-full bg-[var(--surface-invert)] text-[var(--text-oninvert)] flex items-center justify-center shrink-0"><Filter className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
+                        <div className="w-9 h-9 rounded-full bg-[var(--accent)] text-[var(--accent-fg)] flex items-center justify-center shrink-0"><Filter className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                         <div className="space-y-1">
                             <h3 className="font-bold text-base text-[var(--text-primary)]">Only Reports Real Bugs</h3>
                             <p className="text-sm text-[var(--text-secondary)]">It tells the difference between a real problem in your app and noise from the browser or network, so you're not chasing false alarms.</p>
                         </div>
                     </div>
                     <div className="flex gap-4 items-start bg-[var(--surface-panel)] p-6 rounded-xl border border-[var(--border-hairline)]">
-                        <div className="w-9 h-9 rounded-full bg-[var(--surface-invert)] text-[var(--text-oninvert)] flex items-center justify-center shrink-0"><Scale className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
+                        <div className="w-9 h-9 rounded-full bg-[var(--accent)] text-[var(--accent-fg)] flex items-center justify-center shrink-0"><Scale className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                         <div className="space-y-1">
                             <h3 className="font-bold text-base text-[var(--text-primary)]">Consistent Results</h3>
                             <p className="text-sm text-[var(--text-secondary)]">The same problem always gets the same label, a clear severity, and plain advice on how to fix it, every single time.</p>
                         </div>
                     </div>
                     <div className="flex gap-4 items-start bg-[var(--surface-panel)] p-6 rounded-xl border border-[var(--border-hairline)]">
-                        <div className="w-9 h-9 rounded-full bg-[var(--surface-invert)] text-[var(--text-oninvert)] flex items-center justify-center shrink-0"><RefreshCcw className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
+                        <div className="w-9 h-9 rounded-full bg-[var(--accent)] text-[var(--accent-fg)] flex items-center justify-center shrink-0"><RefreshCcw className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                         <div className="space-y-1">
                             <h3 className="font-bold text-base text-[var(--text-primary)]">Verify Your Fix</h3>
                             <p className="text-sm text-[var(--text-secondary)]">After you patch a bug, replay it to confirm it's actually gone, with no guessing whether the fix worked.</p>
                         </div>
                     </div>
                     <div className="flex gap-4 items-start bg-[var(--surface-panel)] p-6 rounded-xl border border-[var(--border-hairline)]">
-                        <div className="w-9 h-9 rounded-full bg-[var(--surface-invert)] text-[var(--text-oninvert)] flex items-center justify-center shrink-0"><Lock className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
+                        <div className="w-9 h-9 rounded-full bg-[var(--accent)] text-[var(--accent-fg)] flex items-center justify-center shrink-0"><Lock className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                         <div className="space-y-1">
                             <h3 className="font-bold text-base text-[var(--text-primary)]">Stay On Your Site</h3>
                             <p className="text-sm text-[var(--text-secondary)]">Lock a run to a single site so it never wanders off to somewhere you didn't mean to test.</p>
@@ -486,22 +486,22 @@ export function CommunityContent() {
                 <h2 className="text-xl lg:text-2xl font-extrabold uppercase tracking-tight text-[var(--text-primary)]">How It Fits Your Workflow</h2>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div className="p-6 bg-[var(--surface-panel)] border border-[var(--border-hairline)] rounded-xl space-y-2">
-                        <div className="w-10 h-10 bg-[var(--surface-invert)] text-[var(--text-oninvert)] rounded-lg flex items-center justify-center"><Settings className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
+                        <div className="w-10 h-10 bg-[var(--accent)] text-[var(--accent-fg)] rounded-lg flex items-center justify-center"><Settings className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
                         <h3 className="font-bold text-base text-[var(--text-primary)]">Set Up</h3>
                         <p className="text-sm text-[var(--text-secondary)]">Enter your app's address and pick how you want it tested. Optionally lock the run to that one site.</p>
                     </div>
                     <div className="p-6 bg-[var(--surface-panel)] border border-[var(--border-hairline)] rounded-xl space-y-2">
-                        <div className="w-10 h-10 bg-[var(--surface-invert)] text-[var(--text-oninvert)] rounded-lg flex items-center justify-center"><Play className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
+                        <div className="w-10 h-10 bg-[var(--accent)] text-[var(--accent-fg)] rounded-lg flex items-center justify-center"><Play className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
                         <h3 className="font-bold text-base text-[var(--text-primary)]">Start</h3>
                         <p className="text-sm text-[var(--text-secondary)]">One click starts the test. Pause or resume anytime without losing your progress.</p>
                     </div>
                     <div className="p-6 bg-[var(--surface-panel)] border border-[var(--border-hairline)] rounded-xl space-y-2">
-                        <div className="w-10 h-10 bg-[var(--surface-invert)] text-[var(--text-oninvert)] rounded-lg flex items-center justify-center"><Eye className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
+                        <div className="w-10 h-10 bg-[var(--accent)] text-[var(--accent-fg)] rounded-lg flex items-center justify-center"><Eye className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
                         <h3 className="font-bold text-base text-[var(--text-primary)]">Watch</h3>
                         <p className="text-sm text-[var(--text-secondary)]">See bugs, network activity, and errors stream in live as BugSafari explores your app.</p>
                     </div>
                     <div className="p-6 bg-[var(--surface-panel)] border border-[var(--border-hairline)] rounded-xl space-y-2">
-                        <div className="w-10 h-10 bg-[var(--surface-invert)] text-[var(--text-oninvert)] rounded-lg flex items-center justify-center"><CheckCircle2 className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
+                        <div className="w-10 h-10 bg-[var(--accent)] text-[var(--accent-fg)] rounded-lg flex items-center justify-center"><CheckCircle2 className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
                         <h3 className="font-bold text-base text-[var(--text-primary)]">Verify</h3>
                         <p className="text-sm text-[var(--text-secondary)]">Save the run, read the report, and re-check any bug after you fix it.</p>
                     </div>
@@ -510,12 +510,12 @@ export function CommunityContent() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="p-8 border border-[var(--border-hairline)] rounded-xl bg-[var(--surface-panel)] shadow-sm space-y-4">
-                    <div className="w-10 h-10 bg-[var(--surface-invert)] text-[var(--text-oninvert)] rounded-lg flex items-center justify-center"><Rocket className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
+                    <div className="w-10 h-10 bg-[var(--accent)] text-[var(--accent-fg)] rounded-lg flex items-center justify-center"><Rocket className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
                     <h3 className="text-lg font-bold uppercase tracking-tight text-[var(--text-primary)]">Try Before You Sign Up</h3>
                     <p className="text-sm leading-relaxed text-[var(--text-secondary)]">Guest mode runs a full live test with the same dashboard as a full account. Guest runs aren't saved after your session ends.</p>
                 </div>
                 <div className="p-8 border border-[var(--border-hairline)] rounded-xl bg-[var(--surface-panel)] shadow-sm space-y-4">
-                    <div className="w-10 h-10 bg-[var(--surface-invert)] text-[var(--text-oninvert)] rounded-lg flex items-center justify-center"><ShieldCheck className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
+                    <div className="w-10 h-10 bg-[var(--accent)] text-[var(--accent-fg)] rounded-lg flex items-center justify-center"><ShieldCheck className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" /></div>
                     <h3 className="text-lg font-bold uppercase tracking-tight text-[var(--text-primary)]">Your Results Stay Yours</h3>
                     <p className="text-sm leading-relaxed text-[var(--text-secondary)]">Every saved run and report belongs only to your account. Search it, export it, and come back to re-check it whenever you need to.</p>
                 </div>
@@ -566,28 +566,28 @@ export function AboutContent() {
                 <h2 className="text-xl lg:text-2xl font-extrabold uppercase tracking-tight text-[var(--text-primary)]">What We Care About</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="flex gap-3">
-                        <div className="w-9 h-9 rounded-full bg-[var(--surface-invert)] text-[var(--text-oninvert)] flex items-center justify-center shrink-0"><BadgeCheck className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
+                        <div className="w-9 h-9 rounded-full bg-[var(--accent)] text-[var(--accent-fg)] flex items-center justify-center shrink-0"><BadgeCheck className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                         <div className="space-y-1">
                             <h3 className="font-bold text-base uppercase tracking-tight text-[var(--text-primary)]">Honest Results</h3>
                             <p className="text-sm text-[var(--text-secondary)]">It only reports real problems in your app, not noise from the browser or the network, so you never chase false alarms.</p>
                         </div>
                     </div>
                     <div className="flex gap-3">
-                        <div className="w-9 h-9 rounded-full bg-[var(--surface-invert)] text-[var(--text-oninvert)] flex items-center justify-center shrink-0"><ListChecks className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
+                        <div className="w-9 h-9 rounded-full bg-[var(--accent)] text-[var(--accent-fg)] flex items-center justify-center shrink-0"><ListChecks className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                         <div className="space-y-1">
                             <h3 className="font-bold text-base uppercase tracking-tight text-[var(--text-primary)]">Clear Answers</h3>
                             <p className="text-sm text-[var(--text-secondary)]">Every bug comes with a plain label, a severity, and simple advice on how to fix it, with no decoding required.</p>
                         </div>
                     </div>
                     <div className="flex gap-3">
-                        <div className="w-9 h-9 rounded-full bg-[var(--surface-invert)] text-[var(--text-oninvert)] flex items-center justify-center shrink-0"><ShieldCheck className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
+                        <div className="w-9 h-9 rounded-full bg-[var(--accent)] text-[var(--accent-fg)] flex items-center justify-center shrink-0"><ShieldCheck className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                         <div className="space-y-1">
                             <h3 className="font-bold text-base uppercase tracking-tight text-[var(--text-primary)]">Nothing Breaks The Run</h3>
                             <p className="text-sm text-[var(--text-secondary)]">One failing test never takes down the rest. The run keeps going and still hands you a complete report.</p>
                         </div>
                     </div>
                     <div className="flex gap-3">
-                        <div className="w-9 h-9 rounded-full bg-[var(--surface-invert)] text-[var(--text-oninvert)] flex items-center justify-center shrink-0"><Lock className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
+                        <div className="w-9 h-9 rounded-full bg-[var(--accent)] text-[var(--accent-fg)] flex items-center justify-center shrink-0"><Lock className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" /></div>
                         <div className="space-y-1">
                             <h3 className="font-bold text-base uppercase tracking-tight text-[var(--text-primary)]">Your Data Is Yours</h3>
                             <p className="text-sm text-[var(--text-secondary)]">Saved runs and reports stay tied to your account and out of everyone else's reach.</p>

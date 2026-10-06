@@ -92,7 +92,7 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                         <div className="flex flex-wrap gap-4 pt-1">
                             <button
                                 onClick={onLogin}
-                                className="px-8 py-3.5 bg-[var(--surface-invert)] text-[var(--text-oninvert)] font-semibold rounded-lg shadow-md hover:bg-[var(--surface-invert-hover)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] cursor-pointer"
+                                className="px-8 py-3.5 bg-[var(--accent)] text-[var(--accent-fg)] font-semibold rounded-lg shadow-md hover:bg-[var(--accent-hover)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] cursor-pointer"
                             >
                                 Try It Free
                             </button>
@@ -128,7 +128,7 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {featureCards.map((card) => (
                             <div key={card.title} className="p-7 border border-[var(--border-hairline)] rounded-xl bg-[var(--surface-panel)] shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-                                <div className="w-12 h-12 bg-[var(--surface-invert)] text-[var(--text-oninvert)] rounded-lg flex items-center justify-center mb-5 shrink-0">
+                                <div className="w-12 h-12 bg-[var(--accent)] text-[var(--accent-fg)] rounded-lg flex items-center justify-center mb-5 shrink-0">
                                     <card.icon className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" />
                                 </div>
                                 <h3 className="text-lg mb-3 font-bold uppercase tracking-tight text-[var(--text-primary)]">{card.title}</h3>
@@ -151,7 +151,7 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                         {howItWorks.map((item, i) => (
                             <li key={item.title} className="p-6 bg-[var(--surface-panel)] border border-[var(--border-hairline)] rounded-xl space-y-3">
                                 <div className="flex items-center justify-between">
-                                    <div className="w-10 h-10 bg-[var(--surface-invert)] text-[var(--text-oninvert)] rounded-lg flex items-center justify-center">
+                                    <div className="w-10 h-10 bg-[var(--accent)] text-[var(--accent-fg)] rounded-lg flex items-center justify-center">
                                         <item.icon className="w-5 h-5" strokeWidth={1.75} aria-hidden="true" />
                                     </div>
                                     <span className="font-mono text-sm font-bold text-[var(--text-tertiary)]">0{i + 1}</span>
@@ -173,11 +173,11 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                         <p className="text-base leading-relaxed text-[var(--text-secondary)]">Follow along as BugSafari explores your app in real time. See what it clicks, what it types, and the moment something breaks, all on one dashboard, with telemetry, findings, network, and console in separate tabs.</p>
                         <ul className="space-y-4">
                             <li className="flex items-start gap-3">
-                                <span className="font-mono text-sm font-bold bg-[var(--surface-invert)] text-[var(--text-oninvert)] w-6 h-6 rounded-full flex items-center justify-center mt-0.5 shrink-0" aria-hidden="true">✓</span>
+                                <span className="font-mono text-sm font-bold bg-[var(--accent)] text-[var(--accent-fg)] w-6 h-6 rounded-full flex items-center justify-center mt-0.5 shrink-0" aria-hidden="true">✓</span>
                                 <p className="text-sm text-[var(--text-secondary)]">Every action and result streams in as it happens, nothing hidden.</p>
                             </li>
                             <li className="flex items-start gap-3">
-                                <span className="font-mono text-sm font-bold bg-[var(--surface-invert)] text-[var(--text-oninvert)] w-6 h-6 rounded-full flex items-center justify-center mt-0.5 shrink-0" aria-hidden="true">✓</span>
+                                <span className="font-mono text-sm font-bold bg-[var(--accent)] text-[var(--accent-fg)] w-6 h-6 rounded-full flex items-center justify-center mt-0.5 shrink-0" aria-hidden="true">✓</span>
                                 <p className="text-sm text-[var(--text-secondary)]">It keeps finding new ground instead of getting stuck in circles.</p>
                             </li>
                         </ul>
@@ -228,7 +228,7 @@ const HomeSection = memo(function HomeSection({ onLogin }: { onLogin: () => void
                     <div className="flex flex-col sm:flex-row justify-center gap-4">
                         <button
                             onClick={onLogin}
-                            className="px-10 py-4 bg-[var(--surface-invert)] text-[var(--text-oninvert)] font-semibold rounded-lg shadow-md hover:bg-[var(--surface-invert-hover)] transition-colors uppercase tracking-wide text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] cursor-pointer"
+                            className="px-10 py-4 bg-[var(--accent)] text-[var(--accent-fg)] font-semibold rounded-lg shadow-md hover:bg-[var(--accent-hover)] transition-colors uppercase tracking-wide text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] cursor-pointer"
                         >
                             Start Testing Free
                         </button>
@@ -293,7 +293,7 @@ const LandingPage = () => {
                                     key={item.id}
                                     onClick={() => goToSection(item.id)}
                                     aria-current={activeSection === item.id ? 'page' : undefined}
-                                    className={`font-mono text-sm font-medium transition-colors bg-transparent border-none cursor-pointer ${activeSection === item.id ? 'text-[var(--text-primary)] border-b border-[var(--text-primary)] pb-1' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'}`}
+                                    className={`font-mono text-sm font-medium transition-colors bg-transparent border-none cursor-pointer ${activeSection === item.id ? 'text-[var(--accent)] border-b border-[var(--accent)] pb-1' : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'}`}
                                 >
                                     {item.label}
                                 </button>
@@ -304,13 +304,13 @@ const LandingPage = () => {
                         
                         <button
                             onClick={goToLogin}
-                            className="hidden sm:inline-flex px-5 py-2 font-mono text-sm font-semibold bg-[var(--surface-invert)] text-[var(--text-oninvert)] rounded-lg hover:bg-[var(--surface-invert-hover)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:outline-none cursor-pointer"
+                            className="hidden sm:inline-flex px-5 py-2 font-mono text-sm font-semibold bg-[var(--accent)] text-[var(--accent-fg)] rounded-lg hover:bg-[var(--accent-hover)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:outline-none cursor-pointer"
                         >
                             Log In
                         </button>
                         <button
                             onClick={() => navigate('/signup')}
-                            className="hidden sm:inline-flex px-5 py-2 font-mono text-sm font-semibold text-[var(--text-primary)] border border-[var(--border-strong)] rounded-lg bg-transparent hover:bg-[var(--surface-hover)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:outline-none cursor-pointer"
+                            className="hidden sm:inline-flex px-5 py-2 font-mono text-sm font-semibold text-[var(--accent)] border border-[var(--accent)] rounded-lg bg-transparent hover:bg-[var(--accent-soft-bg)] transition-colors focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] focus-visible:outline-none cursor-pointer"
                         >
                             Sign Up
                         </button>
@@ -335,7 +335,7 @@ const LandingPage = () => {
                                 key={item.id}
                                 onClick={() => goToSection(item.id)}
                                 aria-current={activeSection === item.id ? 'page' : undefined}
-                                className={`block w-full text-left px-3 py-3 rounded-lg font-mono text-sm font-medium transition-colors cursor-pointer ${activeSection === item.id ? 'bg-[var(--surface-hover)] text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]'}`}
+                                className={`block w-full text-left px-3 py-3 rounded-lg font-mono text-sm font-medium transition-colors cursor-pointer ${activeSection === item.id ? 'bg-[var(--accent-soft-bg)] text-[var(--accent)]' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]'}`}
                             >
                                 {item.label}
                             </button>
@@ -343,13 +343,13 @@ const LandingPage = () => {
                         <div className="flex gap-3 pt-3">
                             <button
                                 onClick={goToLogin}
-                                className="flex-1 px-4 py-3 font-mono text-sm font-semibold bg-[var(--surface-invert)] text-[var(--text-oninvert)] rounded-lg hover:bg-[var(--surface-invert-hover)] transition-colors cursor-pointer"
+                                className="flex-1 px-4 py-3 font-mono text-sm font-semibold bg-[var(--accent)] text-[var(--accent-fg)] rounded-lg hover:bg-[var(--accent-hover)] transition-colors cursor-pointer"
                             >
                                 Log In
                             </button>
                             <button
                                 onClick={() => { setMenuOpen(false); navigate('/signup'); }}
-                                className="flex-1 px-4 py-3 font-mono text-sm font-semibold text-[var(--text-primary)] border border-[var(--border-strong)] rounded-lg bg-transparent hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
+                                className="flex-1 px-4 py-3 font-mono text-sm font-semibold text-[var(--accent)] border border-[var(--accent)] rounded-lg bg-transparent hover:bg-[var(--accent-soft-bg)] transition-colors cursor-pointer"
                             >
                                 Sign Up
                             </button>

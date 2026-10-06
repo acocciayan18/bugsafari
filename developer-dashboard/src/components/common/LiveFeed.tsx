@@ -224,7 +224,7 @@ function LiveFeed({
   }, [renderFrame]);
 
   return (
-    <div className="flex flex-col w-full h-full overflow-hidden bg-(--surface-panel) shadow-md rounded-md border border-(--border-hairline)">
+    <div className="flex flex-col w-full h-full overflow-hidden bg-(--surface-panel) shadow-(--shadow-md) rounded-(--radius-md) border border-(--border-hairline)">
 
       {/* BROWSER CHROME - decorative toolbar, no interaction */}
       <div className="flex items-center gap-1.5 border-b border-(--border-hairline) bg-(--surface-app) px-2 py-2 shrink-0 rounded-t-md sm:gap-2 sm:px-3">

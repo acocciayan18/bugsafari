@@ -13,7 +13,7 @@ interface MobileRunActionBarProps {
 }
 
 const BTN =
-  'flex h-12 flex-1 items-center justify-center gap-2 rounded-lg px-4 text-[13px] font-semibold uppercase transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+  'flex h-12 flex-1 items-center justify-center gap-2 rounded-(--radius-md) px-4 text-[13px] font-semibold uppercase transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
 
 // Pinned run controls within thumb reach on phones (< lg). The top control row keeps
 // Config + URL; the run action(s) relevant to the CURRENT session phase live here so
@@ -31,7 +31,7 @@ export default function MobileRunActionBar({
   if (session === 'transition') return null;
 
   const startBtn = (
-    <button type="button" onClick={onStart} disabled={startDisabled} className={`${BTN} bg-(--surface-invert) text-(--text-oninvert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active)`}>
+    <button type="button" onClick={onStart} disabled={startDisabled} className={`${BTN} bg-(--accent) text-(--accent-fg) shadow-(--shadow-sm) hover:bg-(--accent-hover) active:bg-(--accent-active)`}>
       <BugPlay className="h-5 w-5 shrink-0" aria-hidden="true" />
       {/* "New test" after a finished run reads clearer than a bare "Start". */}
       {session === 'completed' ? 'New Test' : 'Start Testing'}

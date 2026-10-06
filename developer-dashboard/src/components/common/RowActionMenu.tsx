@@ -132,7 +132,7 @@ export function RowActionMenu({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: flipUp ? 4 : -4 }}
           transition={{ duration: 0.14, ease: 'easeOut' }}
-          className={`absolute z-50 w-48 max-w-[calc(100vw-1rem)] rounded-lg border border-(--border-strong) bg-(--surface-raised) py-1 shadow-md ${
+          className={`absolute z-50 w-48 max-w-[calc(100vw-1rem)] rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-raised) py-1 shadow-(--shadow-md) ${
             flipUp ? 'bottom-full mb-1 origin-bottom' : 'top-full mt-1 origin-top'
           } ${alignLeft ? 'left-0' : 'right-0'}`}
           role="menu"
@@ -141,10 +141,10 @@ export function RowActionMenu({
             <button
               onClick={() => handleItemClick(onShare)}
               disabled={disabled || isLoading}
-              className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
+              className="group flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--text-primary) transition-colors hover:bg-(--accent-soft-bg) hover:text-(--accent-soft-fg) disabled:opacity-40"
               role="menuitem"
             >
-              <Share2 className="h-4 w-4 shrink-0 text-(--text-secondary)" aria-hidden="true" />
+              <Share2 className="h-4 w-4 shrink-0 text-(--text-secondary) transition-colors group-hover:text-(--accent-soft-fg)" aria-hidden="true" />
               Share
             </button>
           )}
@@ -152,10 +152,10 @@ export function RowActionMenu({
             <button
               onClick={() => handleItemClick(onArchive)}
               disabled={disabled || isLoading}
-              className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
+              className="group flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--text-primary) transition-colors hover:bg-(--accent-soft-bg) hover:text-(--accent-soft-fg) disabled:opacity-40"
               role="menuitem"
             >
-              <Archive className="h-4 w-4 shrink-0 text-(--text-secondary)" aria-hidden="true" />
+              <Archive className="h-4 w-4 shrink-0 text-(--text-secondary) transition-colors group-hover:text-(--accent-soft-fg)" aria-hidden="true" />
               Archive
             </button>
           )}
@@ -163,10 +163,10 @@ export function RowActionMenu({
             <button
               onClick={() => handleItemClick(onRestore)}
               disabled={disabled || isLoading}
-              className="flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--text-primary) hover:bg-(--surface-hover) disabled:opacity-40"
+              className="group flex w-full hover:cursor-pointer items-center gap-3 px-3 py-2.5 sm:py-2 text-left text-[13px] text-(--text-primary) transition-colors hover:bg-(--accent-soft-bg) hover:text-(--accent-soft-fg) disabled:opacity-40"
               role="menuitem"
             >
-              <ArchiveRestore className="h-4 w-4 shrink-0 text-(--text-secondary)" aria-hidden="true" />
+              <ArchiveRestore className="h-4 w-4 shrink-0 text-(--text-secondary) transition-colors group-hover:text-(--accent-soft-fg)" aria-hidden="true" />
               Restore
             </button>
           )}

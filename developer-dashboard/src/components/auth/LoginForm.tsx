@@ -67,7 +67,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
   const passwordInvalid = !!passwordError || credentialsRejected || authError?.field === 'password';
 
   // One field skin shared by both inputs so email + password stay pixel-identical.
-  const fieldBase = 'peer w-full h-11 rounded-(--radius-sm) border bg-(--surface-panel) pl-10 pr-11 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-[color,border-color,box-shadow] duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-1 focus:ring-(--border-focus)';
+  const fieldBase = 'peer w-full h-11 rounded-(--radius-md) border bg-(--surface-panel) pl-10 pr-11 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-[color,border-color,box-shadow] duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-2 focus:ring-(--accent-border)';
   const fieldBorder = (invalid: boolean) => (invalid ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)');
   const iconClass = 'absolute inset-y-0 left-3 flex items-center text-(--text-tertiary) peer-focus:text-(--text-primary) transition-colors pointer-events-none';
 
@@ -104,7 +104,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
 
   return (
     <AuthShell
-      eyebrow="TERMINAL ACCESS"
+      eyebrow="WELCOME BACK"
       title="Bugsafari"
       subtitle="Sign in to run and track your exploratory tests."
 
@@ -112,7 +112,7 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
         <>
           <div className="mt-6 pt-5 border-t border-(--border-hairline) text-center text-sm text-(--text-primary)">
             Don't have an account?{' '}
-            <Link to="/signup" className="text-(--text-primary) font-medium hover:underline underline-offset-2">Sign Up</Link>
+            <Link to="/signup" className="text-(--accent) font-semibold hover:underline underline-offset-2">Sign Up</Link>
           </div>
 
           <div className="mt-4 text-center">

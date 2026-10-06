@@ -37,7 +37,7 @@ export default function ResetPasswordForm() {
   if (!token || !emailParam) {
     return (
       <AuthShell
-        eyebrow="TOKEN REJECTED"
+        eyebrow="RESET PASSWORD"
         title="Invalid reset link"
       >
         <div className="text-center">
@@ -77,7 +77,7 @@ export default function ResetPasswordForm() {
     : '';
 
   // Shared field skin so every input stays pixel-identical with the other auth screens.
-  const fieldBase = 'peer w-full h-11 rounded-(--radius-sm) border bg-(--surface-panel) pl-10 pr-11 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-[color,border-color,box-shadow] duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-1 focus:ring-(--border-focus)';
+  const fieldBase = 'peer w-full h-11 rounded-(--radius-md) border bg-(--surface-panel) pl-10 pr-11 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-[color,border-color,box-shadow] duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-2 focus:ring-(--accent-border)';
   const fieldBorder = (invalid: boolean) => (invalid ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)');
   const iconClass = 'absolute inset-y-0 left-3 flex items-center text-(--text-tertiary) peer-focus:text-(--text-primary) transition-colors pointer-events-none';
   const eyeClass = 'absolute inset-y-0 right-0 flex w-11 items-center justify-center text-(--text-tertiary) hover:text-(--text-primary) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)';
@@ -124,7 +124,7 @@ export default function ResetPasswordForm() {
 
   return (
     <AuthShell
-      eyebrow="CREDENTIAL RESET"
+      eyebrow="RESET PASSWORD"
       title="Reset password"
       subtitle="Enter your new password below."
     >

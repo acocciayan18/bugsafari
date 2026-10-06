@@ -111,7 +111,7 @@ export default function CweBadge({ cwe }: { cwe: string }) {
           id={tipId}
           role="tooltip"
           style={{ position: 'fixed', top: pos?.top ?? 0, left: pos?.left ?? 0, opacity: pos ? 1 : 0 }}
-          className="pointer-events-none z-50 block w-64 max-w-[calc(100vw-1rem)] rounded-lg border border-(--border-hairline) bg-(--surface-raised) p-3 text-left shadow-lg transition-opacity duration-150"
+          className="pointer-events-none z-50 block w-64 max-w-[calc(100vw-1rem)] rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-raised) p-3 text-left shadow-(--shadow-lg) transition-opacity duration-150"
         >
           <span className="block text-[13px] font-bold text-(--text-primary)">{cwe}{info ? ` · ${info.name}` : ''}</span>
           <span className="mt-1 block text-xs leading-relaxed text-(--text-secondary)">{info?.plain ?? GENERIC}</span>

@@ -9,7 +9,6 @@
 import { useState, useEffect, useRef, memo, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import {
-  LoaderCircle,
   Monitor,
   Moon,
   Sun,
@@ -54,10 +53,6 @@ import type { ThemeMode } from '../../types';
 const ICON_SIZE = 'h-4.5 w-4.5';
 const ICON_STROKE = 1.75;
 
-function Spinner() {
-  return <LoaderCircle className={`${ICON_SIZE} animate-spin`} strokeWidth={ICON_STROKE} aria-hidden="true" />;
-}
-
 // Cards rise in sequence on mount; the grid below drives the stagger.
 const CARD_MOTION = { hidden: { opacity: 0, y: 12 }, shown: { opacity: 1, y: 0 } };
 
@@ -78,10 +73,10 @@ function SettingsCard({ icon, title, description, children, dataTour, className 
       data-tour={dataTour}
       variants={CARD_MOTION}
       transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-      className={`flex flex-col rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-sm ${className}`}
+      className={`flex flex-col rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-panel) shadow-(--shadow-md) ${className}`}
     >
       <header className="flex items-start gap-2.5 border-b border-(--border-hairline) px-4 py-3">
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-(--surface-invert) text-(--text-oninvert)">
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-(--radius-md) bg-(--accent-soft-bg) text-(--accent-soft-fg)">
           {icon}
         </div>
         <div>
@@ -117,9 +112,9 @@ function ThemeModeControl({ mode, onChange }: { mode: ThemeMode; onChange: (mode
             role="radio"
             aria-checked={selected}
             onClick={() => onChange(opt.mode)}
-            className={`flex min-h-[44px] flex-col cursor-pointer items-center justify-center gap-1 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2 focus-visible:ring-offset-(--surface-app) ${
+            className={`flex min-h-[44px] flex-col cursor-pointer items-center justify-center gap-1 rounded-(--radius-md) border px-3 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2 focus-visible:ring-offset-(--surface-app) ${
               selected
-                ? 'border-(--border-strong) bg-(--surface-invert) text-(--text-oninvert)'
+                ? 'border-(--accent) bg-(--accent) text-(--accent-fg)'
                 : 'border-(--border-hairline) text-(--text-secondary) hover:bg-(--surface-hover)'
             }`}
           >
@@ -159,7 +154,7 @@ function PasswordInputField({
 }) {
   return (
     <div>
-      <label htmlFor={id} className="block text-sm font-medium text-(--text-secondary) mb-2">
+      <label htmlFor={id} className="block text-sm font-medium text-(--text-primary) mb-2">
         {label}
       </label>
       <div className="relative">
@@ -171,10 +166,8 @@ function PasswordInputField({
           type={showPassword ? 'text' : 'password'}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className={`w-full rounded-lg border bg-(--surface-inset) px-4 py-2.5 pl-10 pr-10 text-sm text-(--text-primary) placeholder-(--text-disabled) focus:bg-(--surface-panel) focus:outline-none transition-colors ${
-            error
-              ? 'border-(--status-critical-border) focus:border-(--status-critical-fg)'
-              : 'border-(--border-hairline) focus:border-(--border-strong)'
+          className={`w-full rounded-(--radius-md) border bg-(--surface-panel) px-4 py-2.5 pl-10 pr-10 text-sm text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-2 focus:ring-(--accent-border) ${
+            error ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'
           }`}
           placeholder={placeholder || '••••••••'}
           autoComplete={autoComplete}
@@ -217,16 +210,16 @@ export const ToggleSwitch = memo(function ToggleSwitch({
     <div className="flex items-center justify-between gap-3 py-3 sm:gap-4">
       <div className="flex items-start gap-3">
         {icon && (
-          <div className="mt-0.5 text-slate-400 dark:text-zinc-400">
+          <div className="mt-0.5 text-(--text-tertiary)">
             {icon}
           </div>
         )}
         <div>
-          <span className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+          <span className="text-sm font-semibold text-(--text-primary)">
             {label}
           </span>
           {description && (
-            <p className="mt-0.5 text-sm text-slate-600 dark:text-zinc-400">
+            <p className="mt-0.5 text-sm text-(--text-secondary)">
               {description}
             </p>
           )}
@@ -245,15 +238,15 @@ export const ToggleSwitch = memo(function ToggleSwitch({
             onChange(!checked);
           }
         }}
-        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-zinc-900 ${
+        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-(--border-focus) focus:ring-offset-2 focus:ring-offset-(--surface-panel) ${
           checked
-            ? 'bg-emerald-500 dark:bg-emerald-500' // High-visibility active color (Emerald / Tech Accent)
-            : 'bg-slate-300 dark:bg-zinc-700'       // Clear, high-contrast inactive track
+            ? 'border-(--accent) bg-(--accent)'
+            : 'border-(--border-strong) bg-(--surface-hover)'
         }`}
       >
         <span
           aria-hidden="true"
-          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-[#f4f4f5] shadow-md ring-0 transition duration-200 ease-in-out ${
+          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-(--shadow-sm) ring-0 transition duration-200 ease-in-out ${
             checked ? 'translate-x-5' : 'translate-x-0'
           }`}
         />
@@ -361,7 +354,7 @@ function ApplicationSettingsSection() {
   return (
     <div className="space-y-4">
       <div>
-        <span className="text-sm font-semibold text-(--text-secondary) uppercase r">Theme</span>
+        <span className="text-sm font-semibold text-(--text-secondary) uppercase">Theme</span>
         <p className="mt-0.5 mb-2 text-sm text-(--text-secondary)">Choose how BugSafari looks on this device.</p>
         <ThemeModeControl mode={settings.theme} onChange={handleThemeSelect} />
       </div>
@@ -504,13 +497,9 @@ function SecuritySettingsSection() {
         <p className="text-sm text-(--text-tertiary)" aria-hidden="true">
           Signing you out in {secondsLeft}s
         </p>
-        <button
-          type="button"
-          onClick={signOutNow}
-          className="mt-1 rounded-lg bg-(--surface-invert) px-4 py-2.5 text-sm font-semibold text-(--text-oninvert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) transition-colors duration-200 ease-in-out shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
-        >
+        <Button type="button" variant="primary" size="sm" className="mt-1" onClick={signOutNow}>
           Sign in now
-        </button>
+        </Button>
       </div>
     );
   }
@@ -518,14 +507,10 @@ function SecuritySettingsSection() {
   return (
     <div>
       {!isOpen && (
-        <button
-          type="button"
-          onClick={() => setIsOpen(true)}
-          className="flex w-full items-center cursor-pointer justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-2.5 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
-        >
+        <Button type="button" variant="secondary" size="md" className="w-full" onClick={() => setIsOpen(true)}>
           <KeyRound className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
           Change Password
-        </button>
+        </Button>
       )}
 
       <div
@@ -585,29 +570,13 @@ function SecuritySettingsSection() {
             )}
 
             <div className="flex flex-col gap-3 sm:flex-row">
-              <button
-                type="submit"
-                disabled={isPasswordChanging}
-                className="flex-1 rounded-lg bg-(--surface-invert) px-4 py-2.5 text-sm font-semibold text-(--text-oninvert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 ease-in-out shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
-              >
-                {isPasswordChanging ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Spinner />
-                    Updating...
-                  </span>
-                ) : (
-                  'Update Password'
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={handleCancel}
-                disabled={isPasswordChanging}
-                className="flex items-center justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-2.5 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) disabled:opacity-40 transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
-              >
+              <Button type="submit" variant="primary" size="md" className="flex-1" disabled={isPasswordChanging} isLoading={isPasswordChanging}>
+                {isPasswordChanging ? 'Updating...' : 'Update Password'}
+              </Button>
+              <Button type="button" variant="secondary" size="md" onClick={handleCancel} disabled={isPasswordChanging}>
                 <X className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
                 Cancel
-              </button>
+              </Button>
             </div>
           </form>
         </div>
@@ -662,13 +631,10 @@ function AccountSection() {
         </p>
 
         <div className="pt-4 border-t border-(--border-hairline)">
-          <button
-            onClick={logout}
-            className="inline-flex w-fit items-center cursor-pointer justify-center gap-2 rounded-lg border border-(--border-strong) px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
-          >
+          <Button variant="secondary" size="sm" className="w-fit" onClick={logout}>
             <LogOut className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
             Exit Guest Mode
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -720,13 +686,10 @@ function AccountSection() {
       </div>
 
       <div className="pt-4 border-t border-(--border-hairline)">
-        <button
-          onClick={() => setShowLogoutConfirm(true)}
-          className="inline-flex w-fit cursor-pointer items-center justify-center gap-2 rounded-lg border border-(--border-strong) bg-(--surface-raised) px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors"
-        >
+        <Button variant="secondary" size="sm" className="w-fit" onClick={() => setShowLogoutConfirm(true)}>
           <LogOut className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
           Sign Out
-        </button>
+        </Button>
       </div>
 
       <Modal
@@ -741,18 +704,12 @@ function AccountSection() {
           </h2>
           <p className="mt-2 text-sm text-(--text-secondary)">Are you sure you want to sign out?</p>
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
-            <button
-              onClick={() => setShowLogoutConfirm(false)}
-              className="rounded-lg border cursor-pointer border-(--border-strong) px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
-            >
+            <Button variant="secondary" size="sm" onClick={() => setShowLogoutConfirm(false)}>
               Cancel
-            </button>
-            <button
-              onClick={handleLogout}
-              className="rounded-lg cursor-pointer bg-(--status-critical-fg) px-4 py-2 text-sm font-semibold text-(--text-oninvert) hover:opacity-90 active:opacity-80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
-            >
+            </Button>
+            <Button variant="destructive" size="sm" onClick={handleLogout}>
               Yes, Sign Out
-            </button>
+            </Button>
           </div>
         </div>
       </Modal>

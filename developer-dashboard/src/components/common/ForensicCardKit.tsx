@@ -66,7 +66,7 @@ export const CopyButton = ({ text, label }: { text: string; label?: string }) =>
       aria-label={copied ? 'Copied!' : actionLabel}
     >
       {copied
-        ? <Check className="h-3.5 w-3.5 text-emerald-500" />
+        ? <Check className="h-3.5 w-3.5 text-(--status-stable-fg)" />
         : <Copy className="h-3.5 w-3.5" />}
     </button>
   );
@@ -93,7 +93,7 @@ export const ExpandableCodeBlock = ({
     <div>
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-2 px-4 py-3 pt-0 cursor-pointer text-(--text-secondary)  transition-colors text-[13px] font-semibold"
+        className="w-full flex items-center gap-2 px-4 py-3 pt-0 cursor-pointer text-(--text-secondary) hover:text-(--accent) transition-colors text-[13px] font-semibold"
       >
         <span className="shrink-0 text-[13px]">{isExpanded ? '▼' : ''}</span>
         <span className="min-w-0 text-left">{title}</span>
@@ -206,7 +206,7 @@ export const SuggestedFixBlock = ({ advice, context, savedAiAdvice }: { advice: 
             <button
               type="button"
               onClick={generate}
-              className="inline-flex items-center cursor-pointer gap-1.5 rounded border border-(--border-hairline) bg-(--surface-inset) px-2 py-1 text-xs font-semibold text-(--text-secondary) hover:text-(--text-primary)"
+              className="inline-flex items-center cursor-pointer gap-1.5 rounded-(--radius-sm) border border-(--accent-border) bg-(--accent-soft-bg) px-2 py-1 text-xs font-semibold text-(--accent-soft-fg) transition-colors hover:bg-(--accent) hover:text-(--accent-fg)"
             >
               <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {status === 'error' || source === 'fallback' ? 'Retry' : 'See More Suggestions'}
             </button>

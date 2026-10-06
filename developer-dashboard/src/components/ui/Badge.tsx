@@ -4,7 +4,7 @@ export type BadgeVariant = 'default' | 'primary' | 'success' | 'warning' | 'dang
 
 const VARIANT_CLASSES: Record<BadgeVariant, string> = {
   default: 'bg-(--status-neutral-bg) text-(--status-neutral-fg) border border-(--status-neutral-border)',
-  primary: 'bg-(--status-neutral-bg) text-(--status-neutral-fg) border border-(--status-neutral-border)',
+  primary: 'bg-(--accent-soft-bg) text-(--accent-soft-fg) border border-(--accent-border)',
   success: 'bg-(--status-stable-bg) text-(--status-stable-fg) border border-(--status-stable-border)',
   warning: 'bg-(--status-warning-bg) text-(--status-warning-fg) border border-(--status-warning-border)',
   danger: 'bg-(--status-critical-bg) text-(--status-critical-fg) border border-(--status-critical-border)',

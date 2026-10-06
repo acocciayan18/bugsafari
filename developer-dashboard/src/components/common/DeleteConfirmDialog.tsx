@@ -85,7 +85,7 @@ export function DeleteConfirmDialog({
               autoComplete="off"
               spellCheck={false}
               aria-label={`Type ${confirmationPhrase} to confirm permanent deletion`}
-              className="mt-2 w-full rounded-md border border-(--border-hairline) bg-(--surface-app) px-3 py-2 font-mono text-sm text-(--text-primary) focus:border-(--border-focus) focus:outline-none focus:ring-1 focus:ring-(--border-focus)"
+              className="mt-2 w-full rounded-(--radius-md) border border-(--border-hairline) bg-(--surface-app) px-3 py-2 font-mono text-sm text-(--text-primary) transition-colors focus:border-(--border-focus) focus:outline-none focus:ring-2 focus:ring-(--accent-border)"
             />
           </div>
         )}

@@ -89,7 +89,7 @@ export default function FindingCard({
   const selector = displayableSelector(view.selector, element);
 
   return (
-    <div className={`overflow-hidden rounded-lg border ${theme.cardBorder} bg-(--surface-panel) shadow-sm`}>
+    <div className={`overflow-hidden rounded-(--radius-lg) border ${theme.cardBorder} bg-(--surface-panel) shadow-(--shadow-md)`}>
       <div className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b ${theme.cardHeaderBg} px-4 py-2.5`}>
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
           <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${theme.numberBg} text-(--text-oninvert)`}>

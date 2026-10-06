@@ -54,7 +54,7 @@ function navItemClass(isActive: boolean, isRail: boolean) {
   const base =
     'flex w-full items-center gap-2.5 border-l-[3px] hover:cursor-pointer rounded-r-md px-3 py-2.5 text-sm font-medium transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-inset';
   const state = isActive
-    ? 'border-(--surface-invert) bg-(--surface-invert) text-(--text-oninvert)'
+    ? 'border-(--accent) bg-(--accent-soft-bg) text-(--accent-soft-fg)'
     : 'border-transparent text-(--text-secondary) hover:bg-(--surface-hover) hover:text-(--text-primary)';
   return `${base} ${state} ${isRail ? 'justify-center px-2' : ''}`;
 }
@@ -128,11 +128,11 @@ export default function Sidebar({
         </button>
 
         <div className={`overflow-hidden transition-all duration-200 ${isRail ? 'w-0 h-0' : 'w-auto h-auto flex-1 min-w-0'}`}>
-          <h1 className="font-sans font-bold text-md uppercase r text-(--text-primary) whitespace-nowrap leading-none">
+          <h1 className="font-sans font-bold text-md uppercase tracking-tight text-(--text-primary) whitespace-nowrap leading-none">
             BUGSAFARI
           </h1>
-          <p className="mt-0.5 font-sans font-medium text-xs text-(--text-secondary) whitespace-nowrap leading-none r">
-            TERMINAL ACCESS
+          <p className="mt-1 font-sans font-medium text-xs text-(--text-tertiary) whitespace-nowrap leading-none">
+            Testing Workspace
           </p>
         </div>
       </div>

@@ -22,18 +22,18 @@ export default function AccessGate({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-white p-6">
+    <div className="flex min-h-dvh items-center justify-center bg-(--surface-app) p-6">
       <form onSubmit={handleSubmit} className="w-full max-w-sm text-center">
         <div className="mb-6 flex flex-col items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-900 text-white">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--accent) text-(--accent-fg)">
             <Lock className="h-6 w-6" strokeWidth={1.75} />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-neutral-900">BugSafari</h1>
-            <p className="mt-2 text-sm text-neutral-600">
+            <h1 className="text-lg font-bold text-(--text-primary)">BugSafari</h1>
+            <p className="mt-2 text-sm text-(--text-secondary)">
               Thanks for taking part in the BugSafari survey, but access is currently limited.
             </p>
-            <p className="mt-1 text-sm text-neutral-600">
+            <p className="mt-1 text-sm text-(--text-secondary)">
               We're still cooking up something better and working to make BugSafari more useful for student developers.
             </p>
           </div>
@@ -47,14 +47,14 @@ export default function AccessGate({ children }: { children: ReactNode }) {
           placeholder="Developer access password"
           aria-label="Developer access password"
           aria-invalid={error}
-          className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-900"
+          className="w-full rounded-(--radius-md) border border-(--border-hairline) bg-(--surface-panel) px-3 py-2.5 text-sm text-(--text-primary) placeholder:text-(--text-tertiary) outline-none focus:border-(--border-focus) focus-visible:ring-2 focus-visible:ring-(--accent-border)"
         />
 
-        {error && <p className="mt-2 text-sm text-red-500">Incorrect password.</p>}
+        {error && <p className="mt-2 text-sm text-(--status-critical-fg)">Incorrect password.</p>}
 
         <button
           type="submit"
-          className="mt-4 w-full rounded-md bg-neutral-900 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:cursor-pointer hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900"
+          className="mt-4 w-full rounded-(--radius-md) bg-(--accent) px-3 py-2.5 text-sm font-semibold text-(--accent-fg) transition-colors hover:cursor-pointer hover:bg-(--accent-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-border)"
         >
           Unlock
         </button>

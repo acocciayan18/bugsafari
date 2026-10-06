@@ -71,7 +71,7 @@ function FilterChip({ label, count, active, onClick }: { label: string; count: n
       onClick={onClick}
       className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ${
         active
-          ? 'border-(--border-strong) bg-(--surface-invert) text-(--text-oninvert)'
+          ? 'border-(--accent) bg-(--accent) text-(--accent-fg)'
           : 'border-(--border-hairline) bg-(--surface-inset) text-(--text-secondary) hover:text-(--text-primary)'
       }`}
     >

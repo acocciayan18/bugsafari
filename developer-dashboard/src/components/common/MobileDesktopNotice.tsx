@@ -41,7 +41,7 @@ export function MobileDesktopNotice({ isOpen, onDismiss }: MobileDesktopNoticePr
         <button
           type="button"
           onClick={onDismiss}
-          className="w-full cursor-pointer rounded-lg bg-(--text-primary) px-8 py-3 text-xs font-medium uppercase tracking-wide text-(--text-oninvert) shadow-md transition-all hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
+          className="w-full cursor-pointer rounded-(--radius-md) bg-(--accent) px-8 py-3 text-xs font-medium uppercase tracking-wide text-(--accent-fg) shadow-(--shadow-sm) transition-colors hover:bg-(--accent-hover) active:bg-(--accent-active) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
         >
           Got it, continue
         </button>

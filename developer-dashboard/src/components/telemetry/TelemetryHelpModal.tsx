@@ -104,7 +104,7 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
           transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
           // Under `sm` this is pinned to the VIEWPORT, not to the trigger — an anchored
           // popover on a narrow pane could not stay on screen and still be readable.
-          className="custom-scrollbar fixed inset-x-3 bottom-3 z-50 flex max-h-[75dvh] origin-bottom flex-col overflow-hidden rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-2 sm:top-full sm:mt-2 sm:max-h-[calc(100dvh-8rem)] sm:w-96 sm:max-w-[calc(100vw-2rem)] sm:origin-top-right"
+          className="custom-scrollbar fixed inset-x-3 bottom-3 z-50 flex max-h-[75dvh] origin-bottom flex-col overflow-hidden rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-panel) shadow-(--shadow-xl) sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-2 sm:top-full sm:mt-2 sm:max-h-[calc(100dvh-8rem)] sm:w-96 sm:max-w-[calc(100vw-2rem)] sm:origin-top-right"
         >
           <div className="flex shrink-0 items-start gap-1 border-b border-(--border-hairline) px-2 pt-2">
             <div className="scroll-rail flex min-w-0 flex-1 gap-1" role="tablist">
@@ -117,7 +117,7 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
                     onClick={() => setActiveId(topic.id)}
                     className={`flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-t-md border-b-2 px-2.5 py-2 text-body-sm font-medium transition-colors ${
                       isActive
-                        ? 'border-(--text-primary) text-(--text-primary)'
+                        ? 'border-(--accent) text-(--accent)'
                         : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'
                     }`}
                     role="tab"

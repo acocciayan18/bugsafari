@@ -24,12 +24,12 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null | undefined 
 
   return (
     <div
-      className={`mt-3 bg-(--surface-inset) border-l-4 rounded-r p-3 sm:p-4 text-(--text-primary) font-mono text-[13px] ${
-        isCritical ? 'border-(--status-critical-fg)' : 'border-(--border-strong)'
+      className={`mt-3 bg-(--surface-inset) border-l-4 rounded-r-(--radius-md) p-3 sm:p-4 text-(--text-primary) font-mono text-[13px] ${
+        isCritical ? 'border-(--status-critical-fg)' : 'border-(--accent)'
       }`}
     >
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-b border-(--border-hairline) pb-2 mb-2">
-        <div className="flex min-w-0 items-center gap-1.5 text-(--text-secondary) font-bold r uppercase text-xs">
+        <div className="flex min-w-0 items-center gap-1.5 text-(--accent-soft-fg) font-bold r uppercase text-xs">
           <span> BUGSAFARI FORENSIC EXPERT SYSTEM</span>
         </div>
         <SeverityBadge severity={severity} />

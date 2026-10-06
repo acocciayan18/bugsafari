@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { X, KeyRound, Route, Timer } from 'lucide-react';
 import { Modal } from '../ui/Modal';
+import { Button } from '../ui/Button';
 import { useAuth } from '../../context/AuthContext';
 import TargetAuthPanel, { isTargetAuthIncomplete, type TargetAuthDraft } from './TargetAuthPanel';
 import { TEST_DURATION_PRESETS, type BoundaryLockMode, type TestDurationId } from '../../types';
@@ -109,7 +110,7 @@ export default function TestingConfigModal({
             onClick={() => setActiveTab(id)}
             className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-xs font-bold uppercase cursor-pointer transition-colors font-sans ${
               activeTab === id
-                ? 'border-(--text-primary) text-(--text-primary)'
+                ? 'border-(--accent) text-(--accent)'
                 : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'
             }`}
           >
@@ -132,7 +133,7 @@ export default function TestingConfigModal({
         {activeTab === 'boundary' && (
           <div role="tabpanel" id="config-panel-boundary" aria-labelledby="config-tab-boundary">
             <div role="radiogroup" aria-label="Navigation boundary" className="flex flex-col gap-2">
-              <span className="text-xs font-bold r text-(--text-secondary) uppercase font-sans">
+              <span className="text-xs font-bold text-(--text-secondary) uppercase font-sans">
                 Navigation Boundary
               </span>
               {BOUNDARY_OPTIONS.map(({ id, label, description }) => {
@@ -144,20 +145,20 @@ export default function TestingConfigModal({
                     role="radio"
                     aria-checked={selected}
                     onClick={() => onBoundaryModeChange(id)}
-                    className={`flex items-start gap-2.5 text-left cursor-pointer select-none rounded-lg border px-3 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) ${
+                    className={`flex items-start gap-2.5 text-left cursor-pointer select-none rounded-(--radius-md) border px-3 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) ${
                       selected
-                        ? 'border-(--text-primary) bg-(--surface-raised)'
-                        : 'border-(--border-hairline) bg-(--surface-base) hover:bg-(--surface-hover)'
+                        ? 'border-(--accent) bg-(--accent-soft-bg)'
+                        : 'border-(--border-hairline) bg-(--surface-panel) hover:bg-(--surface-hover)'
                     }`}
                   >
                     <span
-                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${selected ? 'border-(--text-primary)' : 'border-(--border-strong)'}`}
+                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${selected ? 'border-(--accent)' : 'border-(--border-strong)'}`}
                       aria-hidden="true"
                     >
-                      {selected && <span className="h-2 w-2 rounded-full bg-(--text-primary)" />}
+                      {selected && <span className="h-2 w-2 rounded-full bg-(--accent)" />}
                     </span>
                     <span className="flex flex-col">
-                      <span className="text-xs font-bold r text-(--text-secondary) uppercase font-sans">
+                      <span className="text-xs font-bold text-(--text-secondary) uppercase font-sans">
                         {label}
                         {id === 'site' && (
                           <span className="ml-1.5 lowercase text-(--text-tertiary) font-medium">(recommended)</span>
@@ -175,7 +176,7 @@ export default function TestingConfigModal({
         {activeTab === 'duration' && (
           <div role="tabpanel" id="config-panel-duration" aria-labelledby="config-tab-duration">
             <div role="radiogroup" aria-label="Test duration" className="flex flex-col gap-2">
-              <span className="text-xs font-bold r text-(--text-secondary) uppercase font-sans">
+              <span className="text-xs font-bold text-(--text-secondary) uppercase font-sans">
                 Test Duration
               </span>
               <span className="text-xs text-(--text-tertiary) font-sans -mt-1 mb-1">
@@ -192,20 +193,20 @@ export default function TestingConfigModal({
                     role="radio"
                     aria-checked={selected}
                     onClick={() => onDurationChange(id)}
-                    className={`flex items-start gap-2.5 text-left cursor-pointer select-none rounded-lg border px-3 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) ${
+                    className={`flex items-start gap-2.5 text-left cursor-pointer select-none rounded-(--radius-md) border px-3 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) ${
                       selected
-                        ? 'border-(--text-primary) bg-(--surface-raised)'
-                        : 'border-(--border-hairline) bg-(--surface-base) hover:bg-(--surface-hover)'
+                        ? 'border-(--accent) bg-(--accent-soft-bg)'
+                        : 'border-(--border-hairline) bg-(--surface-panel) hover:bg-(--surface-hover)'
                     }`}
                   >
                     <span
-                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${selected ? 'border-(--text-primary)' : 'border-(--border-strong)'}`}
+                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${selected ? 'border-(--accent)' : 'border-(--border-strong)'}`}
                       aria-hidden="true"
                     >
-                      {selected && <span className="h-2 w-2 rounded-full bg-(--text-primary)" />}
+                      {selected && <span className="h-2 w-2 rounded-full bg-(--accent)" />}
                     </span>
                     <span className="flex flex-col">
-                      <span className="text-xs font-bold r text-(--text-secondary) uppercase font-sans">
+                      <span className="text-xs font-bold text-(--text-secondary) uppercase font-sans">
                         {label}
                         {id === '10m' && (
                           <span className="ml-1.5 lowercase text-(--text-tertiary) font-medium">(recommended)</span>
@@ -232,12 +233,9 @@ export default function TestingConfigModal({
     Applied on the next run.
   </span>
 
-  <button
-    onClick={onClose}
-    className="rounded-lg bg-(--surface-invert) px-6 py-2 text-xs font-bold uppercase text-(--text-oninvert) transition-colors hover:cursor-pointer hover:bg-(--surface-invert-hover)"
-  >
+  <Button variant="primary" size="sm" onClick={onClose}>
     Done
-  </button>
+  </Button>
 </div>
     </Modal>
   );

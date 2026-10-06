@@ -12,7 +12,7 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>
   invalid?: boolean;
 }
 
-/** Watchtower Inputs — hairline border, sharp radius, focus ring uses --border-focus, error below field. */
+/** Soft Coursera-style inputs — hairline border, rounded radius, accent focus ring, error below field. */
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   { inputSize = 'md', error, label, hint, invalid = false, id, className = '', ...rest },
   ref
@@ -32,7 +32,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       <input
         ref={ref}
         id={inputId}
-        className={`w-full rounded-(--radius-sm) border bg-(--surface-panel) px-4 ${inputSize === 'lg' ? 'h-12' : 'h-10'} text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-0 disabled:opacity-40 disabled:cursor-not-allowed ${
+        className={`w-full rounded-(--radius-md) border bg-(--surface-panel) px-4 ${inputSize === 'lg' ? 'h-12' : 'h-10'} text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-2 focus:ring-(--accent-border) disabled:opacity-40 disabled:cursor-not-allowed ${
           isInvalid ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'
         } ${className}`}
         aria-invalid={isInvalid}

@@ -9,7 +9,7 @@ interface AccessibilityWarningBannerProps {
 // Aggregate-only: no per-finding list, no persistence — purely a live nudge.
 export default function AccessibilityWarningBanner({ count, onDismiss }: AccessibilityWarningBannerProps) {
   return (
-    <div className="sticky top-0 z-10 mb-3 rounded-lg border border-(--status-warning-border) bg-(--status-warning-bg) px-3 py-3 shadow-sm sm:px-4">
+    <div className="sticky top-0 z-10 mb-3 rounded-(--radius-lg) border border-(--status-warning-border) bg-(--status-warning-bg) px-3 py-3 shadow-(--shadow-sm) sm:px-4">
       <div className="flex items-start gap-2 sm:gap-3">
         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-(--status-warning-fg) text-[13px] text-(--text-oninvert)">
           <Accessibility className="h-4 w-4" aria-hidden="true" />

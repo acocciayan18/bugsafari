@@ -83,7 +83,7 @@ export default function SignupForm() {
   const confirmInvalid = !!showConfirmError;
 
   // Shared field skin so every input stays pixel-identical.
-  const fieldBase = 'peer w-full h-11 rounded-(--radius-sm) border bg-(--surface-panel) pl-10 pr-11 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-[color,border-color,box-shadow] duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-1 focus:ring-(--border-focus)';
+  const fieldBase = 'peer w-full h-11 rounded-(--radius-md) border bg-(--surface-panel) pl-10 pr-11 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-[color,border-color,box-shadow] duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-2 focus:ring-(--accent-border)';
   const fieldBorder = (invalid: boolean) => (invalid ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)');
   const iconClass = 'absolute inset-y-0 left-3 flex items-center text-(--text-tertiary) peer-focus:text-(--text-primary) transition-colors pointer-events-none';
   const eyeClass = 'absolute inset-y-0 right-0 flex w-11 items-center justify-center text-(--text-tertiary) hover:text-(--text-primary) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm)';
@@ -125,7 +125,7 @@ export default function SignupForm() {
   // "check your inbox" screen rather than treating the user as signed in.
   if (verificationSent) {
     return (
-      <AuthShell eyebrow="VERIFY YOUR EMAIL" title="Check your inbox">
+      <AuthShell eyebrow="VERIFY EMAIL" title="Check your inbox">
         <div className="text-center">
           <div className="w-16 h-16 sm:w-[72px] sm:h-[72px] shrink-0 bg-(--status-stable-bg) ring-1 ring-(--status-stable-border) rounded-full flex items-center justify-center mx-auto mb-5 shadow-(--shadow-sm)">
             <span className="text-(--status-stable-fg)"><MailCheck className="w-8 h-8 sm:w-9 sm:h-9" strokeWidth={1.75} aria-hidden="true" /></span>
@@ -152,13 +152,13 @@ export default function SignupForm() {
 
   return (
     <AuthShell
-      eyebrow="NEW USER REGISTRATION"
+      eyebrow="CREATE ACCOUNT"
       title="Create Account"
       subtitle="Create an account to start running exploratory tests."
       footer={
         <>
           <div className="mt-6 pt-5 border-t border-(--border-hairline) text-center text-sm text-(--text-primary)">
-            Already have an account? <Link to="/login" className="text-(--text-primary) font-medium hover:underline underline-offset-2">Log in</Link>
+            Already have an account? <Link to="/login" className="text-(--accent) font-semibold hover:underline underline-offset-2">Log in</Link>
           </div>
           <LegalFooter onOpenDoc={setOpenDocId} />
           <LegalDocModal docId={openDocId} onClose={() => setOpenDocId(null)} />
@@ -266,7 +266,7 @@ export default function SignupForm() {
               onChange={(e) => setAcceptedPolicies(e.target.checked)}
               aria-invalid={!!consentError}
               aria-describedby={consentError ? 'accept-policies-error' : undefined}
-              className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-(--surface-invert) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+              className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-(--accent) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
             />
             <p className="text-sm leading-relaxed text-(--text-secondary)">
               <label htmlFor="accept-policies" className="cursor-pointer">

@@ -90,7 +90,7 @@ export function ConsoleCard({ log }: { log: BrowserConsoleMessage }) {
 
   return (
     <div
-      className={`group rounded-lg border border-(--border-hairline) border-l-2 ${style.accent} ${style.card} px-3 py-2.5 transition-colors hover:bg-(--surface-hover)`}
+      className={`group rounded-(--radius-lg) border border-(--border-hairline) border-l-2 ${style.accent} ${style.card} px-3 py-2.5 transition-colors hover:bg-(--surface-hover)`}
     >
       {/* Header: severity badge + timestamp + hover-reveal copy. */}
       <div className="flex items-center gap-2">
@@ -121,7 +121,7 @@ export function ConsoleCard({ log }: { log: BrowserConsoleMessage }) {
           type="button"
           onClick={() => setMessageOpen((v) => !v)}
           aria-expanded={messageOpen}
-          className="mt-1 cursor-pointer text-xs font-semibold text-(--text-secondary) hover:text-(--text-primary)"
+          className="mt-1 cursor-pointer text-xs font-semibold text-(--text-secondary) transition-colors hover:text-(--accent)"
         >
           {messageOpen ? 'Show less' : 'Show more'}
         </button>
@@ -142,7 +142,7 @@ export function ConsoleCard({ log }: { log: BrowserConsoleMessage }) {
             type="button"
             onClick={() => setStackOpen((v) => !v)}
             aria-expanded={stackOpen}
-            className="flex cursor-pointer items-center gap-1 text-xs font-semibold text-(--text-secondary) hover:text-(--text-primary)"
+            className="flex cursor-pointer items-center gap-1 text-xs font-semibold text-(--text-secondary) transition-colors hover:text-(--accent)"
           >
             <ChevronDown className={`h-3 w-3 transition-transform ${stackOpen ? '' : '-rotate-90'}`} aria-hidden="true" />
             Stack trace

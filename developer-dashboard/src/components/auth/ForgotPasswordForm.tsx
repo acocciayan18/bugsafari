@@ -65,7 +65,7 @@ export default function ForgotPasswordForm() {
   if (emailSent) {
     return (
       <AuthShell
-        eyebrow="RECOVERY DISPATCHED"
+        eyebrow="CHECK YOUR INBOX"
         title="Check your inbox"
       >
         <div className="text-center">
@@ -94,7 +94,7 @@ export default function ForgotPasswordForm() {
 
   return (
     <AuthShell
-      eyebrow="PASSWORD RECOVERY"
+      eyebrow="RESET PASSWORD"
       title="Forgot password?"
       subtitle="Enter your email and we'll send you a link to reset your password."
     >
@@ -114,7 +114,7 @@ export default function ForgotPasswordForm() {
               aria-describedby={emailFieldError ? 'email-error' : undefined}
               maxLength={EMAIL_MAX_LENGTH}
               autoComplete="email"
-              className={`peer w-full h-11 rounded-(--radius-sm) border bg-(--surface-panel) pl-10 pr-4 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-[color,border-color,box-shadow] duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-1 focus:ring-(--border-focus) ${emailInvalid ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
+              className={`peer w-full h-11 rounded-(--radius-md) border bg-(--surface-panel) pl-10 pr-4 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-[color,border-color,box-shadow] duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-2 focus:ring-(--accent-border) ${emailInvalid ? 'border-(--status-critical-fg)' : 'border-(--border-hairline)'}`}
               required
             />
             <span className="absolute inset-y-0 left-3 flex items-center text-(--text-tertiary) peer-focus:text-(--text-primary) transition-colors pointer-events-none">

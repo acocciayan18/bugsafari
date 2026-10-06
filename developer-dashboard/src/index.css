@@ -14,17 +14,17 @@
   --color-spark-green: #3ecf7e;
   --color-spark-red: #e5484d;
 
-  /* Radius scale — doubled for rectangular surfaces, still excluding circles/pills */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 8px;
+  /* Radius scale — soft rounded surfaces (Coursera-inspired), pills excluded */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 
-  /* Shadow scale — flat 1-line definition shadows, never soft blurred lifts */
-  --shadow-sm: 0 1px 0 rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 1px 0 rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 1px 0 rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.3);
-  --shadow-xl: 0 16px 40px rgba(0, 0, 0, 0.55);
+  /* Shadow scale — soft elevation lifts (light default; .dark deepens below) */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 2px 8px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 8px 24px rgba(16, 24, 40, 0.10);
+  --shadow-xl: 0 20px 48px rgba(16, 24, 40, 0.18);
 
   /* Type families */
   --font-sans: "Figtree", "Google Sans", sans-serif;
@@ -58,16 +58,25 @@
      WATCHTOWER COMPONENT CORE — LIGHT THEME 
      ========================================== */
   /* Base Surfaces: Soft industrial warm neutrals to mitigate glare strain */
-  --surface-app: #f5f5f7;       /* Off-white canvas base */
+  --surface-app: #f4f6fa;       /* Soft blue-gray canvas base */
   --surface-panel: #ffffff;     /* Flat clean panel cards */
   --surface-raised: #ffffff;    /* Primary interaction nodes */
   --surface-inset: #eef0f3;     /* Bounded inner code frame surfaces */
   --surface-hover: #e4e7ec;     /* Settle interactive hover highlights */
   
   /* Structural Hairline Boundaries (Low-contrast clean definition) */
-  --border-hairline: #e2e8f0;   /* Muted gray border */
+  --border-hairline: #e3e8ef;   /* Soft blue-gray hairline border */
   --border-strong: #cbd5e1;     /* Highly defined slate gray structural border */
-  --border-focus: #18181b;      /* Crisp industrial charcoal ring focus */
+  --border-focus: #0056d2;      /* Accent-blue focus ring */
+
+  /* Accent — Coursera-inspired blue, the single brand/action color */
+  --accent: #0056d2;
+  --accent-hover: #0047b3;
+  --accent-active: #003a94;
+  --accent-fg: #ffffff;
+  --accent-soft-bg: #eaf1fc;
+  --accent-soft-fg: #0b4fc0;
+  --accent-border: #bcd4f7;
 
   /* Bounded B&W Typography Tree (Optimized for deep terminal reading readability) */
   --text-primary: #18181b;      /* Bounded zinc black for readability */
@@ -99,23 +108,38 @@
   --status-neutral-bg: #f4f4f5;
   --status-neutral-border: #e4e4e7;
 
-  /* Auth backdrop — exploration-graph field tokens; one signal-green telemetry bloom. */
-  --auth-signal: rgba(62, 207, 126, 0.07);
-  --auth-sweep: rgba(24, 24, 27, 0.035);
+  /* Auth backdrop — exploration-graph field tokens; one accent-blue telemetry bloom. */
+  --auth-signal: rgba(0, 86, 210, 0.06);
+  --auth-sweep: rgba(0, 86, 210, 0.04);
 
-  /* Landing backdrop — blueprint grid line + hero spotlight bloom (monochrome, token-driven) */
-  --grid-line: rgba(24, 24, 27, 0.045);
-  --grid-glow: rgba(24, 24, 27, 0.05);
+  /* Landing backdrop — blueprint grid line + accent-blue hero spotlight bloom (token-driven) */
+  --grid-line: rgba(24, 40, 72, 0.05);
+  --grid-glow: rgba(0, 86, 210, 0.06);
 }
 
 .dark {
-  /* Auth backdrop (dark variant) — green signal glows lift off the deep base. */
-  --auth-signal: rgba(62, 207, 126, 0.06);
-  --auth-sweep: rgba(244, 244, 245, 0.04);
+  /* Accent — brighter blue so it reads on the deep base */
+  --accent: #3b82f6;
+  --accent-hover: #5b9bff;
+  --accent-active: #2563eb;
+  --accent-fg: #ffffff;
+  --accent-soft-bg: rgba(59, 130, 246, 0.14);
+  --accent-soft-fg: #9ec1ff;
+  --accent-border: rgba(59, 130, 246, 0.38);
 
-  /* Landing backdrop (dark variant) — faint light lines lift off the deep base */
-  --grid-line: rgba(244, 244, 245, 0.035);
-  --grid-glow: rgba(244, 244, 245, 0.05);
+  /* Soft elevation deepened for the dark base */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.55);
+  --shadow-xl: 0 20px 48px rgba(0, 0, 0, 0.65);
+
+  /* Auth backdrop (dark variant) — accent-blue signal glows lift off the deep base. */
+  --auth-signal: rgba(59, 130, 246, 0.08);
+  --auth-sweep: rgba(59, 130, 246, 0.05);
+
+  /* Landing backdrop (dark variant) — faint accent lines lift off the deep base */
+  --grid-line: rgba(148, 163, 184, 0.05);
+  --grid-glow: rgba(59, 130, 246, 0.07);
 
   /* ==========================================
      WATCHTOWER COMPONENT CORE — DARK THEME 
@@ -143,7 +167,7 @@
   /* Hairline Slate Borders */
   --border-hairline: #202024;   /* Minimal noise line spacer */
   --border-strong: #2d2d34;     /* Crisp high-density edge definition */
-  --border-focus: #f4f4f5;      /* Inverted white layout lock ring */
+  --border-focus: #3b82f6;      /* Accent-blue focus ring */
 
   /* Dark Theme Typography Hierarchy */
   --text-primary: #f4f4f5;      /* Off-white text to limit optical bleeding */
@@ -209,11 +233,11 @@
 }
 
 .font-normal {
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .font-medium {
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .font-semibold {
@@ -486,6 +510,6 @@
 
   /* Expandable code block container */
   .code-block {
-    @apply text-[13px] font-mono whitespace-pre-wrap wrap-break-word text-gray-700 leading-relaxed p-3 bg-[#f4f4f5] rounded border border-gray-200 overflow-x-auto dark:bg-nova-dark dark:text-gray-200 dark:border-gray-700;
+    @apply text-[13px] font-mono whitespace-pre-wrap wrap-break-word text-(--text-secondary) leading-relaxed p-3 bg-(--surface-inset) rounded-(--radius-md) border border-(--border-hairline) overflow-x-auto;
   }
 }

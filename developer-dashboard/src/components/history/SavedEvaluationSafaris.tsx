@@ -9,6 +9,8 @@ import { useNavigate } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { useAuth } from '../../hooks/useAuth';
 import { Skeleton } from '../ui/Skeleton';
+import { Input } from '../ui/Input';
+import { Button } from '../ui/Button';
 import { TerminationBadge } from '../common/TerminationBadge';
 import { RowActionMenu } from '../common/RowActionMenu';
 import { DeleteConfirmDialog } from '../common/DeleteConfirmDialog';
@@ -119,18 +121,18 @@ function FilterDropdown<T extends string>({ options, value, onChange, ariaLabel,
             transition={{ duration: 0.14, ease: 'easeOut' }}
             role="listbox"
             aria-label={ariaLabel}
-            className="absolute left-0 top-full z-50 mt-2 min-w-full max-w-[calc(100vw-2rem)] origin-top overflow-hidden rounded-lg border border-[var(--border-strong)] bg-[var(--surface-raised)] py-1 shadow-md sm:min-w-[10rem]"
+            className="absolute left-0 top-full z-50 mt-2 min-w-full max-w-[calc(100vw-2rem)] origin-top overflow-hidden rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-raised) py-1 shadow-(--shadow-md) sm:min-w-[10rem]"
           >
             {options.map((opt) => (
               <li key={opt.value} role="option" aria-selected={opt.value === value}>
                 <button
                   type="button"
                   onClick={() => { onChange(opt.value); closeMenu(); }}
-                  className={`flex w-full cursor-pointer items-center gap-2.5 px-3 py-2 text-left text-[13px] transition-colors hover:bg-[var(--surface-hover)] ${opt.value === value ? 'font-semibold text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}
+                  className={`flex w-full cursor-pointer items-center gap-2.5 px-3 py-2 text-left text-[13px] transition-colors ${opt.value === value ? 'bg-(--accent-soft-bg) font-semibold text-(--accent-soft-fg)' : 'text-(--text-secondary) hover:bg-(--surface-hover)'}`}
                 >
                   {dots && <span className={`h-2 w-2 shrink-0 rounded-full ${dots[opt.value] ?? dots.ALL}`} aria-hidden="true" />}
                   <span className="flex-1 truncate">{opt.label}</span>
-                  {opt.value === value && <Check className="h-4 w-4 shrink-0 text-[var(--text-primary)]" aria-hidden="true" />}
+                  {opt.value === value && <Check className="h-4 w-4 shrink-0 text-(--accent)" aria-hidden="true" />}
                 </button>
               </li>
             ))}
@@ -335,41 +337,23 @@ export default function SavedEvaluationSafaris() {
         </div>
       </header>
 
-      <main className="custom-scrollbar m-3 mb-5 overflow-visible rounded-md border border-[var(--border-strong)] bg-[var(--surface-panel)] sm:m-4 sm:mb-5 lg:m-5 lg:mb-5 lg:flex-1 lg:overflow-auto">
+      <main className="custom-scrollbar m-3 mb-5 overflow-visible rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-panel) shadow-(--shadow-sm) sm:m-4 sm:mb-5 lg:m-5 lg:mb-5 lg:flex-1 lg:overflow-auto">
         <div className="border-b border-[var(--border-hairline)] px-4 py-4  sm:px-6">
           {/* Title + controls stack into rows until there's width for a single line. */}
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+              {/* ui/Input reused; leading search icon overlaid since Input has no icon slot. */}
               <div data-tour="history-search" className="relative min-w-0 sm:w-56 xl:w-72">
-                <div
-                  className="
-                    flex h-10 w-full items-center rounded-md
-                    border border-[var(--border-hairline)]
-                    bg-[var(--surface-app)]
-                    px-3 py-2
-                    shadow-sm
-                    transition-all duration-200
-                    focus-within:border-[var(--border-focus)]
-                    focus-within:ring-1
-                    focus-within:ring-[var(--border-focus)]
-                  "
-                >
-                  <Search className="h-5 w-5 shrink-0 text-[var(--text-tertiary)]" />
-                  <input
-                    type="search"
-                    aria-label="Search saved safaris by URL"
-                    placeholder="Search URLs..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="
-                      ml-2 min-w-0 flex-1 bg-transparent
-                      text-base sm:text-[13px] text-[var(--text-primary)]
-                      placeholder:text-[var(--text-tertiary)]
-                      focus:outline-none
-                    "
-                  />
-                </div>
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-(--text-tertiary)" aria-hidden="true" />
+                <Input
+                  type="search"
+                  aria-label="Search saved safaris by URL"
+                  placeholder="Search URLs..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 sm:text-[13px]"
+                />
               </div>
               {/* Sort controls — field picker + direction toggle */}
               <div data-tour="history-sort" className="flex items-center gap-2">
@@ -421,12 +405,12 @@ export default function SavedEvaluationSafaris() {
           </div>
         </div>
 
-        <div data-tour="history-list" className="divide-y divide-[var(--border-hairline)]">
+        <div data-tour="history-list" className="flex flex-col gap-3 p-3 sm:p-4 lg:p-5">
           {isLoading ? (
-            // Skeleton rows mirror the real row geometry, so nothing shifts on arrival.
-            <div role="status" aria-label="Loading history" className="divide-y divide-[var(--border-hairline)]">
+            // Skeleton cards mirror the real card geometry, so nothing shifts on arrival.
+            <div role="status" aria-label="Loading history" className="flex flex-col gap-3">
               {Array.from({ length: 6 }, (_, index) => (
-                <div key={index} className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
+                <div key={index} className="flex flex-col gap-3 rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-raised) px-4 py-4 shadow-(--shadow-sm) sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
                   <div className="min-w-0 flex-1 space-y-2">
                     <Skeleton className="h-5 w-2/3 max-w-sm" />
                     <Skeleton className="h-3.5 w-full max-w-md" />
@@ -444,24 +428,18 @@ export default function SavedEvaluationSafaris() {
               <TriangleAlert className="h-12 w-12 text-[var(--status-critical-fg)]" />
               <span className="text-[13px] font-medium text-[var(--status-critical-fg)]">We couldn't load your history</span>
               <span className="text-[13px] text-[var(--text-secondary)]">{error}</span>
-              <button
-                onClick={() => void fetchSessions(true)}
-                className="mt-2 rounded-md border cursor-pointer border-[var(--border-strong)] bg-[var(--surface-app)] px-4 py-2 text-[13px] font-medium text-[var(--text-primary)] hover:bg-[var(--surface-hover)]"
-              >
+              <Button variant="secondary" size="sm" className="mt-2" onClick={() => void fetchSessions(true)}>
                 Try Again
-              </button>
+              </Button>
             </div>
           ) : !token ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
               <Lock className="h-12 w-12 text-[var(--text-secondary)]" />
               <span className="text-[13px] text-[var(--text-secondary)] font-medium">Please log in to view history</span>
               <span className="text-[13px] text-[var(--text-secondary)]">Log in or sign up to access your saved evaluations</span>
-              <button
-                onClick={() => navigate('/login')}
-                className="mt-2 rounded-md bg-[var(--surface-invert)] px-4 py-2 text-[13px] font-medium text-[var(--text-oninvert)] hover:bg-[var(--surface-invert-hover)]"
-              >
+              <Button variant="primary" size="sm" className="mt-2" onClick={() => navigate('/login')}>
                 Go to Login
-              </button>
+              </Button>
             </div>
           ) : view.page.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-3 px-6 py-12">
@@ -481,12 +459,9 @@ export default function SavedEvaluationSafaris() {
                   : 'Run your first test on the Dashboard and save it to see results here'}
               </span>
               {view.totalCount === 0 && stateFilter === 'active' && (
-                <button
-                  onClick={() => navigate('/dashboard')}
-                  className="mt-2 rounded-md bg-[var(--surface-invert)] px-4 py-2 text-[13px] font-medium text-[var(--text-oninvert)] hover:bg-[var(--surface-invert-hover)]"
-                >
+                <Button variant="primary" size="sm" className="mt-2" onClick={() => navigate('/dashboard')}>
                   Go to Dashboard
-                </button>
+                </Button>
               )}
             </div>
           ) : (
@@ -500,7 +475,7 @@ export default function SavedEvaluationSafaris() {
               >
                 <div
                   ref={(el) => { if (el) cardRefs.current.set(evalItem.id, el); else cardRefs.current.delete(evalItem.id); }}
-                  className="cursor-pointer transition-colors hover:bg-[var(--surface-hover)] active:bg-[var(--surface-inset)] bg-[var(--surface-panel)] focus:outline-none focus:ring-1 focus:ring-inset focus:ring-[var(--border-focus)]"
+                  className="cursor-pointer rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-raised) shadow-(--shadow-sm) transition-all duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] hover:-translate-y-0.5 hover:border-(--border-strong) hover:shadow-(--shadow-md) active:translate-y-0 active:bg-(--surface-hover) focus:outline-none focus:ring-2 focus:ring-(--border-focus)"
                   role="button"
                   tabIndex={0}
                   aria-label={`View forensic report for ${evalItem.targetUrl}`}
@@ -521,18 +496,18 @@ export default function SavedEvaluationSafaris() {
                       </div>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[13px] text-[var(--text-secondary)]">
                         {/* Session ID, Date, and Status each sit in a subtle neutral badge so they read as distinct chips, not a run-on line. */}
-                        <span className="inline-flex min-h-6 items-center truncate rounded border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-2 py-0.5 font-mono font-normal text-[var(--text-secondary)]">
-                          <Hash className="mr-1 h-3 w-3 shrink-0 text-[var(--text-tertiary)]" aria-hidden="true" />
+                        <span className="inline-flex min-h-6 items-center truncate rounded-(--radius-sm) border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 font-mono font-normal text-(--text-secondary)">
+                          <Hash className="mr-1 h-3 w-3 shrink-0 text-(--text-tertiary)" aria-hidden="true" />
                           <span className="truncate">{evalItem.runId ?? evalItem.id}</span>
                         </span>
-                        <span className="inline-flex min-h-6 items-center truncate rounded border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-2 py-0.5 font-mono font-normal text-[var(--text-secondary)]">
-                          <Calendar className="mr-1 h-3 w-3 shrink-0 text-[var(--text-tertiary)]" aria-hidden="true" />
+                        <span className="inline-flex min-h-6 items-center truncate rounded-(--radius-sm) border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 font-mono font-normal text-(--text-secondary)">
+                          <Calendar className="mr-1 h-3 w-3 shrink-0 text-(--text-tertiary)" aria-hidden="true" />
                           <span className="truncate">{evalItem.date}</span>
                         </span>
 
-                        {/* Which profile produced these findings — absent on rows saved before it was recorded. */}
+                        {/* Which profile produced these findings, absent on rows saved before it was recorded. */}
                         {profileLabel(evalItem.infiltrationProfile) && (
-                          <span className="inline-flex min-h-6 items-center truncate rounded border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-2 py-0.5 text-[var(--text-secondary)]">
+                          <span className="inline-flex min-h-6 items-center truncate rounded-(--radius-sm) border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 text-(--text-secondary)">
                             {profileLabel(evalItem.infiltrationProfile)}
                           </span>
                         )}
@@ -542,7 +517,7 @@ export default function SavedEvaluationSafaris() {
                     <div className="flex shrink-0 items-center gap-3 sm:gap-4">
                       <div
                         title={`Worst finding: ${evalItem.severity} (${evalItem.findingCount} total)`}
-                        className={`flex h-6 items-center rounded border px-2 text-[13px] font-medium ${SEVERITY_BADGE_CLASS[evalItem.severity] ?? SEVERITY_BADGE_CLASS.CLEAR}`}
+                        className={`flex h-6 items-center rounded-(--radius-sm) border px-2 text-[13px] font-medium ${SEVERITY_BADGE_CLASS[evalItem.severity] ?? SEVERITY_BADGE_CLASS.CLEAR}`}
                       >
                         {evalItem.severityCount} {evalItem.severity}
                       </div>
@@ -581,7 +556,7 @@ export default function SavedEvaluationSafaris() {
               onClick={() => setCurrentPage((p) => p - 1)}
               disabled={view.safePage === 1}
               aria-label="Previous page"
-              className="flex h-8 w-8 items-center justify-center rounded border border-(--border-strong) bg-(--surface-app) text-(--text-secondary) transition-colors hover:bg-[var(--surface-hover)] disabled:pointer-events-none disabled:opacity-40"
+              className="flex h-8 w-8 items-center justify-center rounded-(--radius-md) border border-(--border-strong) bg-(--surface-app) text-(--text-secondary) transition-colors hover:bg-(--surface-hover) disabled:pointer-events-none disabled:opacity-40"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -599,9 +574,9 @@ export default function SavedEvaluationSafaris() {
                     onClick={() => setCurrentPage(() => item)}
                     aria-label={`Page ${item}`}
                     aria-current={item === view.safePage ? 'page' : undefined}
-                    className={`flex h-8 min-w-8 items-center justify-center rounded border px-2 text-[13px] font-medium transition-colors ${item === view.safePage
-                      ? 'border-[var(--surface-invert)] bg-[var(--surface-invert)] text-[var(--text-oninvert)]'
-                      : 'border-(--border-strong) bg-(--surface-app) text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
+                    className={`flex h-8 min-w-8 items-center justify-center rounded-(--radius-md) border px-2 text-[13px] font-medium transition-colors ${item === view.safePage
+                      ? 'border-(--accent) bg-(--accent) text-(--accent-fg)'
+                      : 'border-(--border-strong) bg-(--surface-app) text-(--text-secondary) hover:bg-(--surface-hover)'
                       }`}
                   >
                     {item}
@@ -613,7 +588,7 @@ export default function SavedEvaluationSafaris() {
               onClick={() => setCurrentPage((p) => Math.min(view.totalPages, p + 1))}
               disabled={view.safePage >= view.totalPages}
               aria-label="Next page"
-              className="flex h-8 w-8 items-center justify-center rounded border border-(--border-strong) bg-(--surface-app) text-(--text-secondary) transition-colors hover:bg-(--surface-hover) disabled:pointer-events-none disabled:opacity-40"
+              className="flex h-8 w-8 items-center justify-center rounded-(--radius-md) border border-(--border-strong) bg-(--surface-app) text-(--text-secondary) transition-colors hover:bg-(--surface-hover) disabled:pointer-events-none disabled:opacity-40"
             >
               <ChevronRight className="h-4 w-4" />
             </button>

@@ -17,7 +17,7 @@ interface ModalProps {
 const FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 /**
- * Watchtower Modal chrome — sharp radius, hairline border, solid backdrop (no blur/alpha), portal-rendered.
+ * Soft modal chrome — rounded radius, hairline border, blurred low-alpha backdrop, portal-rendered.
  * Handles Escape-to-close, focus trap, and focus restore so callers only own their content.
  */
 export function Modal({

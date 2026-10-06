@@ -3,23 +3,15 @@ Custom Toast Styles
 One surface for every variant: no leading icon, dismiss ✕ on the right
 ══════════════════════════════════════════════════════════════════════════════ */
 
-/* Palette follows the app theme via the `dark` class on <html> */
+/* Palette maps straight onto the global design tokens, so light/dark parity
+   follows the `dark` class on <html> with no duplicate overrides here. */
 :root {
-  --toast-surface: #ffffff;
-  --toast-text: #000000;
-  --toast-border-color: #e5e7eb;
-  --toast-dismiss-fg: #6b7280;
-  --toast-dismiss-hover-bg: #f3f4f6;
-  --toast-dismiss-hover-fg: #000000;
-}
-
-html.dark {
-  --toast-surface: #18181b;
-  --toast-text: #fafafa;
-  --toast-border-color: #3f3f46;
-  --toast-dismiss-fg: #a1a1aa;
-  --toast-dismiss-hover-bg: #27272a;
-  --toast-dismiss-hover-fg: #fafafa;
+  --toast-surface: var(--surface-raised);
+  --toast-text: var(--text-primary);
+  --toast-border-color: var(--border-hairline);
+  --toast-dismiss-fg: var(--text-tertiary);
+  --toast-dismiss-hover-bg: var(--surface-hover);
+  --toast-dismiss-hover-fg: var(--text-primary);
 }
 
 /* Toast container */
@@ -33,8 +25,8 @@ html.dark {
   background-color: var(--toast-surface);
   color: var(--toast-text);
   border: 1px solid var(--toast-border-color);
-  border-radius: 16px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
   min-width: 280px;
   max-width: 400px;
 }
@@ -46,7 +38,7 @@ html.dark {
     max-width: 100%;
     width: 100%;
     padding: 10px 12px;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
   }
 }
 
@@ -86,7 +78,7 @@ html.dark {
 /* Generic network-error variant — a distinct amber left-rail so connectivity
    errors are visually separate from run-status telemetry and the connection chip. */
 .toast-custom.toast-network {
-  border-left: 3px solid #f59e0b;
+  border-left: 3px solid var(--status-warning-border);
 }
 
 /* Dismiss button */
@@ -99,7 +91,7 @@ html.dark {
   padding: 0;
   background: transparent;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--toast-dismiss-fg);
   cursor: pointer;
   flex-shrink: 0;
@@ -112,7 +104,7 @@ html.dark {
 }
 
 .toast-custom .toast-dismiss-btn:focus {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid var(--border-focus);
   outline-offset: 1px;
 }
 
@@ -140,9 +132,10 @@ html.dark {
   transform: none;
 }
 
-/* Light theme overrides for sonner Toaster */
-[data-sonner-theme="light"] {
-  --toast-background: #ffffff;
-  --toast-foreground: #000000;
-  --toast-border: #e5e7eb;
+/* Sonner Toaster internals follow the same tokens in both themes. */
+[data-sonner-theme="light"],
+[data-sonner-theme="dark"] {
+  --toast-background: var(--surface-raised);
+  --toast-foreground: var(--text-primary);
+  --toast-border: var(--border-hairline);
 }

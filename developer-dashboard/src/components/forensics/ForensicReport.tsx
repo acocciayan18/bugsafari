@@ -121,7 +121,7 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
   const routes = report.visitedRoutes ?? [];
 
   return (
-    <section className={`rounded-xl border ${theme.border} ${theme.bg} p-5 sm:p-6`}>
+    <section className={`rounded-(--radius-lg) border ${theme.border} ${theme.bg} p-5 shadow-(--shadow-md) sm:p-6`}>
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -188,7 +188,7 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
             type="button"
             onClick={() => setShowRoutes((prev) => !prev)}
             aria-expanded={showRoutes}
-            className="flex cursor-pointer items-center gap-1.5 text-caption font-semibold uppercase text-(--text-secondary) transition-colors hover:text-(--text-primary)"
+            className="flex cursor-pointer items-center gap-1.5 text-caption font-semibold uppercase text-(--text-secondary) transition-colors hover:text-(--accent)"
           >
             <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${showRoutes ? '' : '-rotate-90'}`} aria-hidden="true" />
             <span>Visited Routes ({routes.length})</span>
@@ -267,7 +267,7 @@ function AiInsightsPanel({
   if (!aiAnalysis || (!rootCause && !recommendations.length && !canGenerate)) return null;
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-(--status-neutral-border) bg-(--surface-panel) shadow-sm">
+    <section className="overflow-hidden rounded-(--radius-lg) border border-(--status-neutral-border) bg-(--surface-panel) shadow-(--shadow-md)">
       <div className="flex flex-wrap items-center gap-2 border-b border-(--status-neutral-border) bg-(--status-neutral-bg) px-4 py-2.5">
         <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-(--surface-raised) text-(--status-neutral-fg) ring-1 ring-(--status-neutral-border)">
           <Lightbulb className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
@@ -287,7 +287,7 @@ function AiInsightsPanel({
             type="button"
             onClick={generate}
             disabled={status === 'loading'}
-            className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-(--border-hairline) bg-(--surface-raised) px-2 py-1 text-xs font-semibold normal-case text-(--text-secondary) transition-colors hover:bg-(--surface-hover) hover:text-(--text-primary) disabled:opacity-60"
+            className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-(--radius-md) border border-(--accent-border) bg-(--accent-soft-bg) px-2 py-1 text-xs font-semibold normal-case text-(--accent-soft-fg) transition-colors hover:bg-(--accent) hover:text-(--accent-fg) disabled:opacity-60"
           >
             {status === 'loading'
               ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Generating…</>
@@ -706,7 +706,7 @@ function VerifyFixControl({
       onClick={onVerify}
       disabled={disabled}
       title={disabled ? disabledReason : 'Replay this finding to check whether it is fixed'}
-      className="inline-flex items-center text-sm gap-1.5 cursor-pointer rounded-md border border-(--border-strong) bg-(--surface-panel) px-3 py-1.5 text-xs font-semibold  text-(--text-secondary) transition-colors hover:bg-(--surface-hover) disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex items-center text-sm gap-1.5 cursor-pointer rounded-(--radius-md) border border-(--accent-border) bg-(--accent-soft-bg) px-3 py-1.5 text-xs font-semibold text-(--accent-soft-fg) transition-colors hover:bg-(--accent) hover:text-(--accent-fg) disabled:cursor-not-allowed disabled:opacity-50"
     >
       <RefreshCcw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
       Verify Fix
@@ -723,7 +723,7 @@ function VerifyFixControl({
 
 function ResultStat({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
-    <div className="rounded-lg border border-(--border-hairline) bg-(--surface-inset) px-3 py-2.5">
+    <div className="rounded-(--radius-md) border border-(--border-hairline) bg-(--surface-inset) px-3 py-2.5">
       <div className="text-[12px] font-semibold uppercase tracking-wide text-(--text-tertiary)">{label}</div>
       <div className="mt-1 truncate text-sm font-bold text-(--text-primary)" title={title ?? value}>{value}</div>
     </div>
@@ -948,7 +948,7 @@ function ReportFindingCard({
 
 function CleanRunCard() {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-xl border border-(--status-stable-border) bg-(--status-stable-bg) px-6 py-10 text-center">
+    <div className="flex flex-col items-center gap-2 rounded-(--radius-lg) border border-(--status-stable-border) bg-(--status-stable-bg) px-6 py-10 text-center">
       <CircleCheckBig className="h-8 w-8 text-(--status-stable-fg)" strokeWidth={1.75} aria-hidden="true" />
       <div className="text-[13px] font-semibold text-(--status-stable-fg)">No findings were recorded for this session</div>
       <div className="text-[13px] text-(--status-stable-fg)">The autonomous run completed without confirming any bugs or vulnerabilities.</div>
@@ -991,7 +991,7 @@ function TabButton({ label, count, active, onClick, Icon }: { label: string; cou
       onClick={onClick}
       className={`flex shrink-0 items-center cursor-pointer gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-[13px] font-semibold transition-colors ${
         active
-          ? 'border-(--border-strong) text-(--text-primary)'
+          ? 'border-(--accent) text-(--accent)'
           : 'border-transparent text-(--text-secondary) hover:text-(--text-primary)'
       }`}
     >
@@ -1033,7 +1033,7 @@ function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
   const timelineText = actionStepsToMarkdown(steps);
 
   return (
-    <section className="overflow-hidden rounded-xl border border-(--border-hairline) bg-(--surface-panel)">
+    <section className="overflow-hidden rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-panel) shadow-(--shadow-md)">
       <button
         onClick={() => setIsOpen((prev) => !prev)}
         aria-expanded={isOpen}
@@ -1075,7 +1075,7 @@ function ForensicReportSkeleton() {
 
       <div className="custom-scrollbar flex-1 overflow-hidden p-3 sm:p-4 lg:p-6">
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 sm:gap-6">
-          <div className="rounded-xl border border-(--border-hairline) bg-(--surface-panel) p-5">
+          <div className="rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-panel) p-5 shadow-(--shadow-md)">
             <Skeleton className="h-5 w-2/3 max-w-sm" />
             <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
               {[0, 1, 2, 3].map((cell) => (
@@ -1094,7 +1094,7 @@ function ForensicReportSkeleton() {
           </div>
 
           {[0, 1, 2].map((card) => (
-            <div key={card} className="space-y-3 rounded-xl border border-(--border-hairline) bg-(--surface-panel) p-4">
+            <div key={card} className="space-y-3 rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-panel) p-4 shadow-(--shadow-md)">
               <div className="flex items-center gap-3">
                 <Skeleton className="h-6 w-16" />
                 <Skeleton className="h-4 w-1/2 max-w-xs" />
@@ -1260,7 +1260,7 @@ export default function ForensicReport({ shared = false }: { shared?: boolean } 
       <div className="flex h-full w-full flex-col bg-(--surface-app)">
         {shared && (
           <header className="flex items-center border-b border-(--border-hairline) bg-(--surface-panel) px-4 py-3 sm:px-6">
-            <span className="text-sm font-bold tracking-tight text-(--text-primary)">BUGSAFARI</span>
+            <span className="text-sm font-bold tracking-tight text-(--accent)">BUGSAFARI</span>
           </header>
         )}
         <div className="flex flex-1 items-center justify-center px-6 py-12">
@@ -1275,7 +1275,7 @@ export default function ForensicReport({ shared = false }: { shared?: boolean } 
             {shared && (
               <button
                 onClick={() => navigate('/')}
-                className="mt-1 cursor-pointer rounded-lg bg-(--surface-invert) px-5 py-2.5 text-[13px] font-semibold text-(--text-oninvert) transition-colors hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active)"
+                className="mt-1 cursor-pointer rounded-(--radius-md) bg-(--accent) px-5 py-2.5 text-[13px] font-semibold text-(--accent-fg) shadow-(--shadow-sm) transition-colors hover:bg-(--accent-hover) active:bg-(--accent-active)"
               >
                 Go to BugSafari
               </button>
@@ -1302,12 +1302,12 @@ export default function ForensicReport({ shared = false }: { shared?: boolean } 
           </button>
         ) : (
           <div className="flex min-w-0 items-center lg:hidden">
-            <span className="text-sm font-bold text-(--text-primary)">BUGSAFARI</span>
+            <span className="text-sm font-bold text-(--accent)">BUGSAFARI</span>
           </div>
         )}
         {/* Breadcrumb duplicates the compact top bar — desktop only, pushed right. */}
         <div className="hidden min-w-0 items-center lg:ml-auto lg:flex">
-          <span className="text-sm font-bold  text-(--text-primary)">BUGSAFARI</span>
+          <span className="text-sm font-bold text-(--accent)">BUGSAFARI</span>
           <span className="mx-3 text-(--text-tertiary)">/</span>
           <span className="text-sm font-semibold text-(--text-secondary)">FORENSIC REPORT</span>
         </div>

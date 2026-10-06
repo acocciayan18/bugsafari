@@ -383,7 +383,7 @@ function ClinicalForensicsDashboard({
             aria-haspopup="dialog"
             aria-expanded={showConfigModal}
             title={isActiveSession ? 'Configuration is locked while a run is in progress' : 'Open testing configuration'}
-            className={`flex min-w-0 items-center gap-2 px-3 py-1.5 rounded-lg border border-(--border-strong) text-[13px] font-semibold text-(--text-secondary) bg-(--surface-raised) transition-colors ${isActiveSession ? 'opacity-50 cursor-not-allowed' : 'hover:bg-(--surface-hover) cursor-pointer'}`}
+            className={`flex min-w-0 items-center gap-2 px-3 py-1.5 rounded-(--radius-md) border border-(--border-strong) text-[13px] font-semibold text-(--text-secondary) bg-(--surface-raised) transition-colors ${isActiveSession ? 'opacity-50 cursor-not-allowed' : 'hover:bg-(--surface-hover) cursor-pointer'}`}
           >
             <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-(--text-tertiary)" strokeWidth={1.75} aria-hidden="true" />
             <span>Configuration</span>
@@ -416,7 +416,7 @@ function ClinicalForensicsDashboard({
                 <button
                   disabled
                   title={transitionLabel}
-                  className="flex items-center gap-2 rounded-lg bg-(--surface-inset) text-(--text-secondary) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  cursor-not-allowed opacity-70"
+                  className="flex items-center gap-2 rounded-(--radius-md) bg-(--surface-inset) text-(--text-secondary) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  cursor-not-allowed opacity-70"
                 >
                   <LoaderCircle className="h-5 w-5 animate-spin" strokeWidth={1.75} aria-hidden="true" />
                   {transitionLabel}
@@ -425,7 +425,7 @@ function ClinicalForensicsDashboard({
               {testStatus === 'ACTIVE' && onPause && (
                 <button
                   onClick={onPause}
-                  className="flex items-center cursor-pointer gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
+                  className="flex items-center cursor-pointer gap-2 rounded-(--radius-md) bg-(--surface-invert) hover:bg-(--surface-invert-hover) text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
                 >
                   <Pause className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Pause
@@ -434,7 +434,7 @@ function ClinicalForensicsDashboard({
               {testStatus === 'PAUSED' && onResume && (
                 <button
                   onClick={onResume}
-                  className="flex items-center cursor-pointer gap-2 rounded-lg bg-(--status-stable-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
+                  className="flex items-center cursor-pointer gap-2 rounded-(--radius-md) bg-(--status-stable-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
                 >
                   <Play className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Resume
@@ -445,7 +445,7 @@ function ClinicalForensicsDashboard({
               {isQueued && !transitionLabel && onStop && (
                 <button
                   onClick={onStop}
-                  className="hidden lg:flex items-center cursor-pointer gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
+                  className="hidden lg:flex items-center cursor-pointer gap-2 rounded-(--radius-md) bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
                 >
                   <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Cancel Queued Run
@@ -454,7 +454,7 @@ function ClinicalForensicsDashboard({
               {isActiveSession && !transitionLabel && !isQueued && onStop && (
                 <button
                   onClick={handleStopRequest}
-                  className="hidden lg:flex items-center cursor-pointer  gap-2 rounded-lg bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
+                  className="hidden lg:flex items-center cursor-pointer  gap-2 rounded-(--radius-md) bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
                 >
                   <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Stop
@@ -467,7 +467,7 @@ function ClinicalForensicsDashboard({
   onClick={onSaveSessionToHistory}
   disabled={isSessionSaved}
   title={isSessionSaved ? 'Session already saved' : 'Save session to history'}
-  className={`hidden lg:flex items-center gap-2 rounded-lg border px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors ${
+  className={`hidden lg:flex items-center gap-2 rounded-(--radius-md) border px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors ${
     isSessionSaved
       ? 'border-(--border-strong) text-(--text-primary) hover:cursor-not-allowed opacity-80'
       : 'border-(--border-strong) text-(--text-primary) hover:cursor-pointer hover:bg-(--surface-hover) hover:text-(--text-primary)'
@@ -512,7 +512,7 @@ function ClinicalForensicsDashboard({
                 if (e.key === 'Enter' && !isActiveSession && !launchBlocked) handleInitialize();
               }}
               disabled={isActiveSession}
-              className={`w-full h-11 border rounded-lg pl-11 pr-4 text-base sm:text-sm font-normal font-sans bg-(--surface-panel) text-(--text-primary) focus:outline-none focus:ring-1 focus:ring-(--border-focus) disabled:bg-(--surface-inset) disabled:text-(--text-disabled) ${showLocalTargetError ? 'border-(--status-critical-fg)' : 'border-(--border-strong)'}`}
+              className={`w-full h-11 border rounded-(--radius-md) pl-11 pr-4 text-base sm:text-sm font-normal font-sans bg-(--surface-panel) text-(--text-primary) transition-[color,border-color,box-shadow] duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-2 focus:ring-(--accent-border) disabled:bg-(--surface-inset) disabled:text-(--text-disabled) ${showLocalTargetError ? 'border-(--status-critical-fg)' : 'border-(--border-strong)'}`}
               placeholder="Enter a URL"
             />
             {/* Overlays the page rather than reflowing it — the field keeps its position. */}
@@ -536,7 +536,7 @@ function ClinicalForensicsDashboard({
                     ? 'Enter a username and password, or turn off target authentication'
                     : undefined
             }
-            className="hidden lg:flex h-11 w-full sm:w-auto hover:cursor-pointer items-center justify-center gap-2 rounded-lg bg-(--surface-invert) hover:bg-(--surface-invert-hover) active:bg-(--surface-invert-active) text-(--text-oninvert) px-5 text-[13px] font-semibold uppercase  font-sans shrink-0 transition-all duration-100 disabled:opacity-50 disabled:hover:bg-(--surface-invert) disabled:cursor-not-allowed"
+            className="hidden lg:flex h-11 w-full sm:w-auto hover:cursor-pointer items-center justify-center gap-2 rounded-(--radius-md) bg-(--accent) hover:bg-(--accent-hover) active:bg-(--accent-active) text-(--accent-fg) shadow-(--shadow-sm) px-5 text-[13px] font-semibold uppercase  font-sans shrink-0 transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] disabled:opacity-50 disabled:hover:bg-(--accent) disabled:cursor-not-allowed"
           >
             <BugPlay className="h-5 w-5 shrink-0" />
             <span>Start Testing</span>
@@ -568,7 +568,7 @@ function ClinicalForensicsDashboard({
         {/* FEED PANEL: Browser Frame Viewport */}
         <div className="flex w-full shrink-0 flex-col overflow-hidden border-b border-(--border-hairline) lg:h-full lg:w-[55%] lg:shrink lg:border-b-0 lg:border-r">
           <div className="flex-1 overflow-hidden bg-(--surface-raised) p-3">
-            <div data-tour="live-feed" className="aspect-video lg:aspect-auto lg:h-full overflow-hidden rounded-xl border border-(--border-hairline) bg-(--surface-panel) shadow-sm">
+            <div data-tour="live-feed" className="aspect-video lg:aspect-auto lg:h-full overflow-hidden rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-panel) shadow-(--shadow-sm)">
               <LiveFeedConnected
                 currentUrl={currentUrl || targetUrl}
                 isConnected={isConnected}
@@ -615,7 +615,7 @@ function ClinicalForensicsDashboard({
                     tabIndex={selected ? 0 : -1}
                     onClick={() => setActiveTab(id)}
                     onKeyDown={handleTabKeyDown}
-                    className={`flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap border-b-2 px-3 sm:px-4 py-3 text-[13px] font-medium  sm:st transition-colors font-sans ${selected ? 'border-(--text-primary) text-(--text-primary)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
+                    className={`flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap border-b-2 px-3 sm:px-4 py-3 text-[13px] font-medium  sm:st transition-colors font-sans ${selected ? 'border-(--accent) bg-(--accent-soft-bg) text-(--accent)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
                   >
                     <Icon className="h-3.5 w-3.5" aria-hidden="true" />
                     {label}
@@ -634,9 +634,9 @@ function ClinicalForensicsDashboard({
   aria-pressed={showVerbose}
   aria-label="Toggle verbose execution trace"
   title={showVerbose ? 'Hide per-step execution trace' : 'Show full execution trace (debug)'}
-  className={`inline-flex items-center cursor-pointer justify-center rounded-md border p-1.5 transition-colors ${
+  className={`inline-flex items-center cursor-pointer justify-center rounded-(--radius-md) border p-1.5 transition-colors ${
     showVerbose
-      ? 'border-(--border-strong) bg-(--surface-invert) text-(--text-oninvert)'
+      ? 'border-(--accent-border) bg-(--accent-soft-bg) text-(--accent)'
       : 'border-(--border-hairline) text-(--text-tertiary) hover:text-(--text-secondary)'
   }`}
 >
@@ -680,7 +680,7 @@ function ClinicalForensicsDashboard({
                       })}
                       {isActiveSession && !isQueued && (
                         <div className="flex items-center gap-2 py-2 text-(--text-secondary)">
-                          <span className="h-2 w-2 rounded-full bg-(--surface-invert) animate-ping"></span>
+                          <span className="h-2 w-2 rounded-full bg-(--accent) animate-ping"></span>
                           <span className="font-mono text-[13px]">
                             {currentEngineAction || 'BugSafari Engine is thinking... parsing DOM trees'}
                           </span>

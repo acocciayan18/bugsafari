@@ -11,7 +11,7 @@ interface AuthShellProps {
   footer?: ReactNode;
 }
 
-/** HUD-bracketed console frame shared by all auth screens — corner reticle + live status strip. */
+/** Soft elevated card frame shared by all auth screens — accent eyebrow over an exploration-graph backdrop. */
 export default function AuthShell({
   eyebrow,
   title,
@@ -40,11 +40,9 @@ export default function AuthShell({
         <div className="relative">
           {/* Corner reticle — signature HUD frame */}
          
-          <div className="bg-(--surface-panel) border border-(--border-hairline) rounded-(--radius-lg) shadow-(--shadow-sm)">
-           
-
+          <div className="bg-(--surface-panel) border border-(--border-hairline) rounded-(--radius-xl) shadow-(--shadow-lg)">
             <div className="p-4 sm:p-6">
-              <p className="text-center text-[13px] font-mono font-medium tracking-[0.14em] text-(--text-tertiary) mb-2">{eyebrow}</p>
+              <p className="text-center text-[13px] font-mono font-semibold tracking-[0.14em] text-(--accent-soft-fg) mb-2">{eyebrow}</p>
               <h1 className="text-center text-h2 leading-tight font-semibold text-(--text-primary) mb-2">{title}</h1>
               {subtitle && <p className="text-center text-body-sm text-(--text-primary) mb-5 sm:mb-6">{subtitle}</p>}
 

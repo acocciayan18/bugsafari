@@ -83,7 +83,7 @@ export default function VerifyEmailForm() {
 
   if (status === 'verifying' || status === 'done') {
     return (
-      <AuthShell eyebrow="EMAIL VERIFICATION" title="Verifying your email">
+      <AuthShell eyebrow="VERIFY EMAIL" title="Verifying your email">
         <div className="text-center">
           <div className="w-14 h-14 sm:w-16 sm:h-16 shrink-0 bg-(--surface-panel) border border-(--border-hairline) rounded-full flex items-center justify-center mx-auto mb-4">
             <span className="text-(--text-secondary)"><Loader2 className="w-7 h-7 sm:w-8 sm:h-8 animate-spin" strokeWidth={1.75} aria-hidden="true" /></span>
@@ -96,7 +96,7 @@ export default function VerifyEmailForm() {
 
   // status === 'error'
   return (
-    <AuthShell eyebrow="VERIFICATION FAILED" title="Link invalid or expired">
+    <AuthShell eyebrow="VERIFY EMAIL" title="Link invalid or expired">
       <div className="text-center">
         <div className="w-14 h-14 sm:w-16 sm:h-16 shrink-0 bg-(--status-critical-bg) border border-(--status-critical-border) rounded-full flex items-center justify-center mx-auto mb-4">
           <span className="text-(--status-critical-fg)"><CircleX className="w-7 h-7 sm:w-8 sm:h-8" strokeWidth={1.75} aria-hidden="true" /></span>
