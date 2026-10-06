@@ -195,8 +195,8 @@ git push origin HEAD:dev --force
 git init
 git add .
 git commit -m "improved ui and ux"
-git checkout -b 10-5-Ayan
-git push --set-upstream origin 10-5-Ayan
+git checkout -b 10-6-Ayan
+git push --set-upstream origin 10-6-Ayan
 
 
 

@@ -70,7 +70,6 @@ export default function FindingCard({
   index,
   theme = BASE_FINDING_THEME,
   actions,
-  showBypass = true,
   aiFix = false,
   sessionId,
   children,
@@ -79,7 +78,6 @@ export default function FindingCard({
   index: number;
   theme?: FindingCardTheme;
   actions?: ReactNode;
-  showBypass?: boolean;
   aiFix?: boolean;
   sessionId?: string;
   children?: ReactNode;
@@ -147,7 +145,7 @@ export default function FindingCard({
       {children && <div className="px-4">{children}</div>}
 
       <div>
-        <FindingEvidence view={view} showBypass={showBypass} aiFix={aiFix} sessionId={sessionId} />
+        <FindingEvidence view={view} aiFix={aiFix} sessionId={sessionId} />
       </div>
     </div>
   );

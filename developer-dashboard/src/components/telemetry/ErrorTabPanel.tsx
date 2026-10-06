@@ -54,7 +54,7 @@ export default function ErrorTabPanel({
     key,
     view,
     render: (index) => (
-      <FindingCard view={view} index={index} showBypass={false}>
+      <FindingCard view={view} index={index}>
         <AiDiagnosticCard ai={aiDiagnostics} />
       </FindingCard>
     ),

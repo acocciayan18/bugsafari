@@ -6,7 +6,7 @@
 // by the shared <FindingCard>, which owns the header/metadata above it.
 // ═══════════════════════════════════════════════════════════════
 
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import type { ForensicActionStep } from '../../types';
 import type { SuggestFixRequest } from '../../../../shared/types.js';
 import type { FindingView } from '../../utils/findingView';
@@ -93,47 +93,6 @@ function StructuredReproductionPlaybook({ steps }: { steps: ForensicActionStep[]
   );
 }
 
-// One label/value row of the bypass metadata grid. Values render in a code chip so
-// selectors, payloads and endpoints stay monospaced and copy-clean.
-function BypassRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <div className="text-xs font-semibold uppercase text-(--text-tertiary)">{label}</div>
-      <div className="mt-0.5 text-[13px] leading-relaxed text-(--text-primary) break-words">{children}</div>
-    </div>
-  );
-}
-
-const Chip = ({ text }: { text: string }) => (
-  <code className="inline-block max-w-full break-words rounded bg-(--surface-panel) px-1.5 py-0.5 font-mono text-[13px] text-(--text-secondary)">
-    {text}
-  </code>
-);
-
-// Structured constraint-bypass evidence — the exact field, payload, stripped guard
-// and accepting endpoint, so a developer never parses them out of the prose summary.
-function BypassDetails({ bypass }: { bypass: NonNullable<FindingView['bypass']> }) {
-  const payload = bypass.payload === '' ? '""' : bypass.payload;
-  return (
-    <div>
-      <div className="mb-2 text-caption font-bold uppercase text-(--text-secondary)">Bypass Details</div>
-      <div className="grid grid-cols-1 gap-3 rounded-md border border-(--border-hairline) bg-(--surface-inset) p-3 sm:grid-cols-2">
-        <BypassRow label="Target element">{bypass.element}</BypassRow>
-        <BypassRow label="Bypass action">
-          Stripped <Chip text={bypass.strippedAttribute} />, then submitted
-        </BypassRow>
-        <BypassRow label="Payload"><Chip text={payload} /></BypassRow>
-        <BypassRow label="Endpoint">
-          <Chip text={`${bypass.method} ${bypass.endpoint}`} />
-        </BypassRow>
-        <BypassRow label="Response">
-          <span className="font-mono text-(--status-critical-fg)">HTTP {bypass.status}</span>, and the value was accepted
-        </BypassRow>
-      </div>
-    </div>
-  );
-}
-
 // Reproduction: the per-finding playbook. Saved findings carry the structured trace
 // (view.actionSteps), so they render the WHERE-rich playbook — route + container/form +
 // target element inline per step. Live faults have only the narrative strings, which
@@ -169,21 +128,12 @@ function toSuggestFixContext(view: FindingView, sessionId?: string): SuggestFixR
   };
 }
 
-// `showBypass` is presentation-only: the live Errors tab suppresses the bypass grid
-// to stay compact during a run — the data is untouched and the saved report shows it.
 // `aiFix` gates the on-demand AI remediation button — enabled on the saved report only.
-export default function FindingEvidence({ view, showBypass = true, aiFix = false, sessionId }: { view: FindingView; showBypass?: boolean; aiFix?: boolean; sessionId?: string }) {
+export default function FindingEvidence({ view, aiFix = false, sessionId }: { view: FindingView; aiFix?: boolean; sessionId?: string }) {
   const [stackExpanded, setStackExpanded] = useState(false);
 
   return (
     <>
-      {/* Structured bypass evidence — constraint-bypass findings only */}
-      {showBypass && view.bypass && (
-        <div className="px-4 pt-3">
-          <BypassDetails bypass={view.bypass} />
-        </div>
-      )}
-
       {/* Human-executable reproduction */}
       <div className="px-4 pt-3">
         <Reproduction view={view} />
