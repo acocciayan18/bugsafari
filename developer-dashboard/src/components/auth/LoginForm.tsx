@@ -105,8 +105,8 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
   return (
     <AuthShell
       eyebrow="WELCOME BACK"
-      title="Bugsafari"
-      subtitle="Sign in to run and track your exploratory tests."
+      title="Sign in to BugSafari"
+      subtitle="Access your account to run and track your exploratory tests."
 
       footer={
         <>

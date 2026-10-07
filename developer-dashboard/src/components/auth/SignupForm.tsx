@@ -152,9 +152,9 @@ export default function SignupForm() {
 
   return (
     <AuthShell
-      eyebrow="CREATE ACCOUNT"
-      title="Create Account"
-      subtitle="Create an account to start running exploratory tests."
+      eyebrow="GET STARTED"
+      title="Create your account"
+      subtitle="Set up your account to start running exploratory tests."
       footer={
         <>
           <div className="mt-6 pt-5 border-t border-(--border-hairline) text-center text-sm text-(--text-primary)">
