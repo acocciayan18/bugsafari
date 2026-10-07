@@ -33,5 +33,10 @@ jobs:
             cd bugsafari
             git fetch origin dev
             git reset --hard origin/dev
-            sudo docker compose -f docker-compose.prod.yml down
-            sudo docker compose -f docker-compose.prod.yml up --build -d
+            sudo docker compose -f docker-compose.prod.yml down --remove-orphans
+            sudo docker network prune -f
+            if sudo ss -ltnp 2>/dev/null | grep -q ':80 '; then
+              echo "Port 80 still held after down:"
+              sudo ss -ltnp | grep ':80 ' || true
+            fi
+            sudo docker compose -f docker-compose.prod.yml up --build -d --remove-orphans
