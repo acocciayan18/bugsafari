@@ -19,8 +19,14 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            set -e
+            export PATH="$PATH:/usr/bin:/usr/local/bin:/snap/bin"
+            if ! command -v docker >/dev/null 2>&1; then
+              curl -fsSL https://get.docker.com | sudo sh
+              sudo usermod -aG docker "$USER" || true
+            fi
             cd bugsafari
             git fetch origin dev
             git reset --hard origin/dev
-            docker compose -f docker-compose.prod.yml down
-            docker compose -f docker-compose.prod.yml up --build -d
+            sudo docker compose -f docker-compose.prod.yml down
+            sudo docker compose -f docker-compose.prod.yml up --build -d
