@@ -35,8 +35,24 @@ jobs:
             git reset --hard origin/dev
             sudo docker compose -f docker-compose.prod.yml down --remove-orphans
             sudo docker network prune -f
-            if sudo ss -ltnp 2>/dev/null | grep -q ':80 '; then
-              echo "Port 80 still held after down:"
-              sudo ss -ltnp | grep ':80 ' || true
-            fi
+            free_port() {
+              port="$1"
+              if ! sudo ss -ltnp 2>/dev/null | grep -q ":$port "; then return 0; fi
+              echo "Port $port in use, attempting to free it:"
+              sudo ss -ltnp | grep ":$port " || true
+              for svc in nginx apache2 caddy httpd; do
+                sudo systemctl stop "$svc" 2>/dev/null || true
+              done
+              if sudo ss -ltnp 2>/dev/null | grep -q ":$port "; then
+                pids=$(sudo ss -ltnp 2>/dev/null | grep ":$port " | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u)
+                for pid in $pids; do
+                  echo "Killing PID $pid still holding port $port"
+                  sudo kill "$pid" 2>/dev/null || true
+                done
+                sleep 2
+                for pid in $pids; do sudo kill -9 "$pid" 2>/dev/null || true; done
+              fi
+            }
+            free_port 80
+            free_port 443
             sudo docker compose -f docker-compose.prod.yml up --build -d --remove-orphans
