@@ -194,9 +194,9 @@ git push origin HEAD:dev --force
 
 git init
 git add .
-git commit -m "fix the new instance in oracle"
-git checkout -b 10-8-Ayan
-git push --set-upstream origin 10-8-Ayan
+git commit -m "updated the frontend"
+git checkout -b 10-11-Ayan
+git push --set-upstream origin 10-11-Ayan
 
 
 
