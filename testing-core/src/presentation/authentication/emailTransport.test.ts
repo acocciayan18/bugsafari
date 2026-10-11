@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { formatDuration, resolveBaseUrl, deliveredOrDevFallback } from './emailTransport.js';
+import { formatDuration, resolveBaseUrl, deliveredOrDevFallback, isFreeMailDomain } from './emailTransport.js';
 
 // formatDuration derives the "expires in X" copy for both the reset and
 // verification emails from the configurable TTL, so it must stay correct across
@@ -39,5 +39,12 @@ assert.strictEqual(deliveredOrDevFallback({ ok: false, code: 'EMAIL_NOT_CONFIGUR
 process.env.NODE_ENV = 'production';
 assert.strictEqual(deliveredOrDevFallback({ ok: false, code: 'EMAIL_NOT_CONFIGURED', error: 'n/a' }), false, 'not configured in prod => false');
 if (wasProd === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = wasProd;
+
+// isFreeMailDomain flags public-mailbox senders Brevo refuses unless verified, so the
+// boot audit can warn on the exact SMTP_FROM misconfiguration that 400s every send.
+assert.strictEqual(isFreeMailDomain('programmingcourseph@gmail.com'), true, 'gmail is a free-mail domain');
+assert.strictEqual(isFreeMailDomain('ops@Outlook.com'), true, 'match is case-insensitive');
+assert.strictEqual(isFreeMailDomain('noreply@bugsafari.me'), false, 'custom domain is not free-mail');
+assert.strictEqual(isFreeMailDomain('not-an-email'), false, 'a string with no @ is not free-mail');
 
 console.log('emailTransport.test.ts passed');

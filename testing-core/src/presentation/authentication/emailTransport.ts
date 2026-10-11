@@ -59,6 +59,37 @@ function parseSender(): { email: string; name: string } {
   return { name: APP_NAME, email: SMTP_FROM.trim() };
 }
 
+// Public-mailbox domains Brevo refuses to send as unless the exact address is a
+// verified sender — the classic "works in dev, 400s in prod" misconfiguration.
+const FREE_MAIL_DOMAINS = new Set(['gmail.com', 'googlemail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'live.com', 'icloud.com', 'me.com', 'aol.com', 'proton.me', 'protonmail.com']);
+
+// True when the sender uses a public mailbox domain (likely-unverifiable in Brevo).
+export function isFreeMailDomain(email: string): boolean {
+  const at = email.lastIndexOf('@');
+  return at >= 0 && FREE_MAIL_DOMAINS.has(email.slice(at + 1).toLowerCase());
+}
+
+// Turn a Brevo HTTP error into an actionable ops hint. Reads only the status and the
+// already-truncated public error text — never the API key.
+function brevoFailureHint(status: number, detail: string): string {
+  if (status === 401 || status === 403) return ' (auth rejected — BREVO_API_KEY must be a valid v3 "xkeysib-" API key, NOT the "xsmtpsib-" SMTP key)';
+  if (status === 400 && /sender|from|not.*valid|unrecognized/i.test(detail)) return ' (sender rejected — verify SMTP_FROM address/domain in Brevo → Senders)';
+  return '';
+}
+
+// Flag at boot the two misconfigurations that make every Brevo send fail at request
+// time: a key that is not a v3 API key, and a free-mail sender Brevo will not send as.
+// Warnings only — never blocks boot, never logs the key.
+function auditEmailConfig(): void {
+  if (BREVO_API_KEY && !BREVO_API_KEY.startsWith('xkeysib-')) {
+    obsLog.warn('[EMAIL] BREVO_API_KEY does not look like a v3 API key (expected "xkeysib-" prefix). The SMTP key "xsmtpsib-…" will NOT authenticate the HTTP API — copy the v3 key from Brevo → SMTP & API → API Keys.');
+  }
+  const sender = parseSender();
+  if (isSmtpConfigured() && isFreeMailDomain(sender.email)) {
+    obsLog.warn(`[EMAIL] SMTP_FROM sender "${sender.email}" uses a public mailbox domain. Brevo rejects sends from unverified free-mail senders; use an address on a domain authenticated in Brevo, or add this exact address as a verified sender.`);
+  }
+}
+
 // A dev machine with no SMTP configured should not be blocked: the link is logged
 // and the flow proceeds. Production never gets that pass — an unsendable email there
 // is a hard failure so no false success reaches the user.
@@ -111,6 +142,7 @@ function getTransporter(): Transporter {
 // Optional startup probe. Non-fatal: logs readiness or the exact SMTP fault so a
 // misconfiguration is visible at boot instead of on the first signup.
 export async function verifyEmailTransport(): Promise<void> {
+  auditEmailConfig();
   if (!isSmtpConfigured()) {
     obsLog.warn('[EMAIL] Email not configured (no BREVO_API_KEY or SMTP_PASS) — auth emails will not send. Set BREVO_API_KEY (HTTP API, recommended) or SMTP_PASS.');
     return;
@@ -145,7 +177,7 @@ async function sendViaBrevoApi(to: string, subject: string, html: string, text: 
     if (!response.ok) {
       const detail = (await response.text().catch(() => '')).slice(0, 300);
       const message = `Brevo API ${response.status}: ${detail}`;
-      obsLog.error(`[EMAIL] Failed to send "${subject.trim()}" to ${maskEmail(to)} via Brevo API: ${message}`);
+      obsLog.error(`[EMAIL] Failed to send "${subject.trim()}" to ${maskEmail(to)} via Brevo API: ${message}${brevoFailureHint(response.status, detail)}`);
       return { ok: false, code: 'EMAIL_SEND_FAILED', error: message };
     }
     const body = (await response.json().catch(() => ({}))) as { messageId?: string };
@@ -174,9 +206,23 @@ async function sendViaSmtp(to: string, subject: string, html: string, text: stri
   }
 }
 
-// Core send. Prefers the Brevo HTTP API (egress-safe); falls back to SMTP. Never throws.
+// Core send. Prefers the Brevo HTTP API (egress-safe over 443). On a failed Brevo
+// dispatch it falls back to SMTP when SMTP is configured, so one transport faulting
+// (bad key, unverified sender, provider blip) does not hard-fail delivery if the other
+// path is healthy. Never throws — always resolves to an EmailResult.
 async function sendMail(to: string, subject: string, html: string, text: string, replyTo?: string): Promise<EmailResult> {
-  return BREVO_API_KEY ? sendViaBrevoApi(to, subject, html, text, replyTo) : sendViaSmtp(to, subject, html, text, replyTo);
+  const smtpReady = SMTP_PASS.length > 0;
+  if (!BREVO_API_KEY) return sendViaSmtp(to, subject, html, text, replyTo);
+
+  const viaApi = await sendViaBrevoApi(to, subject, html, text, replyTo);
+  if (viaApi.ok || !smtpReady) return viaApi;
+
+  obsLog.warn(`[EMAIL] Brevo API send failed (${viaApi.error}) — falling back to SMTP ${SMTP_HOST}:${SMTP_PORT}`);
+  const viaSmtp = await sendViaSmtp(to, subject, html, text, replyTo);
+  if (viaSmtp.ok) return viaSmtp;
+
+  // Both transports failed: report each fault so logs show the full picture.
+  return { ok: false, code: 'EMAIL_SEND_FAILED', error: `Brevo API: ${viaApi.error}; SMTP: ${viaSmtp.error}` };
 }
 
 // Dark-header card shared by both operator emails so they read as one brand.

@@ -1240,7 +1240,7 @@ export default function ForensicReport({ shared = false }: { shared?: boolean } 
       : 'border-(--border-hairline) bg-(--status-critical-bg) text-(--status-critical-fg)';
 
     return (
-      <div className="flex h-full w-full flex-col bg-(--surface-app)">
+      <div className="flex h-full min-h-dvh w-full flex-col bg-(--surface-app)">
         {shared && (
           <header className="flex items-center border-b border-(--border-hairline) bg-(--surface-panel) px-4 py-3 sm:px-6">
             <span className="text-sm font-bold tracking-tight text-(--accent)">BUGSAFARI</span>
@@ -1267,7 +1267,7 @@ export default function ForensicReport({ shared = false }: { shared?: boolean } 
   }
 
   return (
-    <div className="relative isolate flex h-full w-full flex-col bg-(--surface-app)">
+    <div className="relative isolate flex h-full min-h-dvh w-full flex-col bg-(--surface-app)">
       <div className="app-backdrop" aria-hidden="true" />
       {/* Header */}
       <header className="flex items-center justify-between gap-2 border-b border-(--border-hairline) bg-(--surface-panel) px-4 py-3 sm:px-6 sm:py-3">
