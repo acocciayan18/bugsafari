@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
+import { IconButton } from '../ui/IconButton';
 import { Input } from '../ui/Input';
 import { X, ChevronDown, CircleCheckBig } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -137,13 +138,9 @@ export function SupportModal({ isOpen, onClose, mode }: SupportModalProps) {
         <h3 id="support-modal-title" className="min-w-0 truncate text-sm sm:text-base font-semibold text-(--text-primary)">
           {result ? 'Request received' : TITLES[mode]}
         </h3>
-        <button
-          onClick={handleClose}
-          className="touch-target -mr-1 flex h-9 w-9 shrink-0 items-center cursor-pointer justify-center rounded-(--radius-sm) text-(--text-tertiary) hover:bg-(--surface-hover) hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
-          aria-label="Close"
-        >
+        <IconButton size="lg" onClick={handleClose} aria-label="Close" className="-mr-1 focus-visible:ring-offset-2">
           <X className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-        </button>
+        </IconButton>
       </div>
 
       {result ? (

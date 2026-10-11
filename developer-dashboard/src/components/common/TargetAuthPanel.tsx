@@ -8,6 +8,8 @@ import { useId, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronDown, Eye, EyeOff, HelpCircle, KeyRound, ShieldCheck } from 'lucide-react';
 import type { TargetAuthConfig } from '../../types';
+import { IconButton } from '../ui/IconButton';
+import { Switch } from '../ui/Switch';
 
 export interface TargetAuthDraft {
   enabled: boolean;
@@ -88,24 +90,13 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
   return (
     <div className="rounded-lg border border-(--border-hairline) bg-(--surface-raised)">
       <div className={`flex items-center gap-3 px-4 py-3 ${disabled ? 'opacity-50' : ''}`}>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={draft.enabled}
-          aria-label="Authenticate into target"
+        <Switch
+          checked={draft.enabled}
+          onChange={(v) => set('enabled', v)}
           disabled={disabled}
-          onClick={() => set('enabled', !draft.enabled)}
-          className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-(--border-focus) focus:ring-offset-2 focus:ring-offset-(--surface-raised) ${
-            disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-          } ${draft.enabled ? 'border-(--accent) bg-(--accent)' : 'border-(--border-strong) bg-(--surface-hover)'}`}
-        >
-          <span
-            aria-hidden="true"
-            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-(--shadow-sm) ring-0 transition duration-200 ease-in-out ${
-              draft.enabled ? 'translate-x-5' : 'translate-x-0'
-            }`}
-          />
-        </button>
+          aria-label="Authenticate into target"
+          className="focus:ring-offset-(--surface-raised)"
+        />
         <KeyRound className="h-4 w-4 shrink-0 text-(--text-tertiary)" strokeWidth={1.75} aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <p className="text-xs font-bold text-(--text-secondary) uppercase font-sans leading-tight">
@@ -115,16 +106,15 @@ export default function TargetAuthPanel({ draft, onChange, disabled = false }: T
             Sign in so exploration reaches the pages behind your login
           </p>
         </div>
-        <button
-          type="button"
+        <IconButton
+          size="sm"
           onClick={() => setShowHelp((prev) => !prev)}
           aria-expanded={showHelp}
           aria-controls={helpId}
           aria-label="How target authentication works"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--text-tertiary) hover:text-(--text-secondary) hover:bg-(--surface-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) cursor-pointer"
         >
           <HelpCircle className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
-        </button>
+        </IconButton>
       </div>
 
       <AnimatePresence initial={false}>

@@ -12,6 +12,7 @@ import type { BugCategory, RemediationFailureReason, SuggestFixRequest, SuggestF
 import { BUG_CATEGORY_META } from '../../../../shared/types.js';
 import { requestSuggestedFix } from '../../services/historyService';
 import { Skeleton } from '../ui/Skeleton';
+import { IconButton } from '../ui/IconButton';
 import InfoNotice from './InfoNotice';
 
 const SUGGESTED_FIX_NOTICE =
@@ -59,16 +60,16 @@ export const CopyButton = ({ text, label }: { text: string; label?: string }) =>
   const actionLabel = `Copy ${label || 'content'} to clipboard`;
 
   return (
-    <button
+    <IconButton
+      variant="plain"
       onClick={handleClick}
-      className="inline-flex items-center justify-center p-1.5 rounded cursor-pointer transition-all hover:bg-(--surface-hover) active:scale-95 text-(--text-secondary) hover:text-(--text-primary)"
       title={copied ? 'Copied!' : actionLabel}
       aria-label={copied ? 'Copied!' : actionLabel}
     >
       {copied
         ? <Check className="h-3.5 w-3.5 text-(--status-stable-fg)" />
         : <Copy className="h-3.5 w-3.5" />}
-    </button>
+    </IconButton>
   );
 };
 
@@ -206,7 +207,7 @@ export const SuggestedFixBlock = ({ advice, context, savedAiAdvice }: { advice: 
             <button
               type="button"
               onClick={generate}
-              className="inline-flex items-center cursor-pointer gap-1.5 rounded-(--radius-sm) border border-(--accent-border) bg-(--accent-soft-bg) px-2 py-1 text-xs font-semibold text-(--accent-soft-fg) transition-colors hover:bg-(--accent) hover:text-(--accent-fg)"
+              className="inline-flex items-center cursor-pointer gap-1.5 rounded-(--radius-sm) border border-(--accent-border) bg-(--accent-soft-bg) px-2 py-1 text-xs font-semibold text-(--accent-soft-fg) transition-colors hover:bg-(--accent) hover:text-(--accent-fg) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
             >
               <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {status === 'error' || source === 'fallback' ? 'Retry' : 'See More Suggestions'}
             </button>

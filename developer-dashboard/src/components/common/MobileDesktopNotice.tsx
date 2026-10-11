@@ -1,4 +1,5 @@
 import { Modal } from '../ui/Modal';
+import { Button } from '../ui/Button';
 
 interface MobileDesktopNoticeProps {
   isOpen: boolean;
@@ -38,13 +39,9 @@ export function MobileDesktopNotice({ isOpen, onDismiss }: MobileDesktopNoticePr
       </div>
 
       <div className="border-t border-(--border-hairline) px-5 pb-5 pt-4 sm:px-6">
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="w-full cursor-pointer rounded-(--radius-md) bg-(--accent) px-8 py-3 text-xs font-medium uppercase tracking-wide text-(--accent-fg) shadow-(--shadow-sm) transition-colors hover:bg-(--accent-hover) active:bg-(--accent-active) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) focus-visible:ring-offset-2"
-        >
+        <Button type="button" variant="primary" size="md" onClick={onDismiss} className="w-full px-8 text-xs font-medium uppercase tracking-wide">
           Got it, continue
-        </button>
+        </Button>
       </div>
     </Modal>
   );

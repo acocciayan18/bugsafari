@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, MailCheck, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../ui/Button';
+import { textLinkClass } from '../ui/TextLink';
 import AuthShell from './AuthShell';
 import AuthAlert from './AuthAlert';
 import PasswordRequirements, { isPasswordValid } from './PasswordRequirements';
@@ -139,7 +140,7 @@ export default function SignupForm() {
           <div className="pt-5 border-t border-(--border-hairline)">
             <Link
               to="/login"
-              className="inline-flex items-center gap-2 text-[13px] font-medium text-(--text-primary) hover:opacity-80 transition-opacity duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-1 py-0.5"
+              className={textLinkClass('default')}
             >
               <ArrowLeft className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
               Back to sign in

@@ -1,6 +1,7 @@
 import { Save, X } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
+import { IconButton } from '../ui/IconButton';
 
 interface GuestSavePromptModalProps {
   isOpen: boolean;
@@ -25,13 +26,9 @@ export function GuestSavePromptModal({ isOpen, onClose, onCreateAccount }: Guest
             </p>
           </div>
         </div>
-        <button
-          onClick={onClose}
-          aria-label="Close"
-          className="touch-target flex h-8 w-8 shrink-0 items-center cursor-pointer  justify-center rounded-(--radius-sm) text-(--text-secondary) transition-colors duration-[160ms] hover:bg-(--surface-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
-        >
+        <IconButton onClick={onClose} aria-label="Close">
           <X className="h-5 w-5 shrink-0" aria-hidden="true" />
-        </button>
+        </IconButton>
       </div>
 
       <div className="px-3 py-4 sm:px-5">

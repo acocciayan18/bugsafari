@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Lock } from 'lucide-react';
 import { isUnlocked, unlock } from '../../utils/accessLock';
+import { Button } from '../ui/Button';
 
 // Development system lock. Blocks the entire app (landing + every route) until the
 // shared access password is entered. Persisted in localStorage, so refresh and
@@ -52,12 +53,9 @@ export default function AccessGate({ children }: { children: ReactNode }) {
 
         {error && <p className="mt-2 text-sm text-(--status-critical-fg)">Incorrect password.</p>}
 
-        <button
-          type="submit"
-          className="mt-4 w-full rounded-(--radius-md) bg-(--accent) px-3 py-2.5 text-sm font-semibold text-(--accent-fg) transition-colors hover:cursor-pointer hover:bg-(--accent-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--accent-border)"
-        >
+        <Button type="submit" variant="primary" size="md" className="mt-4 w-full">
           Unlock
-        </button>
+        </Button>
       </form>
     </div>
   );

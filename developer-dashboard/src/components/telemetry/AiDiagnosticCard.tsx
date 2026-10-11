@@ -42,7 +42,7 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null | undefined 
         </div>
         <div>
           <span className="text-(--text-tertiary) font-bold">Standard Profile:</span>{' '}
-          <span className="inline-block max-w-full break-words text-(--text-secondary) bg-(--surface-raised) px-1.5 py-0.5 rounded text-xs font-bold">
+          <span className="inline-block max-w-full break-words text-(--text-secondary) bg-(--surface-raised) px-1.5 py-0.5 rounded-(--radius-sm) text-xs font-bold">
             {ai.cwe}
           </span>
         </div>
@@ -53,7 +53,7 @@ const AiDiagnosticCard = ({ ai }: { ai: IntelligentDiagnosis | null | undefined 
         </div>
 
         {/* Remediation box — flat neutral surface, no color spent on "good news" */}
-        <div className="mt-3 p-2.5 bg-(--surface-raised) border border-(--border-hairline) text-(--text-primary) rounded font-sans text-[13px] break-words">
+        <div className="mt-3 p-2.5 bg-(--surface-raised) border border-(--border-hairline) text-(--text-primary) rounded-(--radius-sm) font-sans text-[13px] break-words">
           <span className="font-mono text-xs font-bold uppercase block text-(--text-secondary) mb-1">
              Suggested fix:
           </span>

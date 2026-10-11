@@ -1,6 +1,8 @@
 import { Redis } from 'ioredis';
 import type { StopReason } from '../../../../shared/types.js';
 
+import { resolveRedisUrl } from '../../config/env.js';
+import { createRedisConnection } from './redisConnection.js';
 import { createLogger } from '../observability/logger.js';
 
 const obsLog = createLogger('[ControlBridge]');
@@ -20,20 +22,12 @@ interface ControlMessage {
   reason?: StopReason;      // stop-only: why the stop was issued (operator vs timebox vs shutdown)
 }
 
-function redisClient(redisUrl: string): Redis {
-  const client = new Redis(redisUrl, { maxRetriesPerRequest: null });
-  // Attach an 'error' listener so a transient Redis blip never becomes an unhandled
-  // EventEmitter 'error' that crashes the process. ioredis auto-reconnects.
-  client.on('error', (err) => obsLog.error('[ControlBridge] redis connection error:', err instanceof Error ? err.message : err));
-  return client;
-}
-
 // API-side: publishes operator control commands to the worker fleet.
 export class ControlBridgePublisher {
   private readonly pub: Redis;
 
-  constructor(redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379') {
-    this.pub = redisClient(redisUrl);
+  constructor(redisUrl = resolveRedisUrl()) {
+    this.pub = createRedisConnection('[ControlBridge]', redisUrl);
   }
 
   public publish(command: OperatorCommand, runToken: string | null, reason?: StopReason): void {
@@ -54,9 +48,9 @@ export class ControlBridgeSubscriber {
 
   constructor(
     private readonly handler: (command: OperatorCommand, runToken: string | null, reason?: StopReason) => void,
-    redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379',
+    redisUrl = resolveRedisUrl(),
   ) {
-    this.sub = redisClient(redisUrl);
+    this.sub = createRedisConnection('[ControlBridge]', redisUrl);
   }
 
   public async start(): Promise<void> {

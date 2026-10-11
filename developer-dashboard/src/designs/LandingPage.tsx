@@ -276,7 +276,7 @@ const LandingPage = () => {
     const goToLogin = useCallback(() => navigate('/login'), [navigate]);
 
     return (
-        <div className="bg-[var(--surface-app)] text-[var(--text-primary)] min-h-screen font-sans selection:bg-[var(--surface-invert)] selection:text-[var(--text-oninvert)]">
+        <div className="relative isolate bg-[var(--surface-app)] text-[var(--text-primary)] min-h-screen font-sans selection:bg-[var(--surface-invert)] selection:text-[var(--text-oninvert)]">
             <div className="landing-backdrop" aria-hidden="true" />
             <LegalDocModal docId={legalDoc} onClose={() => setLegalDoc(null)} />
 

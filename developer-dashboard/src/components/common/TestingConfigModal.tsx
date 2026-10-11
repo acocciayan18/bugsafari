@@ -9,6 +9,8 @@ import { useEffect, useState } from 'react';
 import { X, KeyRound, Route, Timer } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
+import { IconButton } from '../ui/IconButton';
+import { Tab } from '../ui/Tab';
 import { useAuth } from '../../context/AuthContext';
 import TargetAuthPanel, { isTargetAuthIncomplete, type TargetAuthDraft } from './TargetAuthPanel';
 import { TEST_DURATION_PRESETS, type BoundaryLockMode, type TestDurationId } from '../../types';
@@ -90,29 +92,22 @@ export default function TestingConfigModal({
         <h3 id="testing-config-title" className="text-[13px] font-semibold text-(--text-primary)">
           Testing Configuration
         </h3>
-        <button
-          onClick={onClose}
-          className="flex h-8 w-8 items-center hover:cursor-pointer justify-center rounded-md text-(--text-secondary) hover:bg-(--surface-hover) transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
-          aria-label="Close configuration"
-        >
+        <IconButton onClick={onClose} aria-label="Close configuration">
           <X className="h-5 w-5" aria-hidden="true" />
-        </button>
+        </IconButton>
       </div>
 
       <div className="scroll-rail flex border-b border-(--border-hairline) px-2" role="tablist" aria-label="Configuration sections">
         {tabs.map(({ id, label, icon: Icon }) => (
-          <button
+          <Tab
             key={id}
             role="tab"
             id={`config-tab-${id}`}
             aria-selected={activeTab === id}
             aria-controls={`config-panel-${id}`}
+            active={activeTab === id}
             onClick={() => setActiveTab(id)}
-            className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-xs font-bold uppercase cursor-pointer transition-colors font-sans ${
-              activeTab === id
-                ? 'border-(--accent) text-(--accent)'
-                : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'
-            }`}
+            className="px-3 py-2.5 text-xs font-bold uppercase font-sans"
           >
             <Icon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
             {label}
@@ -123,7 +118,7 @@ export default function TestingConfigModal({
                 aria-hidden="true"
               />
             )}
-          </button>
+          </Tab>
         ))}
       </div>
 

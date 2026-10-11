@@ -1,5 +1,11 @@
 export { Button } from './Button';
 export type { ButtonVariant, ButtonSize } from './Button';
+export { IconButton } from './IconButton';
+export type { IconButtonSize, IconButtonVariant } from './IconButton';
+export { Tab } from './Tab';
+export { TextLink, textLinkClass } from './TextLink';
+export type { TextLinkTone } from './TextLink';
+export { Switch } from './Switch';
 export { Badge } from './Badge';
 export type { BadgeVariant } from './Badge';
 export { Card } from './Card';

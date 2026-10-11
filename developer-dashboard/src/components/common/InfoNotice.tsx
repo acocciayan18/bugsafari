@@ -91,7 +91,7 @@ export default function InfoNotice({ ariaLabel, title, children }: InfoNoticePro
           setPinned(next);
           setOpen(next);
         }}
-        className="inline-flex cursor-help items-center rounded outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+        className="inline-flex cursor-help items-center rounded-(--radius-sm) outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
       >
         <Info className="h-3.5 w-3.5 text-(--text-tertiary)" aria-hidden="true" />
       </button>

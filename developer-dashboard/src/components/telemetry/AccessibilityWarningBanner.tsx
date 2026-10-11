@@ -27,12 +27,12 @@ export default function AccessibilityWarningBanner({ count, onDismiss }: Accessi
           </p>
         </div>
         <button
-  onClick={onDismiss}
-  aria-label="Dismiss"
-  className="shrink-0 cursor-pointer rounded-md p-1.5 text-(--status-warning-fg) transition-colors  focus:outline-none focus:ring-2 focus:ring-(--border-focus)"
->
-  <XCircle className="h-5 w-5" />
-</button>
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          className="shrink-0 cursor-pointer rounded-(--radius-md) p-1.5 text-(--status-warning-fg) transition-colors focus:outline-none focus:ring-2 focus:ring-(--border-focus)"
+        >
+          <XCircle className="h-5 w-5" />
+        </button>
       </div>
     </div>
   );

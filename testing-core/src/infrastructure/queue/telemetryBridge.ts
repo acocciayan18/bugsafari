@@ -2,6 +2,8 @@ import { Redis } from 'ioredis';
 import type { Server } from 'socket.io';
 import type { RoomEmitter } from '../socket/SocketTelemetryGateway.js';
 
+import { resolveRedisUrl } from '../../config/env.js';
+import { createRedisConnection, waitForRedisReady } from './redisConnection.js';
 import { createLogger } from '../observability/logger.js';
 
 const obsLog = createLogger('[TelemetryBridge]');
@@ -21,25 +23,14 @@ interface BridgeMessage {
   args: unknown[];
 }
 
-function redisClient(redisUrl: string): Redis {
-  // maxRetriesPerRequest:null keeps the connection resilient like the worker's.
-  const client = new Redis(redisUrl, { maxRetriesPerRequest: null });
-  // MUST attach an 'error' listener: an ioredis client emits 'error' on every
-  // transient blip (reconnect, ECONNRESET), and an EventEmitter 'error' with no
-  // listener throws → uncaught exception → the api process exits (ECONNREFUSED for
-  // every proxied request until it restarts). ioredis auto-reconnects, so log-and-continue.
-  client.on('error', (err) => obsLog.error('[TelemetryBridge] redis connection error:', err instanceof Error ? err.message : err));
-  return client;
-}
-
 /** Worker-side RoomEmitter: every gateway emit is published to Redis instead of
  *  a dead process-local Socket.IO server. Room scoping is preserved verbatim. */
 export class RedisTelemetryPublisher implements RoomEmitter {
   private readonly pub: Redis;
   private droppedUnrouted = 0;
 
-  constructor(redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379') {
-    this.pub = redisClient(redisUrl);
+  constructor(redisUrl = resolveRedisUrl()) {
+    this.pub = createRedisConnection('[TelemetryBridge]', redisUrl);
   }
 
   /**
@@ -97,11 +88,16 @@ export class RedisTelemetryPublisher implements RoomEmitter {
 export class TelemetryBridgeSubscriber {
   private readonly sub: Redis;
 
-  constructor(private readonly io: Server, redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379') {
-    this.sub = redisClient(redisUrl);
+  constructor(private readonly io: Server, private readonly redisUrl = resolveRedisUrl()) {
+    this.sub = createRedisConnection('[TelemetryBridge]', redisUrl);
   }
 
   public async start(): Promise<void> {
+    // Fail fast if Redis is unreachable. subscribe() queues on the offline buffer and
+    // never settles while Redis is down, which would hang API boot (the server never
+    // starts listening). Bound the wait so a missing Redis surfaces as an actionable
+    // error instead of a silent hang; in prod the orchestrator restarts a clean process.
+    await waitForRedisReady(this.sub, this.redisUrl);
     await this.sub.subscribe(TELEMETRY_BRIDGE_CHANNEL);
     this.sub.on('message', (_channel, raw) => {
       try {

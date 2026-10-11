@@ -182,7 +182,7 @@ git push --set-upstream origin dev
 
 
 git add .
-git commit -m "updated the bugsafari.vercel.app into .me"
+git commit -m "updated the frontend"
 git checkout -b dev
 git push origin dev --force
 

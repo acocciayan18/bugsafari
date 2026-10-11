@@ -69,7 +69,7 @@ function FilterChip({ label, count, active, onClick }: { label: string; count: n
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ${
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) ${
         active
           ? 'border-(--accent) bg-(--accent) text-(--accent-fg)'
           : 'border-(--border-hairline) bg-(--surface-inset) text-(--text-secondary) hover:text-(--text-primary)'

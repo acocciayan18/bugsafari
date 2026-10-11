@@ -108,13 +108,16 @@
   --status-neutral-bg: #f4f4f5;
   --status-neutral-border: #e4e4e7;
 
-  /* Auth backdrop — exploration-graph field tokens; one accent-blue telemetry bloom. */
-  --auth-signal: rgba(0, 86, 210, 0.06);
-  --auth-sweep: rgba(0, 86, 210, 0.04);
-
   /* Landing backdrop — blueprint grid line + accent-blue hero spotlight bloom (token-driven) */
   --grid-line: rgba(24, 40, 72, 0.05);
   --grid-glow: rgba(0, 86, 210, 0.06);
+
+  /* Landing light-bloom — soft drifting blue + cyan glows blended over the grid */
+  --landing-bloom-blue: rgba(0, 86, 210, 0.10);
+  --landing-bloom-cyan: rgba(14, 165, 210, 0.09);
+
+  /* Overlay scrim channel — one color for every modal/drawer backdrop; per-use opacity */
+  --scrim-rgb: 18 18 18;
 }
 
 .dark {
@@ -133,13 +136,16 @@
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.55);
   --shadow-xl: 0 20px 48px rgba(0, 0, 0, 0.65);
 
-  /* Auth backdrop (dark variant) — accent-blue signal glows lift off the deep base. */
-  --auth-signal: rgba(59, 130, 246, 0.08);
-  --auth-sweep: rgba(59, 130, 246, 0.05);
-
   /* Landing backdrop (dark variant) — faint accent lines lift off the deep base */
   --grid-line: rgba(148, 163, 184, 0.05);
   --grid-glow: rgba(59, 130, 246, 0.07);
+
+  /* Landing light-bloom (dark variant) — brighter so glows lift off the deep base */
+  --landing-bloom-blue: rgba(59, 130, 246, 0.16);
+  --landing-bloom-cyan: rgba(34, 211, 238, 0.13);
+
+  /* Overlay scrim deepens to pure black on the dark base */
+  --scrim-rgb: 0 0 0;
 
   /* ==========================================
      WATCHTOWER COMPONENT CORE — DARK THEME 
@@ -277,9 +283,61 @@
       radial-gradient(120% 80% at 50% -10%, var(--grid-glow), transparent 60%),
       linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
       linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
-    background-size: 100% 100%, 64px 64px, 64px 64px;
+    background-size: 100% 100%, 32px 32px, 32px 32px;
     -webkit-mask-image: radial-gradient(125% 90% at 50% 0%, #000 45%, transparent 88%);
     mask-image: radial-gradient(125% 90% at 50% 0%, #000 45%, transparent 88%);
+    overflow: hidden;
+  }
+
+  /* Drifting light blooms — large, blurred blue + cyan glows that slowly blend across the grid.
+     Shared by every grid backdrop (landing, auth, app) so the effect stays identical everywhere. */
+  .landing-backdrop::before,
+  .landing-backdrop::after,
+  .auth-backdrop::before,
+  .auth-backdrop::after,
+  .app-backdrop::before,
+  .app-backdrop::after {
+    content: "";
+    position: absolute;
+    inset: -30%;
+    pointer-events: none;
+    filter: blur(70px);
+    will-change: transform;
+  }
+
+  .landing-backdrop::before,
+  .auth-backdrop::before,
+  .app-backdrop::before {
+    background:
+      radial-gradient(32% 32% at 28% 32%, var(--landing-bloom-blue), transparent 70%),
+      radial-gradient(28% 28% at 72% 24%, var(--landing-bloom-cyan), transparent 70%);
+    animation: landing-bloom-a 18s ease-in-out infinite;
+  }
+
+  .landing-backdrop::after,
+  .auth-backdrop::after,
+  .app-backdrop::after {
+    background:
+      radial-gradient(34% 34% at 78% 74%, var(--landing-bloom-blue), transparent 70%),
+      radial-gradient(26% 26% at 22% 70%, var(--landing-bloom-cyan), transparent 70%);
+    animation: landing-bloom-b 24s ease-in-out infinite;
+  }
+
+  /* Seamless roaming circuits — first and last keyframes match so the loop never jumps */
+  @keyframes landing-bloom-a {
+    0%   { transform: translate3d(-4%, -3%, 0) scale(1); }
+    25%  { transform: translate3d(5%, -2%, 0) scale(1.1); }
+    50%  { transform: translate3d(4%, 4%, 0) scale(1.14); }
+    75%  { transform: translate3d(-5%, 3%, 0) scale(1.06); }
+    100% { transform: translate3d(-4%, -3%, 0) scale(1); }
+  }
+
+  @keyframes landing-bloom-b {
+    0%   { transform: translate3d(4%, 3%, 0) scale(1.1); }
+    25%  { transform: translate3d(-5%, 2%, 0) scale(1.04); }
+    50%  { transform: translate3d(-3%, -4%, 0) scale(1.12); }
+    75%  { transform: translate3d(5%, -3%, 0) scale(1.08); }
+    100% { transform: translate3d(4%, 3%, 0) scale(1.1); }
   }
 
   /* Denser fill on phones is wasted and costs fill-rate; loosen the grid, drop the bloom */
@@ -288,8 +346,24 @@
       background-image:
         linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
         linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
-      background-size: 40px 40px, 40px 40px;
+      background-size: 24px 24px, 24px 24px;
     }
+    /* Keep one softened bloom, drop the second to save fill-rate */
+    .landing-backdrop::before,
+    .auth-backdrop::before,
+    .app-backdrop::before { filter: blur(50px); }
+    .landing-backdrop::after,
+    .auth-backdrop::after,
+    .app-backdrop::after { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .landing-backdrop::before,
+    .landing-backdrop::after,
+    .auth-backdrop::before,
+    .auth-backdrop::after,
+    .app-backdrop::before,
+    .app-backdrop::after { animation: none; }
   }
 
   /* Auth background: an exploration-graph field — node dot-grid over a fine blueprint grid, a drifting
@@ -311,53 +385,30 @@
     mask-image: radial-gradient(130% 100% at 50% 0%, #000 55%, transparent 92%);
   }
 
-  /* Signal bloom — the single accent: two green telemetry glows drifting behind the card */
-  .auth-backdrop::before {
-    content: "";
+  /* App background (dashboard / history / settings): same blueprint grid + roaming blue blooms as the
+     landing page, sized to fill the layout shell and edge-masked so panels and text stay fully readable. */
+  .app-backdrop {
     position: absolute;
-    inset: -25%;
-    background:
-      radial-gradient(38% 38% at 26% 30%, var(--auth-signal), transparent 70%),
-      radial-gradient(34% 34% at 76% 70%, var(--auth-signal), transparent 70%);
-    animation: auth-drift 26s ease-in-out infinite alternate;
+    inset: 0;
+    z-index: -10;
+    pointer-events: none;
+    overflow: hidden;
+    background-color: var(--surface-app);
+    background-image:
+      radial-gradient(120% 80% at 50% -10%, var(--grid-glow), transparent 60%),
+      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+    background-size: 100% 100%, 32px 32px, 32px 32px;
+    -webkit-mask-image: radial-gradient(130% 100% at 50% 0%, #000 55%, transparent 92%);
+    mask-image: radial-gradient(130% 100% at 50% 0%, #000 55%, transparent 92%);
   }
 
-  /* Scan sweep — signature: a slow diagonal light band traversing the field */
-  .auth-backdrop::after {
-    content: "";
-    position: absolute;
-    top: -50%;
-    left: -70%;
-    width: 55%;
-    height: 200%;
-    background: linear-gradient(90deg, transparent, var(--auth-sweep), transparent);
-    transform: rotate(12deg);
-    animation: auth-sweep 9s linear infinite;
-  }
-
-  @keyframes auth-drift {
-    from { transform: translate3d(-2%, -1%, 0) scale(1); }
-    to   { transform: translate3d(2%, 2%, 0) scale(1.07); }
-  }
-
-  @keyframes auth-sweep {
-    0%   { transform: translateX(0) rotate(12deg); opacity: 0; }
-    12%  { opacity: 1; }
-    88%  { opacity: 1; }
-    100% { transform: translateX(360%) rotate(12deg); opacity: 0; }
-  }
-
-  /* Phones: loosen the grid, drop the sweep to save fill-rate */
+  /* Phones: loosen the auth + app grid to match the landing backdrop's denser phone fill */
   @media (max-width: 640px) {
-    .auth-backdrop {
-      background-size: 100% 100%, 26px 26px, 26px 26px, 26px 26px;
+    .auth-backdrop,
+    .app-backdrop {
+      background-size: 100% 100%, 24px 24px, 24px 24px;
     }
-    .auth-backdrop::after { display: none; }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .auth-backdrop::before { animation: none; }
-    .auth-backdrop::after { display: none; }
   }
 
   /* Live-feed empty state: node dot-grid over a fine blueprint grid, edge-masked and low-opacity so

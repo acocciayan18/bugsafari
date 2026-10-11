@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Share2, X, Copy, Check, LoaderCircle, Link2, ShieldCheck, Ban, Clock, Eye } from 'lucide-react';
+import { Share2, X, Copy, Check, LoaderCircle, Link2, ShieldCheck, Ban, Clock, Eye, AlertTriangle } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
+import { IconButton } from '../ui/IconButton';
 import { Skeleton } from '../ui/Skeleton';
 import { toast } from '../../infrastructure/notifications/ToastProvider';
 import {
@@ -122,6 +123,25 @@ export function ShareLinkModal({ recordId, isOpen, onClose }: ShareLinkModalProp
     (l) => l.expiresIn === duration && deriveLinkState(l) === 'active',
   );
 
+  // Link targeted by the open confirm dialog, if any.
+  const confirmLink = confirmId ? links.find((l) => l.id === confirmId) ?? null : null;
+
+  // Both this nested dialog and the parent ShareLinkModal listen for Escape on `document`.
+  // The parent registered first, so its handler would also fire and tear down the whole
+  // share modal. While the confirm dialog is up, intercept Escape in the capture phase,
+  // close only the dialog (unless mid-revoke), and stop the parent from seeing it.
+  useEffect(() => {
+    if (!confirmId) return;
+    function onKeyDownCapture(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!revokingId) setConfirmId(null);
+    }
+    document.addEventListener('keydown', onKeyDownCapture, true);
+    return () => document.removeEventListener('keydown', onKeyDownCapture, true);
+  }, [confirmId, revokingId]);
+
   const copy = async (url: string, key: string) => {
     try {
       await navigator.clipboard.writeText(url);
@@ -165,13 +185,9 @@ export function ShareLinkModal({ recordId, isOpen, onClose }: ShareLinkModalProp
             </p>
           </div>
         </div>
-        <button
-          onClick={onClose}
-          aria-label="Close"
-          className="touch-target -mr-1 flex h-8 w-8 shrink-0 items-center cursor-pointer justify-center rounded-(--radius-sm) text-(--text-secondary) transition-colors duration-[160ms] hover:bg-(--surface-hover) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
-        >
+        <IconButton onClick={onClose} aria-label="Close" className="-mr-1">
           <X className="h-5 w-5 shrink-0" aria-hidden="true" />
-        </button>
+        </IconButton>
       </div>
 
       <div className="flex flex-col gap-5 px-4 py-5 sm:px-5">
@@ -304,50 +320,28 @@ export function ShareLinkModal({ recordId, isOpen, onClose }: ShareLinkModalProp
                         {url}
                       </code>
                       {!dead && (
-                        <button
+                        <IconButton
                           onClick={() => void copy(url, link.id)}
                           aria-label="Copy link"
-                          className="touch-target flex h-8 w-8 shrink-0 items-center justify-center rounded-(--radius-sm) border border-(--border-strong) bg-(--surface-app) text-(--text-secondary) transition-colors hover:bg-(--surface-hover) hover:text-(--text-primary) cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+                          className="border border-(--border-strong) bg-(--surface-app)"
                         >
                           {copiedKey === link.id
                             ? <Check className="h-4 w-4 shrink-0 text-(--status-stable-fg)" aria-hidden="true" />
                             : <Copy className="h-4 w-4 shrink-0" aria-hidden="true" />}
-                        </button>
+                        </IconButton>
                       )}
                     </div>
 
                     <div className="flex items-center justify-between gap-2 border-t border-(--border-hairline) pt-2.5">
                       <span className="text-[12px] tabular-nums text-(--text-tertiary)">{formatCreated(link.createdAt)}</span>
-                      {confirmId === link.id ? (
-                        <span className="flex items-center gap-1.5">
-                          <span className="text-[12px] font-medium text-(--text-secondary)">Revoke?</span>
-                          <button
-                            onClick={() => void revoke(link.id)}
-                            disabled={revokingId === link.id}
-                            className="touch-target flex items-center gap-1 rounded-(--radius-sm) bg-(--status-critical-fg) px-2.5 py-1 text-[12px] font-medium text-(--text-oninvert) transition-opacity hover:opacity-90 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) disabled:opacity-50"
-                          >
-                            {revokingId === link.id
-                              ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Revoking</>
-                              : 'Confirm'}
-                          </button>
-                          <button
-                            onClick={() => setConfirmId(null)}
-                            disabled={revokingId === link.id}
-                            className="touch-target rounded-(--radius-sm) px-2.5 py-1 text-[12px] font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-hover) cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
-                          >
-                            Cancel
-                          </button>
-                        </span>
-                      ) : (
-                        state === 'active' && (
-                          <button
-                            onClick={() => setConfirmId(link.id)}
-                            aria-label="Revoke link"
-                            className="touch-target flex items-center gap-1 rounded-(--radius-sm) px-2.5 py-1 text-[12px] font-medium text-(--status-critical-fg) transition-colors hover:bg-(--status-critical-bg) cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
-                          >
-                            <Ban className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> Revoke
-                          </button>
-                        )
+                      {state === 'active' && (
+                        <button
+                          onClick={() => setConfirmId(link.id)}
+                          aria-label="Revoke link"
+                          className="touch-target flex items-center gap-1 rounded-(--radius-sm) px-2.5 py-1 text-[12px] font-medium text-(--status-critical-fg) transition-colors hover:bg-(--status-critical-bg) cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
+                        >
+                          <Ban className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> Revoke
+                        </button>
                       )}
                     </div>
                   </li>
@@ -363,6 +357,61 @@ export function ShareLinkModal({ recordId, isOpen, onClose }: ShareLinkModalProp
           Done
         </Button>
       </div>
+
+      {/* Confirm before revoking — revoking is immediate and cannot be undone. */}
+      <Modal
+        isOpen={confirmLink !== null}
+        onClose={() => { if (!revokingId) setConfirmId(null); }}
+        titleId="revoke-confirm-title"
+        maxWidthClassName="max-w-sm"
+        closeOnBackdrop={!revokingId}
+      >
+        <div className="flex flex-col gap-4 p-5">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-(--status-critical-bg)">
+              <AlertTriangle className="h-5 w-5 text-(--status-critical-fg)" strokeWidth={1.75} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <h3 id="revoke-confirm-title" className="text-base font-semibold leading-tight text-(--text-primary)">
+                Revoke this share link?
+              </h3>
+              <p className="mt-1.5 text-[13px] leading-[1.55] text-(--text-tertiary)">
+               Revoking disables the shared link permanently. You can create a new link later.
+              </p>
+            </div>
+          </div>
+
+          {confirmLink && (
+            <code className="block truncate rounded-(--radius-sm) bg-(--surface-inset) px-2.5 py-2 font-mono text-[12px] text-(--text-secondary)">
+              {buildShareUrl(confirmLink.token)}
+            </code>
+          )}
+
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="secondary"
+              size="sm"
+              className="w-full sm:w-auto"
+              onClick={() => setConfirmId(null)}
+              disabled={revokingId !== null}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="w-full sm:w-auto"
+              onClick={() => confirmLink && void revoke(confirmLink.id)}
+              isLoading={revokingId !== null}
+              disabled={revokingId !== null}
+            >
+              {revokingId !== null
+                ? 'Revoking'
+                : <><Ban className="h-4 w-4 shrink-0" aria-hidden="true" /> Confirm Revoke</>}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </Modal>
   );
 }

@@ -88,7 +88,7 @@ export default function LongOperationProgressCard() {
           type="button"
           onClick={() => setDismissed(true)}
           aria-label="Dismiss"
-          className="ml-auto -mr-1 rounded p-0.5 text-(--text-tertiary) hover:text-(--text-primary)"
+          className="ml-auto -mr-1 rounded-(--radius-sm) p-0.5 text-(--text-tertiary) hover:text-(--text-primary)"
         >
           <X className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
         </button>

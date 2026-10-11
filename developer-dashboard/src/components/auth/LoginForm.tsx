@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { AUTH_SUCCESS, authSuccessToast, authEventToast } from '../../infrastructure/notifications/authToasts';
 import { postAuth } from '../../utils/authFeedback';
 import { Button } from '../ui/Button';
+import { TextLink } from '../ui/TextLink';
 import AuthShell from './AuthShell';
 import AuthAlert from './AuthAlert';
 import GuestModeModal from './GuestModeModal';
@@ -116,9 +117,9 @@ export default function LoginForm({ onGuestAccess }: LoginFormProps) {
           </div>
 
           <div className="mt-4 text-center">
-            <button type="button" onClick={() => setIsGuestModalOpen(true)} className="inline-flex items-center justify-center gap-1.5 text-[13px] font-medium text-(--text-tertiary) cursor-pointer hover:text-(--text-primary) transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) rounded-(--radius-sm) px-2 py-1">
+            <TextLink tone="muted" onClick={() => setIsGuestModalOpen(true)} className="justify-center">
               Continue As Guest
-            </button>
+            </TextLink>
           </div>
 
           <LegalFooter onOpenDoc={setOpenDocId} />

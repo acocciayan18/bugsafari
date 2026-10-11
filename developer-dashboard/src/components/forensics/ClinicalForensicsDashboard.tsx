@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
-import { Check, BugPlay, LoaderCircle, Pause, Play,Workflow, Square, Activity, TriangleAlert, Network, Terminal, SlidersHorizontal, Globe } from 'lucide-react';
+import { Check, BugPlay, LoaderCircle, Pause, Play, Square, Activity, TriangleAlert, Network, Terminal, SlidersHorizontal, Globe } from 'lucide-react';
 import type { TelemetryEvent, ForensicCrashReport, IncidentReport, BrowserConsoleMessage, TargetAuthConfig } from '../../types';
 import {
   isTargetAuthIncomplete,
@@ -11,6 +11,7 @@ import {
   type TargetAuthDraft,
 } from '../common/TargetAuthPanel';
 import TestingConfigModal from '../common/TestingConfigModal';
+import { Tab } from '../ui/Tab';
 import type { TestSessionStatus } from '../../application/useCases/useDashboardController';
 import type { RunTerminationOutcome } from '../../types';
 import LiveFeedConnected from '../common/LiveFeedConnected';
@@ -167,7 +168,9 @@ function ClinicalForensicsDashboard({
     }
   };
   // Off by default: hide per-step execution trace; flip to reveal the full log for debugging.
-  const [showVerbose, setShowVerbose] = useState(false);
+  // Per-step execution trace is always hidden from the UI; the filter logic below
+  // still honors this flag, but there is no longer a user-facing toggle to flip it.
+  const showVerbose = false;
   const [urlInput, setUrlInput] = useState(targetUrl);
   // Profile, Duration, Navigation, and the auth structure hydrate from the persisted
   // draft so operator choices survive runs, reloads, and restarts. First run falls back
@@ -370,7 +373,7 @@ function ClinicalForensicsDashboard({
           ═══════════════════════════════════════════════════════════════ */}
       <div className="w-full bg-(--surface-panel) border-b border-(--border-hairline) p-3 sm:p-4 lg:p-5 shrink-0 space-y-3 sm:space-y-4">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:gap-x-4">
-          <h2 className="text-sm font-semibold text-(--text-primary)  uppercase">
+          <h2 className="text-sm font-semibold uppercase text-(--text-primary)">
             DASHBOARD
           </h2>
 
@@ -416,7 +419,7 @@ function ClinicalForensicsDashboard({
                 <button
                   disabled
                   title={transitionLabel}
-                  className="flex items-center gap-2 rounded-(--radius-md) bg-(--surface-inset) text-(--text-secondary) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  cursor-not-allowed opacity-70"
+                  className="flex items-center gap-2 rounded-(--radius-md) bg-(--surface-inset) text-(--text-secondary) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase cursor-not-allowed opacity-70"
                 >
                   <LoaderCircle className="h-5 w-5 animate-spin" strokeWidth={1.75} aria-hidden="true" />
                   {transitionLabel}
@@ -425,7 +428,7 @@ function ClinicalForensicsDashboard({
               {testStatus === 'ACTIVE' && onPause && (
                 <button
                   onClick={onPause}
-                  className="flex items-center cursor-pointer gap-2 rounded-(--radius-md) bg-(--surface-invert) hover:bg-(--surface-invert-hover) text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
+                  className="flex items-center cursor-pointer gap-2 rounded-(--radius-md) bg-(--surface-invert) hover:bg-(--surface-invert-hover) text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase transition-colors"
                 >
                   <Pause className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Pause
@@ -434,7 +437,7 @@ function ClinicalForensicsDashboard({
               {testStatus === 'PAUSED' && onResume && (
                 <button
                   onClick={onResume}
-                  className="flex items-center cursor-pointer gap-2 rounded-(--radius-md) bg-(--status-stable-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
+                  className="flex items-center cursor-pointer gap-2 rounded-(--radius-md) bg-(--status-stable-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase transition-colors"
                 >
                   <Play className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Resume
@@ -445,7 +448,7 @@ function ClinicalForensicsDashboard({
               {isQueued && !transitionLabel && onStop && (
                 <button
                   onClick={onStop}
-                  className="hidden lg:flex items-center cursor-pointer gap-2 rounded-(--radius-md) bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
+                  className="hidden lg:flex items-center cursor-pointer gap-2 rounded-(--radius-md) bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase transition-colors"
                 >
                   <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Cancel Queued Run
@@ -454,7 +457,7 @@ function ClinicalForensicsDashboard({
               {isActiveSession && !transitionLabel && !isQueued && onStop && (
                 <button
                   onClick={handleStopRequest}
-                  className="hidden lg:flex items-center cursor-pointer  gap-2 rounded-(--radius-md) bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors"
+                  className="hidden lg:flex items-center cursor-pointer gap-2 rounded-(--radius-md) bg-(--status-critical-fg) hover:opacity-90 text-(--text-oninvert) px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase transition-colors"
                 >
                   <Square className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                   Stop
@@ -467,7 +470,7 @@ function ClinicalForensicsDashboard({
   onClick={onSaveSessionToHistory}
   disabled={isSessionSaved}
   title={isSessionSaved ? 'Session already saved' : 'Save session to history'}
-  className={`hidden lg:flex items-center gap-2 rounded-(--radius-md) border px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase  transition-colors ${
+  className={`hidden lg:flex items-center gap-2 rounded-(--radius-md) border px-3 sm:px-4 py-2 text-[13px] font-semibold uppercase transition-colors ${
     isSessionSaved
       ? 'border-(--border-strong) text-(--text-primary) hover:cursor-not-allowed opacity-80'
       : 'border-(--border-strong) text-(--text-primary) hover:cursor-pointer hover:bg-(--surface-hover) hover:text-(--text-primary)'
@@ -536,7 +539,7 @@ function ClinicalForensicsDashboard({
                     ? 'Enter a username and password, or turn off target authentication'
                     : undefined
             }
-            className="hidden lg:flex h-11 w-full sm:w-auto hover:cursor-pointer items-center justify-center gap-2 rounded-(--radius-md) bg-(--accent) hover:bg-(--accent-hover) active:bg-(--accent-active) text-(--accent-fg) shadow-(--shadow-sm) px-5 text-[13px] font-semibold uppercase  font-sans shrink-0 transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] disabled:opacity-50 disabled:hover:bg-(--accent) disabled:cursor-not-allowed"
+            className="hidden lg:flex h-11 w-full sm:w-auto hover:cursor-pointer items-center justify-center gap-2 rounded-(--radius-md) bg-(--accent) hover:bg-(--accent-hover) active:bg-(--accent-active) text-(--accent-fg) shadow-(--shadow-sm) px-5 text-[13px] font-semibold uppercase font-sans shrink-0 transition-colors duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) disabled:opacity-50 disabled:hover:bg-(--accent) disabled:cursor-not-allowed"
           >
             <BugPlay className="h-5 w-5 shrink-0" />
             <span>Start Testing</span>
@@ -604,7 +607,7 @@ function ClinicalForensicsDashboard({
               {TERMINAL_TABS.map(({ id, label, Icon }) => {
                 const selected = activeTab === id;
                 return (
-                  <button
+                  <Tab
                     key={id}
                     ref={(el) => { tabRefs.current[id] = el; }}
                     data-tour={id === 'telemetry' ? 'telemetry-tab' : id === 'errors' ? 'findings-tab' : id === 'network' ? 'network-tab' : 'console-tab'}
@@ -613,36 +616,20 @@ function ClinicalForensicsDashboard({
                     aria-selected={selected}
                     aria-controls="terminal-tabpanel"
                     tabIndex={selected ? 0 : -1}
+                    active={selected}
                     onClick={() => setActiveTab(id)}
                     onKeyDown={handleTabKeyDown}
-                    className={`flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap border-b-2 px-3 sm:px-4 py-3 text-[13px] font-medium  sm:st transition-colors font-sans ${selected ? 'border-(--accent) bg-(--accent-soft-bg) text-(--accent)' : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'}`}
+                    className={`px-3 sm:px-4 py-3 text-[13px] font-medium font-sans ${selected ? 'bg-(--accent-soft-bg)' : ''}`}
                   >
                     <Icon className="h-3.5 w-3.5" aria-hidden="true" />
                     {label}
                     <TabCount count={tabCounts[id]} />
-                  </button>
+                  </Tab>
                 );
               })}
             </div>
 
             <div className="flex shrink-0 items-center gap-1 pr-2">
-              {activeTab === 'telemetry' && (
-                <button
-  type="button"
-  data-tour="verbose-toggle"
-  onClick={() => setShowVerbose((v) => !v)}
-  aria-pressed={showVerbose}
-  aria-label="Toggle verbose execution trace"
-  title={showVerbose ? 'Hide per-step execution trace' : 'Show full execution trace (debug)'}
-  className={`inline-flex items-center cursor-pointer justify-center rounded-(--radius-md) border p-1.5 transition-colors ${
-    showVerbose
-      ? 'border-(--accent-border) bg-(--accent-soft-bg) text-(--accent)'
-      : 'border-(--border-hairline) text-(--text-tertiary) hover:text-(--text-secondary)'
-  }`}
->
-  <Workflow className="h-3.5 w-3.5" aria-hidden="true" />
-</button>
-              )}
               <TelemetryHelpModal activeTab={activeTab} />
             </div>
           </div>

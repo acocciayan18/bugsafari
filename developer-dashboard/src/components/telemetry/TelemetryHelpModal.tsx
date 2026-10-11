@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Activity, AlertTriangle, Network, HelpCircle, Terminal, X } from 'lucide-react';
 import { useDismissableLayer } from '../../hooks/useDismissableLayer';
+import { Tab } from '../ui/Tab';
 
 type HelpTabId = 'telemetry' | 'errors' | 'network' | 'console';
 
@@ -112,20 +113,17 @@ export default function TelemetryHelpPopover({ activeTab = 'telemetry' }: Teleme
                 const TopicIcon = topic.icon;
                 const isActive = topic.id === activeId;
                 return (
-                  <button
+                  <Tab
                     key={topic.id}
                     onClick={() => setActiveId(topic.id)}
-                    className={`flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-t-md border-b-2 px-2.5 py-2 text-body-sm font-medium transition-colors ${
-                      isActive
-                        ? 'border-(--accent) text-(--accent)'
-                        : 'border-transparent text-(--text-tertiary) hover:text-(--text-secondary)'
-                    }`}
+                    active={isActive}
                     role="tab"
                     aria-selected={isActive}
+                    className="rounded-t-md px-2.5 py-2 text-body-sm font-medium"
                   >
                     <TopicIcon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
                     {topic.label}
-                  </button>
+                  </Tab>
                 );
               })}
             </div>

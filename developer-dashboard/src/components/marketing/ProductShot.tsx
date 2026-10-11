@@ -11,14 +11,14 @@ export const ProductShot = memo(function ProductShot({ base, alt, className }: {
 // Chrome-framed screenshot used across hero and feature splits.
 export const BrowserFrame = memo(function BrowserFrame({ base, alt, label, className }: { base: string; alt: string; label: string; className?: string }) {
     return (
-        <div className={`relative rounded-xl overflow-hidden border border-[var(--border-hairline)] bg-[var(--surface-panel)] shadow-md ${className ?? ''}`}>
-            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--border-hairline)] bg-[var(--surface-inset)]">
+        <div className={`relative rounded-xl overflow-hidden border border-(--border-hairline) bg-(--surface-panel) shadow-md ${className ?? ''}`}>
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-(--border-hairline) bg-(--surface-inset)">
                 <div className="flex gap-1.5" aria-hidden="true">
-                    <span className="w-3 h-3 rounded-full border border-[var(--border-strong)] bg-[var(--surface-hover)]" />
-                    <span className="w-3 h-3 rounded-full border border-[var(--border-strong)] bg-[var(--surface-hover)]" />
-                    <span className="w-3 h-3 rounded-full border border-[var(--border-strong)] bg-[var(--surface-hover)]" />
+                    <span className="w-3 h-3 rounded-full border border-(--border-strong) bg-(--surface-hover)" />
+                    <span className="w-3 h-3 rounded-full border border-(--border-strong) bg-(--surface-hover)" />
+                    <span className="w-3 h-3 rounded-full border border-(--border-strong) bg-(--surface-hover)" />
                 </div>
-                <div className="flex-1 text-center font-mono text-sm font-semibold text-[var(--text-tertiary)] truncate">{label}</div>
+                <div className="flex-1 text-center font-mono text-sm font-semibold text-(--text-tertiary) truncate">{label}</div>
             </div>
             <ProductShot base={base} alt={alt} className="w-full block" />
         </div>

@@ -2,6 +2,8 @@ import { QueueEvents } from 'bullmq';
 import type { Server } from 'socket.io';
 import { QUEUE_UPDATE_EVENT, type QueueJobState, type QueueUpdate } from '../../../../shared/types.js';
 import { SAFARI_TASK_QUEUE_NAME, resolveQueueConnection, type QueuePositions, type TaskQueue } from './TaskQueue.js';
+import { resolveRedisUrl } from '../../config/env.js';
+import { describeRedisError } from './redisConnection.js';
 
 import { createLogger } from '../observability/logger.js';
 
@@ -54,12 +56,12 @@ export class QueueStatusBroadcaster {
   constructor(
     private readonly io: Server,
     private readonly queue: TaskQueue,
-    redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379',
+    redisUrl = resolveRedisUrl(),
   ) {
     this.events = new QueueEvents(SAFARI_TASK_QUEUE_NAME, { connection: resolveQueueConnection(redisUrl) });
     // QueueEvents emits 'error' on a Redis blip; an unhandled EventEmitter 'error'
     // crashes the api process. Log-and-continue — it reconnects on its own.
-    this.events.on('error', (err) => obsLog.error('[QueueStatus] queue-events redis error:', err instanceof Error ? err.message : err));
+    this.events.on('error', (err) => obsLog.error(`[QueueStatus] queue-events redis error: ${describeRedisError(err)}`));
   }
 
   public async start(): Promise<void> {

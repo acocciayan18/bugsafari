@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Menu } from 'lucide-react';
 import Sidebar from './Sidebar';
+import { IconButton } from '../ui/IconButton';
 import { useIsCompact } from '../../hooks/useMediaQuery';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { useHideOnScroll } from '../../hooks/useHideOnScroll';
@@ -104,7 +105,7 @@ export default function SidebarLayout({
           <div
             onClick={closeDrawer}
             aria-hidden="true"
-            className={`fixed inset-0 z-40 bg-[#121212]/50 transition-opacity duration-200 ${
+            className={`fixed inset-0 z-40 bg-[rgb(var(--scrim-rgb)/0.5)] transition-opacity duration-200 ${
               isDrawerOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
             }`}
           />
@@ -141,15 +142,15 @@ export default function SidebarLayout({
               headerHidden ? '-translate-y-full' : 'translate-y-0'
             }`}
           >
-            <button
+            <IconButton
+              size="lg"
               data-tour="nav-toggle"
               onClick={() => setIsDrawerOpen(true)}
               aria-label="Open navigation"
               aria-expanded={isDrawerOpen}
-              className="touch-target flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-(--text-secondary) hover:bg-(--surface-hover) hover:text-(--text-primary) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
             >
               <Menu className="h-5 w-5" />
-            </button>
+            </IconButton>
             <span className="min-w-0 truncate text-[13px] font-bold uppercase tracking-tight text-(--text-primary)">
               {VIEW_TITLES[activeView]}
             </span>

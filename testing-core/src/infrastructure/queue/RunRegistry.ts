@@ -1,9 +1,8 @@
-import { Redis } from 'ioredis';
+import type { Redis } from 'ioredis';
 import type { ActiveSessionSnapshot } from '../../../../shared/types.js';
 
-import { createLogger } from '../observability/logger.js';
-
-const obsLog = createLogger('[RunRegistry]');
+import { resolveRedisUrl } from '../../config/env.js';
+import { createRedisConnection } from './redisConnection.js';
 
 // Registry entries outlive the job's removeOnComplete window (1h) with margin.
 const ENTRY_TTL_SECONDS = 2 * 60 * 60;
@@ -67,11 +66,8 @@ export function shouldApplyControlIntent(intent: RunControlIntent | undefined, a
 export class RunRegistry {
   private readonly redis: Redis;
 
-  constructor(redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379') {
-    this.redis = new Redis(redisUrl, { maxRetriesPerRequest: null });
-    // Prevent an unhandled ioredis 'error' event from crashing the process on a
-    // transient Redis blip; the client auto-reconnects (maxRetriesPerRequest:null).
-    this.redis.on('error', (err) => obsLog.error('[RunRegistry] redis connection error:', err instanceof Error ? err.message : err));
+  constructor(redisUrl = resolveRedisUrl()) {
+    this.redis = createRedisConnection('[RunRegistry]', redisUrl);
   }
 
   private runKey(runToken: string): string {

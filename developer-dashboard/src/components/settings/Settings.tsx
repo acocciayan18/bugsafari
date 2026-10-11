@@ -31,6 +31,8 @@ import {
 import { toast } from '../../infrastructure/notifications/ToastProvider';
 import SupportModal from '../common/SupportModal';
 import { Button } from '../ui/Button';
+import { IconButton } from '../ui/IconButton';
+import { Switch } from '../ui/Switch';
 import { Modal } from '../ui/Modal';
 import type { SupportMode } from '../../../../shared/support';
 
@@ -226,31 +228,7 @@ export const ToggleSwitch = memo(function ToggleSwitch({
         </div>
       </div>
 
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        onClick={() => onChange(!checked)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onChange(!checked);
-          }
-        }}
-        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-(--border-focus) focus:ring-offset-2 focus:ring-offset-(--surface-panel) ${
-          checked
-            ? 'border-(--accent) bg-(--accent)'
-            : 'border-(--border-strong) bg-(--surface-hover)'
-        }`}
-      >
-        <span
-          aria-hidden="true"
-          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-(--shadow-sm) ring-0 transition duration-200 ease-in-out ${
-            checked ? 'translate-x-5' : 'translate-x-0'
-          }`}
-        />
-      </button>
+      <Switch checked={checked} onChange={onChange} aria-label={label} className="focus:ring-offset-(--surface-panel)" />
     </div>
   );
 });
@@ -777,14 +755,9 @@ export default function Settings() {
           <span className="mx-2 shrink-0 text-(--text-tertiary) sm:mx-3">/</span>
           <span className="truncate text-body-sm font-semibold text-(--text-secondary) sm:text-sm">SETTINGS</span>
         </div>
-        <button
-          onClick={startTour}
-          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg hover:bg-(--surface-hover) transition-colors"
-          title="Take a tour of this page"
-          aria-label="Take a tour of this page"
-        >
-          <CircleQuestionMark className="h-4 w-4 text-(--text-secondary)" />
-        </button>
+        <IconButton onClick={startTour} title="Take a tour of this page" aria-label="Take a tour of this page">
+          <CircleQuestionMark className="h-4 w-4" />
+        </IconButton>
       </header>
 
       <main className="custom-scrollbar m-3 overflow-visible rounded-md border border-(--border-strong) bg-(--surface-app) sm:m-4 lg:m-5 lg:flex-1 lg:overflow-auto">

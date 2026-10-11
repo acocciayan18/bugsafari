@@ -16,6 +16,7 @@ import { admitTargetChain } from '../../serverUtils.js';
 import { validateJobPayload } from '../../validation/jobPayload.js';
 import { SAFARI_JOB_LOCK_DURATION_MS } from './workerLimits.js';
 import { raceSlotRelease } from './slotRelease.js';
+import { resolveRedisUrl } from '../../config/env.js';
 
 import { createLogger } from '../observability/logger.js';
 
@@ -89,7 +90,7 @@ function validatePayload(job: Job<SafariTaskPayload>): SafariTaskPayload {
 }
 
 export async function createSafariWorker(
-  redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379',
+  redisUrl = resolveRedisUrl(),
 ): Promise<SafariWorkerRuntime> {
   const dbReady = await connectDatabase();
   const findingRepository = dbReady ? new MongoFindingRepository() : undefined;

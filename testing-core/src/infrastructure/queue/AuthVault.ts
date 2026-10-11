@@ -1,7 +1,9 @@
-import { Redis } from 'ioredis';
+import type { Redis } from 'ioredis';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import type { TargetAuthConfig } from '../../../../shared/types.js';
 
+import { resolveRedisUrl } from '../../config/env.js';
+import { createRedisConnection } from './redisConnection.js';
 import { createLogger } from '../observability/logger.js';
 
 const obsLog = createLogger('[AuthVault]');
@@ -52,7 +54,7 @@ export class AuthVault {
 
   /** Null when no valid key is configured — callers must then refuse queued auth. */
   public static create(
-    redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379',
+    redisUrl = resolveRedisUrl(),
     rawKey = process.env.BUGSAFARI_AUTH_KEY,
   ): AuthVault | null {
     const key = readKey(rawKey);
@@ -60,10 +62,7 @@ export class AuthVault {
       obsLog.warn('[AuthVault] BUGSAFARI_AUTH_KEY missing or not 32 bytes — authenticated runs cannot be queued.');
       return null;
     }
-    const redis = new Redis(redisUrl, { maxRetriesPerRequest: null });
-    // Attach an 'error' listener so a transient Redis blip never becomes an unhandled
-    // EventEmitter 'error' that crashes the process. The client auto-reconnects.
-    redis.on('error', (err) => obsLog.error('[AuthVault] redis connection error:', err instanceof Error ? err.message : err));
+    const redis = createRedisConnection('[AuthVault]', redisUrl);
     return new AuthVault(redis, key);
   }
 

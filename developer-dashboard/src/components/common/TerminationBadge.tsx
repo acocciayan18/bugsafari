@@ -40,16 +40,16 @@ export function TerminationBadge({ outcome, status, reason, variant = 'default',
 
   const copy = TERMINATION_COPY[resolved];
   const tone = variant === 'mono'
-    ? 'border-[var(--border-hairline)] bg-[var(--surface-inset)] text-[var(--text-secondary)]'
+    ? 'border-(--border-hairline) bg-(--surface-inset) text-(--text-secondary)'
     : isCleanTermination(resolved)
-      ? 'border-[var(--status-stable-border)] text-[var(--status-stable-fg)]'
+      ? 'border-(--status-stable-border) text-(--status-stable-fg)'
       : resolved === 'graceful-shutdown' || resolved === 'abandoned' || resolved === 'engine-error'
-        ? 'border-[var(--status-warning-border)] text-[var(--status-warning-fg)]'
-        : 'border-[var(--status-critical-border)] text-[var(--status-critical-fg)]';
+        ? 'border-(--status-warning-border) text-(--status-warning-fg)'
+        : 'border-(--status-critical-border) text-(--status-critical-fg)';
 
   return (
     <span
-      className={`inline-flex min-h-6 items-center gap-1 truncate rounded border border-[var(--border-hairline)] bg-[var(--surface-inset)] px-2 py-0.5 font-mono text-xs font-normal text-[var(--text-secondary)] sm:text-[13px] ${tone} ${className}`}
+      className={`inline-flex min-h-6 items-center gap-1 truncate rounded border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 font-mono text-xs font-normal text-(--text-secondary) sm:text-[13px] ${tone} ${className}`}
       title={reason || copy.detail}
     >
       <span className="shrink-0" aria-hidden="true">{copy.icon}</span>

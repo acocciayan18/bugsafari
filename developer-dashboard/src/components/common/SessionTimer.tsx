@@ -85,7 +85,7 @@ function FullTimer({
     return (
         <div className="flex w-full flex-col items-center gap-3 p-3 sm:p-4 bg-(--surface-panel) rounded-(--radius-lg) shadow-(--shadow-md) border border-(--border-hairline)">
             {/* Status Badge */}
-            <div className={`px-3 py-1 rounded-full text-[13px] font-bold uppercase r ${propIsPaused ? 'bg-(--status-warning-bg) text-(--status-warning-fg)' :
+            <div className={`px-3 py-1 rounded-full text-[13px] font-bold uppercase ${propIsPaused ? 'bg-(--status-warning-bg) text-(--status-warning-fg)' :
                     timeRemaining <= 0 ? 'bg-(--status-critical-bg) text-(--status-critical-fg)' :
                         propIsRunning ? 'bg-(--status-stable-bg) text-(--status-stable-fg)' :
                             'bg-(--status-neutral-bg) text-(--status-neutral-fg)'

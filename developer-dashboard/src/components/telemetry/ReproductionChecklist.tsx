@@ -31,10 +31,10 @@ export default function ReproductionChecklist({ steps }: { steps: string[] }) {
             return (
               <li
                 key={`${idx}-${step}`}
-                className="flex flex-wrap items-start gap-x-2 gap-y-1 rounded border border-(--border-hairline) bg-(--surface-panel) px-2.5 py-1.5"
+                className="flex flex-wrap items-start gap-x-2 gap-y-1 rounded-(--radius-sm) border border-(--border-hairline) bg-(--surface-panel) px-2.5 py-1.5"
               >
                 <span className="mt-px shrink-0 text-xs font-mono text-(--text-tertiary)">{idx + 1}</span>
-                <span className={`mt-px shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold uppercase ${chipClass(kind)}`}>
+                <span className={`mt-px shrink-0 rounded-(--radius-sm) px-1.5 py-0.5 text-xs font-semibold uppercase ${chipClass(kind)}`}>
                   {chipLabel(kind)}
                 </span>
                 <span className="w-full min-w-0 text-[13px] leading-relaxed text-(--text-primary) break-words sm:w-auto sm:flex-1">{step}</span>
@@ -65,7 +65,7 @@ export function ObservationsBlock({ observations }: { observations: string[] }) 
         {observations.map((line, idx) => (
           <li
             key={`${idx}-${line}`}
-            className="rounded border border-(--status-critical-border) bg-(--status-critical-bg) px-2.5 py-1.5 text-[13px] leading-relaxed text-(--status-critical-fg) break-words"
+            className="rounded-(--radius-sm) border border-(--status-critical-border) bg-(--status-critical-bg) px-2.5 py-1.5 text-[13px] leading-relaxed text-(--status-critical-fg) break-words"
           >
             {line}
           </li>

@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PanelLeft, LayoutDashboard, Settings, History, Menu, X, LogOut, LogIn, UserRound } from 'lucide-react';
 import { useHistoryStore } from '../../stores/history/historyStore';
-import { Modal } from '../ui';
+import { Modal, Button, IconButton } from '../ui';
 
 interface User {
   id: string;
@@ -112,11 +112,11 @@ export default function Sidebar({
       <div
         className={`h-14 shrink-0 border-b border-(--border-hairline) flex items-center transition-[padding] duration-200 ${isRail ? 'px-1.5 justify-center' : 'px-3 gap-2.5'}`}
       >
-        <button
+        <IconButton
+          size="lg"
           onClick={isDrawer ? onDismiss : onToggleCollapse}
           aria-label={isDrawer ? 'Close navigation' : isRail ? 'Expand sidebar' : 'Collapse sidebar'}
           aria-expanded={isDrawer ? true : !isRail}
-          className="touch-target flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-(--text-secondary) hover:cursor-pointer hover:bg-(--surface-hover) hover:text-(--text-primary) transition-colors duration-100 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
         >
           {isDrawer ? (
             <X className="h-5 w-5 shrink-0 text-current" />
@@ -125,7 +125,7 @@ export default function Sidebar({
           ) : (
             <PanelLeft className="h-5 w-5 shrink-0 text-current" />
           )}
-        </button>
+        </IconButton>
 
         <div className={`overflow-hidden transition-all duration-200 ${isRail ? 'w-0 h-0' : 'w-auto h-auto flex-1 min-w-0'}`}>
           <h1 className="font-sans font-bold text-md uppercase tracking-tight text-(--text-primary) whitespace-nowrap leading-none">
@@ -214,18 +214,12 @@ export default function Sidebar({
         </h2>
         <p className="mt-2 text-sm text-(--text-secondary)">Are you sure you want to sign out?</p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
-          <button
-            onClick={() => setConfirmSignOut(false)}
-            className="rounded-lg border cursor-pointer border-(--border-strong) px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
-          >
+          <Button variant="secondary" size="md" className="w-full sm:w-auto" onClick={() => setConfirmSignOut(false)}>
             Cancel
-          </button>
-          <button
-            onClick={handleConfirmSignOut}
-            className="rounded-lg cursor-pointer bg-(--status-critical-fg) px-4 py-2 text-sm font-semibold text-(--text-oninvert) hover:opacity-90 active:opacity-80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
-          >
+          </Button>
+          <Button variant="destructive" size="md" className="w-full sm:w-auto" onClick={handleConfirmSignOut}>
             Yes, Sign Out
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

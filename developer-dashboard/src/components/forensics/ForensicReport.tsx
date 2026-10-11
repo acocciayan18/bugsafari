@@ -37,6 +37,8 @@ import type {
 import { actionStepsToMarkdown } from '../../utils/reproductionFormat';
 import { CopyButton, fallbackReasonText } from '../common/ForensicCardKit';
 import { Skeleton } from '../ui/Skeleton';
+import { Button } from '../ui/Button';
+import { Tab } from '../ui/Tab';
 import { formatReportDateTime } from '../../utils/datetime';
 import { TerminationBadge, outcomeFromStatus } from '../common/TerminationBadge';
 import { isCleanTermination, INFILTRATION_PROFILE_CATALOG, type InfiltrationProfileId } from '../../types';
@@ -125,35 +127,28 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-  <Globe
-    className="w-4 h-4 shrink-0 text-(--text-tertiary)"
-    aria-hidden="true"
-  />
-  <div
-    className="truncate text-lg font-bold text-(--text-primary)"
-    title={report.url}
-  >
-    {report.url || 'N/A'}
-  </div>
-</div>
-<div className="flex flex-wrap items-center mt-1.5 gap-1.5 text-xs text-(--text-secondary)">
-          {/* ID / Date / Status share one neutral badge shape with the History cards. */}
-          <span className="inline-flex min-h-6 items-center gap-1 truncate rounded border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 font-mono font-medium text-(--text-secondary)">
-            <Hash className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" aria-hidden="true" />
-            <span className="truncate">{runCode}</span>
-          </span>
-
-    <span className="inline-flex min-h-6 items-center gap-1 upperacase truncate rounded border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 font-mono font-medium text-(--text-secondary)">
-      <Calendar className="w-3.5 h-3.5 text-(--text-tertiary) shrink-0" aria-hidden="true" />
-      <span className="truncate">{formatReportDateTime(report.date)}</span>
-    </span>
-  </div>
+            <Globe className="h-4 w-4 shrink-0 text-(--text-tertiary)" aria-hidden="true" />
+            <div className="truncate text-lg font-bold text-(--text-primary)" title={report.url}>
+              {report.url || 'N/A'}
+            </div>
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-(--text-secondary)">
+            {/* ID / Date / Status share one neutral badge shape with the History cards. */}
+            <span className="inline-flex min-h-6 items-center gap-1 truncate rounded-(--radius-sm) border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 font-mono font-medium text-(--text-secondary)">
+              <Hash className="h-3.5 w-3.5 shrink-0 text-(--text-tertiary)" aria-hidden="true" />
+              <span className="truncate">{runCode}</span>
+            </span>
+            <span className="inline-flex min-h-6 items-center gap-1 truncate rounded-(--radius-sm) border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 font-mono font-medium text-(--text-secondary)">
+              <Calendar className="h-3.5 w-3.5 shrink-0 text-(--text-tertiary)" aria-hidden="true" />
+              <span className="truncate">{formatReportDateTime(report.date)}</span>
+            </span>
+          </div>
         </div>
         <div className="shrink-0">
           {report.outcome || outcomeFromStatus(report.status) ? (
             <TerminationBadge variant="mono" outcome={report.outcome} status={report.status} reason={report.endedReason} />
           ) : (
-            <span className="inline-flex min-h-6 items-center gap-1.5 rounded border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 text-xs font-medium text-(--text-secondary)">
+            <span className="inline-flex min-h-6 items-center gap-1.5 rounded-(--radius-sm) border border-(--border-hairline) bg-(--surface-inset) px-2 py-0.5 text-xs font-medium text-(--text-secondary)">
               {report.status || 'UNKNOWN'}
             </span>
           )}
@@ -161,26 +156,22 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
       </div>
 
       <div className="mt-5 flex flex-wrap gap-x-10 gap-y-4 border-t border-(--border-hairline) pt-4">
-  {/* Which profile produced these findings — absent on reports predating the field. */}
-  {reportProfileLabel(report.infiltrationProfile) && (
-    <StatBlock label="Profile" value={reportProfileLabel(report.infiltrationProfile)} />
-  )}
-  <StatBlock label="Duration" value={formatDuration(report.duration)} />
-  <StatBlock
-    label="Findings"
-    value={findingsTotal}
-    valueClassName={
-      findingsTotal > 0
-        ? "text-(--status-critical-fg)"
-        : "text-(--status-stable-fg)"
-    }
-  />
-  <StatBlock
-    label="Risk Score"
-    value={report.riskScore ?? 0}
-    valueClassName={riskTheme(report.riskScore ?? 0)}
-  />
-</div>
+        {/* Which profile produced these findings — absent on reports predating the field. */}
+        {reportProfileLabel(report.infiltrationProfile) && (
+          <StatBlock label="Profile" value={reportProfileLabel(report.infiltrationProfile)} />
+        )}
+        <StatBlock label="Duration" value={formatDuration(report.duration)} />
+        <StatBlock
+          label="Findings"
+          value={findingsTotal}
+          valueClassName={findingsTotal > 0 ? 'text-(--status-critical-fg)' : 'text-(--status-stable-fg)'}
+        />
+        <StatBlock
+          label="Risk Score"
+          value={report.riskScore ?? 0}
+          valueClassName={riskTheme(report.riskScore ?? 0)}
+        />
+      </div>
 
       {routes.length > 0 && (
         <div className="mt-4 border-t border-(--border-hairline) pt-3">
@@ -287,7 +278,7 @@ function AiInsightsPanel({
             type="button"
             onClick={generate}
             disabled={status === 'loading'}
-            className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-(--radius-md) border border-(--accent-border) bg-(--accent-soft-bg) px-2 py-1 text-xs font-semibold normal-case text-(--accent-soft-fg) transition-colors hover:bg-(--accent) hover:text-(--accent-fg) disabled:opacity-60"
+            className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-(--radius-md) border border-(--accent-border) bg-(--accent-soft-bg) px-2 py-1 text-xs font-semibold normal-case text-(--accent-soft-fg) transition-colors hover:bg-(--accent) hover:text-(--accent-fg) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) disabled:opacity-60"
           >
             {status === 'loading'
               ? <><LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Generating…</>
@@ -706,7 +697,7 @@ function VerifyFixControl({
       onClick={onVerify}
       disabled={disabled}
       title={disabled ? disabledReason : 'Replay this finding to check whether it is fixed'}
-      className="inline-flex items-center text-sm gap-1.5 cursor-pointer rounded-(--radius-md) border border-(--accent-border) bg-(--accent-soft-bg) px-3 py-1.5 text-xs font-semibold text-(--accent-soft-fg) transition-colors hover:bg-(--accent) hover:text-(--accent-fg) disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex items-center text-sm gap-1.5 cursor-pointer rounded-(--radius-md) border border-(--accent-border) bg-(--accent-soft-bg) px-3 py-1.5 text-xs font-semibold text-(--accent-soft-fg) transition-colors hover:bg-(--accent) hover:text-(--accent-fg) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus) disabled:cursor-not-allowed disabled:opacity-50"
     >
       <RefreshCcw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
       Verify Fix
@@ -986,19 +977,11 @@ function TabCount({ count }: { count: number }) {
 
 function TabButton({ label, count, active, onClick, Icon }: { label: string; count: number; active: boolean; onClick: () => void; Icon: LucideIcon }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex shrink-0 items-center cursor-pointer gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-[13px] font-semibold transition-colors ${
-        active
-          ? 'border-(--accent) text-(--accent)'
-          : 'border-transparent text-(--text-secondary) hover:text-(--text-primary)'
-      }`}
-    >
+    <Tab active={active} onClick={onClick} className="px-3 py-2 text-[13px] font-semibold">
       <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       {label}
       <TabCount count={count} />
-    </button>
+    </Tab>
   );
 }
 
@@ -1273,12 +1256,9 @@ export default function ForensicReport({ shared = false }: { shared?: boolean } 
               <p className="text-[13px] leading-relaxed text-(--text-tertiary) sm:text-sm">{detail}</p>
             </div>
             {shared && (
-              <button
-                onClick={() => navigate('/')}
-                className="mt-1 cursor-pointer rounded-(--radius-md) bg-(--accent) px-5 py-2.5 text-[13px] font-semibold text-(--accent-fg) shadow-(--shadow-sm) transition-colors hover:bg-(--accent-hover) active:bg-(--accent-active)"
-              >
+              <Button variant="primary" size="md" onClick={() => navigate('/')} className="mt-1 text-[13px]">
                 Go to BugSafari
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -1287,7 +1267,8 @@ export default function ForensicReport({ shared = false }: { shared?: boolean } 
   }
 
   return (
-    <div className="flex h-full w-full flex-col bg-(--surface-app)">
+    <div className="relative isolate flex h-full w-full flex-col bg-(--surface-app)">
+      <div className="app-backdrop" aria-hidden="true" />
       {/* Header */}
       <header className="flex items-center justify-between gap-2 border-b border-(--border-hairline) bg-(--surface-panel) px-4 py-3 sm:px-6 sm:py-3">
         {/* Back leads the header (left) for intuitive back-navigation flow. A public
@@ -1295,10 +1276,10 @@ export default function ForensicReport({ shared = false }: { shared?: boolean } 
         {!shared ? (
           <button
             onClick={handleBack}
-            className="flex shrink-0 items-center cursor-pointer  gap-2 rounded px-3 py-1.5 text-sm font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
+            className="flex shrink-0 cursor-pointer items-center gap-2 rounded-(--radius-md) px-3 py-1.5 text-sm font-medium text-(--text-secondary) transition-colors hover:bg-(--surface-hover)"
           >
-           <ArrowLeft className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-           Back
+            <ArrowLeft className="h-4 w-4 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+            Back
           </button>
         ) : (
           <div className="flex min-w-0 items-center lg:hidden">
@@ -1314,7 +1295,7 @@ export default function ForensicReport({ shared = false }: { shared?: boolean } 
       </header>
 
       {/* Report Body */}
-      <main className="custom-scrollbar flex-1 overflow-auto p-3  sm:p-4 lg:p-6">
+      <main className="custom-scrollbar flex-1 overflow-auto p-3 sm:p-4 lg:p-6">
         <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 sm:gap-6">
           <ExecutiveSummary report={report} sessionId={(shared ? report.runId : sessionId) || 'N/A'} findingsCount={runtimeBugs.length} />
 

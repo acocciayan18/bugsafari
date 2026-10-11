@@ -1,3 +1,8 @@
+// Load .env before any module reads process.env. The api (index.ts) does this too;
+// without it a host-run worker (npm run dev:worker) never sees REDIS_URL, MONGODB_URI
+// or BUGSAFARI_AUTH_KEY and silently falls back to localhost/defaults. Containers pass
+// env directly and have no .env to read, so a missing file here is a no-op.
+import 'dotenv/config';
 import { createSafariWorker, type SafariWorkerRuntime } from './infrastructure/workers/SafariWorker.js';
 
 import { createLogger } from './infrastructure/observability/logger.js';
