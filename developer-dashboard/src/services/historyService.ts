@@ -4,7 +4,7 @@
  */
 
 import type { SessionHistoryEntry, ForensicReportResponse, FindingAttribution, SessionHistoryState } from '../types';
-import type { ActionRecord, StateFingerprint, SuggestFixRequest, SuggestFixResponse, SuggestInsightsRequest, SuggestInsightsResponse } from '../../../shared/types.js';
+import type { ActionRecord, InfiltrationProfileId, StateFingerprint, SuggestFixRequest, SuggestFixResponse, SuggestInsightsRequest, SuggestInsightsResponse } from '../../../shared/types.js';
 import { isRunCode } from '../../../shared/runCode.js';
 import { SHARE_TTL_PRESETS, SHARE_TTL_LABELS, type ShareTtl, type ShareLinkView } from '../../../shared/types.js';
 import { buildAuthHeaders } from '../utils/authHeaders';
@@ -95,6 +95,8 @@ export async function saveSessionToHistory(
     // (works across the queue architecture, where the run executes out-of-process).
     networkLog?: unknown[];
     consoleLog?: unknown[];
+    /** Operator-selected profile — server fallback when the run's gate-derived value is absent. */
+    infiltrationProfile?: InfiltrationProfileId;
   }
 ): Promise<{ runId?: string; sessionId?: string }> {
   const token = localStorage.getItem('bugsafari_token');
@@ -116,6 +118,7 @@ export async function saveSessionToHistory(
     // Transfer the full network + console streams the operator saw live.
     ...(Array.isArray(options?.networkLog) && { networkLog: options.networkLog }),
     ...(Array.isArray(options?.consoleLog) && { consoleLog: options.consoleLog }),
+    ...(options?.infiltrationProfile && { infiltrationProfile: options.infiltrationProfile }),
   };
 
   if (!token) {

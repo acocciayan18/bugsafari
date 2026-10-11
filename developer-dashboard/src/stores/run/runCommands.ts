@@ -4,6 +4,7 @@ import { defaultOptimizationSettings } from '../../../../shared/types.js';
 import { normalizeTargetUrl, isPrivateTargetUrl, PUBLIC_TARGET_REQUIRED_MESSAGE, SELF_TARGET_FORBIDDEN_MESSAGE } from '../../../../shared/url.js';
 import { isSelfTargetUrl } from '../../utils/selfTarget';
 import { saveSessionToHistory } from '../../services/historyService';
+import { readLaunchConfigDraft } from '../launchConfigDraft';
 import { buildLiveFindings } from '../../utils/findingsBuilder';
 import { buildSavedNetworkRows } from '../../utils/networkLogBuilder';
 import { getEngineGateway } from '../../infrastructure/engine/engineGateway';
@@ -311,6 +312,9 @@ export async function saveRun(inputTargetUrl: string): Promise<{ runId?: string;
             findings: liveFindings,
             networkLog,
             consoleLog,
+            // Operator-selected profile from the persisted launch draft — server fallback
+            // so a saved session always names its profile even on the create-fresh path.
+            infiltrationProfile: readLaunchConfigDraft().profile,
         });
 
         useRunStore.getState().markSessionSaved();

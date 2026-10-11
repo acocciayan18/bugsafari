@@ -1319,8 +1319,17 @@ export function registerRoutes(
       const runCode = normalizeRunCode(request.body?.runId) ?? undefined;
       obsLog.info(`[API] Save identity runId: ${runCode ?? 'not supplied (legacy client)'}`);
 
+      // Operator-selected profile the client launched with. A fallback only — the run's
+      // own gate-derived value (recorded at createSession) wins when present. Validated
+      // against the catalog so an unknown id is dropped rather than persisted.
+      const rawProfile = request.body?.infiltrationProfile;
+      const infiltrationProfile = typeof rawProfile === 'string'
+        && INFILTRATION_PROFILE_CATALOG.some((option) => option.id === rawProfile)
+        ? (rawProfile as InfiltrationProfileId)
+        : undefined;
+
       // Call manualSaveToHistory to save to sessions collection
-      const result = await useCase.manualSaveToHistory(baseUrl, userId, { ownerType, elapsedTimeMs, runCode, clientFindings, clientNetworkLog, clientConsoleLog });
+      const result = await useCase.manualSaveToHistory(baseUrl, userId, { ownerType, elapsedTimeMs, runCode, clientFindings, clientNetworkLog, clientConsoleLog, infiltrationProfile });
 
       if (!result.success) {
         // The caller owns this data and is authenticated, so a refusal we can

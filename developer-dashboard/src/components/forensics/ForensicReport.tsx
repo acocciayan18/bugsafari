@@ -17,12 +17,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, TriangleAlert, CircleHelp, CircleX, CircleSlash, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, ArrowRight, CircleCheckBig, Calendar, ChevronDown, Hash, Clock, Sparkles, Network, Terminal, Link2Off, FileWarning, Info } from 'lucide-react';
+import { Check, TriangleAlert, CircleHelp, CircleX, CircleSlash, RefreshCcw, Globe, Lightbulb, LoaderCircle, RefreshCw, ArrowLeft, ArrowRight, CircleCheckBig, Calendar, Hash, Clock, Sparkles, Network, Terminal, Link2Off, FileWarning, Info } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useHistoryStore } from '../../stores/history/historyStore';
 import type {
-  ForensicActionStep,
   ForensicCaughtBug,
   ForensicNetworkLog,
   ForensicConsoleLog,
@@ -34,8 +33,7 @@ import type {
   RegressionVerdict,
   RegressionSignal,
 } from '../../types';
-import { actionStepsToMarkdown } from '../../utils/reproductionFormat';
-import { CopyButton, fallbackReasonText } from '../common/ForensicCardKit';
+import { fallbackReasonText } from '../common/ForensicCardKit';
 import { Skeleton } from '../ui/Skeleton';
 import { Button } from '../ui/Button';
 import { Tab } from '../ui/Tab';
@@ -43,7 +41,6 @@ import { formatReportDateTime } from '../../utils/datetime';
 import { TerminationBadge, outcomeFromStatus } from '../common/TerminationBadge';
 import { isCleanTermination, INFILTRATION_PROFILE_CATALOG, type InfiltrationProfileId } from '../../types';
 import { isActionableNetworkStatus, type RemediationFailureReason } from '../../../../shared/types.js';
-import { ActionStepList } from '../common/FindingEvidence';
 import FindingCard, { BASE_FINDING_THEME } from '../common/FindingCard';
 import FindingsPanel, { type FindingEntry } from '../common/FindingsPanel';
 import NetworkFailureList, { type NetworkFailureRow } from '../common/NetworkFailureCard';
@@ -111,7 +108,6 @@ function StatBlock({ label, value, valueClassName = 'text-(--text-primary)' }: {
 
 function ExecutiveSummary({ report, sessionId, findingsCount }: { report: ForensicReportResponse; sessionId: string; findingsCount?: number }) {
   const theme = statusTheme(report.status);
-  const [showRoutes, setShowRoutes] = useState(false);
   // Prefer the human-readable RUN- code from the report body; fall back to the routed id.
   const runCode = report.runId || sessionId;
   // Prefer the DISTINCT finding count (identical repeats collapsed) so the summary
@@ -119,8 +115,6 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
   const findingsTotal = findingsCount && findingsCount > 0
     ? findingsCount
     : (report.findings?.totalBugsFound ?? report.metrics?.totalBugsFound ?? 0);
-
-  const routes = report.visitedRoutes ?? [];
 
   return (
     <section className={`rounded-(--radius-lg) border ${theme.border} ${theme.bg} p-5 shadow-(--shadow-md) sm:p-6`}>
@@ -172,27 +166,6 @@ function ExecutiveSummary({ report, sessionId, findingsCount }: { report: Forens
           valueClassName={riskTheme(report.riskScore ?? 0)}
         />
       </div>
-
-      {routes.length > 0 && (
-        <div className="mt-4 border-t border-(--border-hairline) pt-3">
-          <button
-            type="button"
-            onClick={() => setShowRoutes((prev) => !prev)}
-            aria-expanded={showRoutes}
-            className="flex cursor-pointer items-center gap-1.5 text-caption font-semibold uppercase text-(--text-secondary) transition-colors hover:text-(--accent)"
-          >
-            <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${showRoutes ? '' : '-rotate-90'}`} aria-hidden="true" />
-            <span>Visited Routes ({routes.length})</span>
-          </button>
-          {showRoutes && (
-            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto font-mono text-xs text-(--text-secondary)">
-              {routes.map((route, idx) => (
-                <li key={idx} className="truncate border-b border-(--border-hairline) py-1 last:border-0" title={route}>{route}</li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
     </section>
   );
 }
@@ -324,9 +297,6 @@ function AiInsightsPanel({
 // of being spread across separate Findings / Error Logs / Action
 // Steps sections.
 // ─────────────────────────────────────────────────────────────
-
-// ActionStepList (the structured, per-step trace) is shared with the live Errors
-// tab via ../common/FindingEvidence — imported above, reused here in the appendix.
 
 // ─────────────────────────────────────────────────────────────
 // Verify Fix — per-finding regression replay control + result modal.
@@ -948,13 +918,6 @@ function CleanRunCard() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Reference appendix — the full raw action timeline. This is
-// supplementary, low-level evidence (not tied 1:1 to any single
-// finding above), so it stays as a single de-emphasized disclosure
-// at the bottom rather than a peer section competing for attention.
-// ─────────────────────────────────────────────────────────────
-
-// ─────────────────────────────────────────────────────────────
 // Tabbed panels — mirror the live dashboard's right-panel tabs
 // (Findings / Network / Console) so a saved session rehydrates the same
 // categorized context the operator saw live. Network/Console now persist the
@@ -1006,40 +969,6 @@ function networkLogToRow(row: ForensicNetworkLog): NetworkFailureRow {
     errorText: row.errorText ?? (!row.ok ? row.message : undefined),
     timestamp: row.timestamp,
   };
-}
-
-function ActionTimelineAppendix({ steps }: { steps: ForensicActionStep[] }) {
-  const [isOpen, setIsOpen] = useState(false);
-
-  if (!steps.length) return null;
-
-  const timelineText = actionStepsToMarkdown(steps);
-
-  return (
-    <section className="overflow-hidden rounded-(--radius-lg) border border-(--border-hairline) bg-(--surface-panel) shadow-(--shadow-md)">
-      <button
-        onClick={() => setIsOpen((prev) => !prev)}
-        aria-expanded={isOpen}
-        className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-(--surface-hover)"
-      >
-        <span className="text-[13px] font-semibold uppercase text-(--text-secondary)">
-          Full Action Timeline ({steps.length} steps), for reference
-        </span>
-        <span className="flex shrink-0 items-center gap-1.5 text-[13px] font-medium text-(--text-tertiary)">
-          {isOpen ? 'Collapse' : 'Expand'}
-          <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isOpen ? '' : '-rotate-90'}`} aria-hidden="true" />
-        </span>
-      </button>
-      {isOpen && (
-        <div className="border-t border-(--border-hairline) px-4 py-4">
-          <div className="mb-3 flex justify-end">
-            <CopyButton text={timelineText} label="Action Timeline" />
-          </div>
-          <ActionStepList steps={steps} />
-        </div>
-      )}
-    </section>
-  );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1343,8 +1272,6 @@ export default function ForensicReport({ shared = false }: { shared?: boolean } 
                 : <EmptyTab message="No console output was recorded for this session." />
             )}
           </section>
-
-          <ActionTimelineAppendix steps={report.actionSteps ?? []} />
         </div>
       </main>
 

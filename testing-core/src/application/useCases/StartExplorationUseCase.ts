@@ -1,7 +1,7 @@
 import type { BrowserEngine } from '../ports/BrowserEngine.js';
 import type { TelemetryGateway } from '../ports/TelemetryGateway.js';
 import { defaultOptimizationSettings, describeTermination, isActionableNetworkStatus, resolveSeverity } from '../../../../shared/types.js';
-import type { OptimizationSettings, RunTerminationOutcome, TargetAuthConfig, TestingTypeId } from '../../../../shared/types.js';
+import type { InfiltrationProfileId, OptimizationSettings, RunTerminationOutcome, TargetAuthConfig, TestingTypeId } from '../../../../shared/types.js';
 import type { FindingRepository } from '../../domain/repositories/FindingRepository.js';
 import { sessionManager } from '../services/SessionManager.js';
 import type { ActionRecord, FindingAttribution, NetworkLogEntry, ConsoleLogEntry, StateFingerprint } from '../../../../shared/types.js';
@@ -269,6 +269,8 @@ export class StartExplorationUseCase {
             clientFindings?: ClientFinding[];
             clientNetworkLog?: Record<string, unknown>[];
             clientConsoleLog?: Record<string, unknown>[];
+            /** Operator-selected profile — a fallback used only when the run's gate-derived value is absent. */
+            infiltrationProfile?: InfiltrationProfileId;
         },
     ): Promise<{ success: boolean; message: string; runId?: string; sessionId?: string; code?: SaveFailureCode }> {
         // A run in progress owns the engine's live bug memory (getConfirmedBugsFromMemory
@@ -317,6 +319,12 @@ export class StartExplorationUseCase {
 
         const maxActions = this.browserEngine.getConfig?.()?.maxActions ?? 100;
 
+        // Timestamp parity fix: the run-start instant recorded by createSession is the
+        // authoritative value. Prefer it over this reconstructed one, which the queue
+        // path derives as (now - elapsed) in a process with no executionStartTime and so
+        // drifts later on paused runs. Only a run that never persisted a session uses the
+        // reconstruction. Resolved below once `existing` is known.
+
         // Session-global execution context for history hydration. Distinct visited
         // routes come from the engine; WCAG findings are ephemeral (never persisted),
         // so every caught bug here is a runtime fault matching the live Errors tab.
@@ -342,7 +350,7 @@ export class StartExplorationUseCase {
         // forensicTrace.caughtBugs rides along because the engine now checkpoints its
         // ledger there mid-run: that copy is the server's own record of what it observed,
         // and the save merges onto it instead of letting the client body replace it.
-        const terminalFields = 'status outcome endedReason finishedAt targetUrl stats forensicTrace.caughtBugs';
+        const terminalFields = 'status outcome endedReason finishedAt targetUrl stats forensicTrace.caughtBugs startedAt executionDate infiltrationProfile';
         const existing = (requestedCode
             ? await SessionModel.findOne({ runId: requestedCode, ...ownedBy }).select(terminalFields).lean()
             : null)
@@ -430,6 +438,13 @@ export class StartExplorationUseCase {
         const persistedRuntime = Math.max(runtimeMs, existing?.stats?.runtimeMs ?? 0);
         const persistedCoverage = Math.min(100, Math.round((persistedActions / maxActions) * 100));
 
+        // Preserve the authoritative run-start timestamp when the document already has one;
+        // reconstruct only on a first-ever create. executionDate aliases startedAt.
+        const persistedStartedAt = existing?.startedAt ?? startedAt;
+        // Record the run's own gate-derived profile when present; otherwise fall back to the
+        // operator-selected profile the client transferred, so every saved session names one.
+        const persistedProfile = existing?.infiltrationProfile ?? options?.infiltrationProfile;
+
         const lifecycleFields = existing?.outcome
             ? {
                 status: existing.status,
@@ -449,7 +464,8 @@ export class StartExplorationUseCase {
             // client value only when creating a run that never persisted a session.
             targetUrl: existing?.targetUrl ?? targetUrl,
             ...lifecycleFields,
-            startedAt,
+            startedAt: persistedStartedAt,
+            ...(persistedProfile ? { infiltrationProfile: persistedProfile } : {}),
             savedManually: true,
             findingCount: findingsTotal,
             actionTraceCount: persistedActions,
@@ -476,7 +492,7 @@ export class StartExplorationUseCase {
             },
             actionSteps,
             visitedRoutes,
-            executionDate: startedAt,
+            executionDate: persistedStartedAt,
             timeElapsed: persistedRuntime,
         };
 
