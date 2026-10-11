@@ -4,6 +4,14 @@
   "installCommand": "npm install --no-audit --no-fund --include-workspace-root --workspace developer-dashboard --workspace shared",
   "buildCommand": "npm run build --workspace developer-dashboard",
   "outputDirectory": "developer-dashboard/dist",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "(.*\\.)?bugsafari\\.vercel\\.app" }],
+      "destination": "https://bugsafari.me/:path*",
+      "permanent": true
+    }
+  ],
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
   "headers": [
     {
