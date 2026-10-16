@@ -315,23 +315,35 @@ function LiveFeed({
                 </span>
               </div>
 
-              {/* Hero block: heading + supporting lines */}
+              {/* Hero block: heading + supporting copy lines */}
               <div className="flex flex-col gap-2 pt-1 sm:pt-2">
-                <span className="h-5 w-3/5 animate-pulse rounded bg-(--surface-inset)"></span>
-                <span className="h-3 w-4/5 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: '120ms' }}></span>
-                <span className="h-3 w-2/5 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: '200ms' }}></span>
+                <span className="h-6 w-3/5 animate-pulse rounded bg-(--surface-inset)"></span>
+                <span className="h-3 w-11/12 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: '100ms' }}></span>
+                <span className="h-3 w-5/6 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: '160ms' }}></span>
+                <span className="h-3 w-2/5 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: '220ms' }}></span>
+                <span className="mt-1 flex items-center gap-2">
+                  <span className="h-7 w-24 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: '280ms' }}></span>
+                  <span className="h-7 w-20 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: '340ms' }}></span>
+                </span>
               </div>
 
-              {/* Card grid */}
-              <div className="grid min-h-0 flex-1 grid-cols-3 gap-2 sm:gap-3">
+              {/* Content rows: redesigned as media list items (avatar + title + copy lines + meta) */}
+              <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden sm:gap-2.5">
                 {[0, 1, 2].map((i) => (
                   <div
                     key={i}
-                    className="flex min-h-0 flex-col gap-2 rounded-(--radius-md) border border-(--border-hairline) bg-(--surface-app) p-2 sm:p-3"
+                    className="flex items-center gap-3 rounded-(--radius-md) border border-(--border-hairline) bg-(--surface-app) p-2.5 sm:gap-4 sm:p-3"
                   >
-                    <span className="h-10 w-full shrink-0 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: `${i * 90}ms` }}></span>
-                    <span className="h-3 w-3/4 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: `${i * 90 + 90}ms` }}></span>
-                    <span className="h-3 w-1/2 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: `${i * 90 + 180}ms` }}></span>
+                    <span className="h-11 w-11 shrink-0 animate-pulse rounded-full bg-(--surface-inset)" style={{ animationDelay: `${i * 90}ms` }}></span>
+                    <span className="flex min-w-0 flex-1 flex-col gap-2">
+                      <span className="flex items-center gap-2">
+                        <span className="h-3.5 w-1/3 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: `${i * 90 + 60}ms` }}></span>
+                        <span className="h-3 w-12 animate-pulse rounded-full bg-(--surface-inset)" style={{ animationDelay: `${i * 90 + 120}ms` }}></span>
+                      </span>
+                      <span className="h-3 w-11/12 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: `${i * 90 + 180}ms` }}></span>
+                      <span className="h-3 w-2/3 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: `${i * 90 + 240}ms` }}></span>
+                    </span>
+                    <span className="hidden h-8 w-8 shrink-0 animate-pulse rounded bg-(--surface-inset) sm:block" style={{ animationDelay: `${i * 90 + 300}ms` }}></span>
                   </div>
                 ))}
               </div>
@@ -339,7 +351,7 @@ function LiveFeed({
               {/* Synthetic cursor tracing the layout */}
               <span className="lf-cursor">
                 <span className="lf-cursor__ring"></span>
-                <svg className="lf-cursor__arrow" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="var(--surface-panel)" strokeWidth="1.5" strokeLinejoin="round">
+                <svg className="lf-cursor__arrow" width="27" height="27" viewBox="0 0 24 24" fill="currentColor" stroke="var(--surface-panel)" strokeWidth="1.5" strokeLinejoin="round">
                   <path d="M5 3l6.5 15.5 2.1-6.4 6.4-2.1z" />
                 </svg>
               </span>
