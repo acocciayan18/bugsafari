@@ -477,6 +477,58 @@
     .bugwalk-bob, .bugwalk-legs--a, .bugwalk-legs--b { animation: none; }
   }
 
+  /* Live-feed initializing preview: a synthetic cursor roams a page-wireframe skeleton while the
+     real stream connects. Token-driven and GPU-light (left/top on one tiny node), paused for reduced motion. */
+  @keyframes lf-cursor-move {
+    0%   { left: 10%; top: 22%; }
+    14%  { left: 58%; top: 15%; }
+    22%  { left: 58%; top: 15%; }
+    36%  { left: 22%; top: 45%; }
+    50%  { left: 80%; top: 48%; }
+    58%  { left: 80%; top: 48%; }
+    72%  { left: 28%; top: 74%; }
+    86%  { left: 68%; top: 74%; }
+    100% { left: 10%; top: 22%; }
+  }
+  @keyframes lf-cursor-click {
+    0%, 12%   { transform: scale(0.3); opacity: 0; }
+    18%       { transform: scale(1.7); opacity: 0.5; }
+    24%, 48%  { transform: scale(0.3); opacity: 0; }
+    54%       { transform: scale(1.7); opacity: 0.5; }
+    60%, 82%  { transform: scale(0.3); opacity: 0; }
+    88%       { transform: scale(1.7); opacity: 0.5; }
+    94%, 100% { transform: scale(0.3); opacity: 0; }
+  }
+  .lf-cursor {
+    position: absolute;
+    left: 10%;
+    top: 22%;
+    width: 22px;
+    height: 22px;
+    pointer-events: none;
+    animation: lf-cursor-move 7s ease-in-out infinite;
+    will-change: left, top;
+  }
+  .lf-cursor__ring {
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 26px;
+    height: 26px;
+    margin: -13px 0 0 -13px;
+    border-radius: 9999px;
+    background: var(--accent);
+    opacity: 0;
+    animation: lf-cursor-click 7s ease-in-out infinite;
+    will-change: transform, opacity;
+  }
+  .lf-cursor__arrow { position: relative; display: block; color: var(--accent); filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35)); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lf-cursor { animation: none; left: 46%; top: 44%; }
+    .lf-cursor__ring { animation: none; opacity: 0; }
+  }
+
   /* Custom scrollbar — driven by theme tokens so dark mode isn't stuck on light rails */
   .custom-scrollbar {
     scrollbar-width: thin;

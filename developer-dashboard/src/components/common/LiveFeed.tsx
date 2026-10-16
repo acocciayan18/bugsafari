@@ -297,17 +297,64 @@ function LiveFeed({
           </div>
         )}
 
-        {/* INITIALIZING STATE */}
+        {/* INITIALIZING STATE — synthetic cursor roams a page-wireframe skeleton until the stream lands. */}
         {isInitializingScreen && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-(--surface-panel) px-4 text-center">
+          <div className="animate-backdrop-in absolute inset-0 z-10 flex flex-col bg-(--surface-panel)">
             <div className="livefeed-grid" aria-hidden="true"></div>
-            <span className="relative flex h-11 w-11 items-center justify-center" aria-hidden="true">
-              <span className="absolute inset-0 rounded-full border-2 border-(--border-hairline)"></span>
-              <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-(--text-primary) animate-spin"></span>
-            </span>
-            <p className="relative font-mono text-xs uppercase tracking-[0.07em] text-(--text-primary) sm:text-[13px]">
-              Establishing telemetry stream
-            </p>
+
+            {/* SKELETON PAGE PREVIEW — mirrors a generic site layout; the cursor paths across its regions. */}
+            <div className="relative flex min-h-0 flex-1 flex-col gap-3 p-4 sm:gap-4 sm:p-6" aria-hidden="true">
+              {/* Top bar: brand mark + nav + actions */}
+              <div className="flex items-center gap-2 sm:gap-3">
+                <span className="h-5 w-5 shrink-0 animate-pulse rounded bg-(--surface-inset)"></span>
+                <span className="h-3 w-20 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: '80ms' }}></span>
+                <span className="ml-auto flex items-center gap-2">
+                  <span className="h-3 w-10 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: '160ms' }}></span>
+                  <span className="h-3 w-10 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: '240ms' }}></span>
+                  <span className="h-6 w-16 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: '320ms' }}></span>
+                </span>
+              </div>
+
+              {/* Hero block: heading + supporting lines */}
+              <div className="flex flex-col gap-2 pt-1 sm:pt-2">
+                <span className="h-5 w-3/5 animate-pulse rounded bg-(--surface-inset)"></span>
+                <span className="h-3 w-4/5 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: '120ms' }}></span>
+                <span className="h-3 w-2/5 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: '200ms' }}></span>
+              </div>
+
+              {/* Card grid */}
+              <div className="grid min-h-0 flex-1 grid-cols-3 gap-2 sm:gap-3">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="flex min-h-0 flex-col gap-2 rounded-(--radius-md) border border-(--border-hairline) bg-(--surface-app) p-2 sm:p-3"
+                  >
+                    <span className="h-10 w-full shrink-0 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: `${i * 90}ms` }}></span>
+                    <span className="h-3 w-3/4 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: `${i * 90 + 90}ms` }}></span>
+                    <span className="h-3 w-1/2 animate-pulse rounded bg-(--surface-inset)" style={{ animationDelay: `${i * 90 + 180}ms` }}></span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Synthetic cursor tracing the layout */}
+              <span className="lf-cursor">
+                <span className="lf-cursor__ring"></span>
+                <svg className="lf-cursor__arrow" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="var(--surface-panel)" strokeWidth="1.5" strokeLinejoin="round">
+                  <path d="M5 3l6.5 15.5 2.1-6.4 6.4-2.1z" />
+                </svg>
+              </span>
+            </div>
+
+            {/* Status caption — preserves the telemetry-stream wording while the preview animates. */}
+            <div className="relative flex shrink-0 items-center justify-center gap-2 border-t border-(--border-hairline) bg-(--surface-panel) px-4 py-2.5">
+              <span className="relative flex h-3.5 w-3.5 items-center justify-center" aria-hidden="true">
+                <span className="absolute inset-0 rounded-full border-2 border-(--border-hairline)"></span>
+                <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-(--text-primary) animate-spin"></span>
+              </span>
+              <p className="font-mono text-xs uppercase tracking-[0.07em] text-(--text-primary) sm:text-[13px]">
+                Establishing telemetry stream
+              </p>
+            </div>
           </div>
         )}
 
