@@ -16,6 +16,7 @@ import type { TestSessionStatus } from '../../application/useCases/useDashboardC
 import type { RunTerminationOutcome } from '../../types';
 import LiveFeedConnected from '../common/LiveFeedConnected';
 import SessionTimerLive from '../common/SessionTimerLive';
+import RunCompletionStatus from '../common/RunCompletionStatus';
 import QueueStandbyChip from '../common/QueueStandbyChip';
 import PublicTargetNotice from '../common/PublicTargetNotice';
 import JumpToBottomButton from '../common/JumpToBottomButton';
@@ -403,13 +404,17 @@ function ClinicalForensicsDashboard({
           {/* Session controls and Timer management */}
           {showSessionControls && (
             <div className="relative flex flex-wrap items-center gap-2 sm:gap-3 md:ml-auto">
-              {/* Stopwatch is hidden while queued — it must not tick until a worker
-                  promotes the run to RUNNING; a standby chip stands in its place. */}
-              {!isQueued && (
+              {/* Stopwatch runs only while a session is live. Once the run ends the
+                  primary status is its completion state, not a frozen clock —
+                  elapsed time drops to secondary metadata inside the badge row. */}
+              {!isQueued && isActiveSession && (
                 <SessionTimerLive
                   isRunning={isTestRunning}
                   isPaused={testStatus !== 'ACTIVE'}
                 />
+              )}
+              {!isQueued && hasRunCompleted && !isActiveSession && (
+                <RunCompletionStatus outcome={terminationOutcome} reason={terminationReason} />
               )}
               {/* Standby indicator — job is waiting for a free worker; all controls locked. */}
               {isQueued && <QueueStandbyChip />}

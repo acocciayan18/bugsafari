@@ -105,6 +105,26 @@ export async function deleteSessionCascade(sessionId: Types.ObjectId): Promise<C
 }
 
 /**
+ * Permanently purge every session owned by a user, with the full forensic
+ * cascade — the account-deletion path. Same child table and ordering as the Trash
+ * purge (children first, then the sessions) so no child outlives its parent. All
+ * of the user's sessions are removed regardless of save/trash state, since the
+ * account itself is being erased. Caller verifies identity before invoking.
+ */
+export async function purgeUserSessions(userId: string): Promise<CascadeCounts & { sessions: number }> {
+  const owned = await SessionModel.find({ userId: new Types.ObjectId(userId) }).select('_id').lean();
+  const totals: CascadeCounts = {};
+  if (owned.length === 0) return { ...totals, sessions: 0 };
+
+  const ids = owned.map((session) => session._id);
+  for (const child of CHILD_COLLECTIONS) {
+    totals[child.name] = await deleteForSessions(child, ids);
+  }
+  const result = await SessionModel.deleteMany({ _id: { $in: ids } });
+  return { ...totals, sessions: result.deletedCount ?? 0 };
+}
+
+/**
  * Permanently purge Trash whose retention window has elapsed. Cascades each
  * session's forensic children first, then drops the sessions themselves — the
  * same order and child table the on-demand permanent delete uses, so no child

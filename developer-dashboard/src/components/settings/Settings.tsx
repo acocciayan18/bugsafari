@@ -27,9 +27,11 @@ import {
   CircleQuestionMark,
   CircleCheckBig,
   LifeBuoy,
+  Trash2,
 } from 'lucide-react';
 import { toast } from '../../infrastructure/notifications/ToastProvider';
 import SupportModal from '../common/SupportModal';
+import { DeleteConfirmDialog } from '../common/DeleteConfirmDialog';
 import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';
 import { Switch } from '../ui/Switch';
@@ -569,10 +571,40 @@ function SecuritySettingsSection() {
 
 function AccountSection() {
   const { user, logout, isGuestMode } = useAuth();
-  const { profile, isProfileLoading } = useUserSettings();
+  const { profile, isProfileLoading, deleteAccount } = useUserSettings();
 
   const [displayName, setDisplayName] = useState('');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const closeDeleteDialog = () => {
+    setShowDeleteDialog(false);
+    setDeletePassword('');
+    setDeleteError('');
+  };
+
+  const handleDeleteAccount = async () => {
+    if (isDeleting) return;
+    if (!deletePassword) {
+      setDeleteError('Enter your password to confirm.');
+      return;
+    }
+    setIsDeleting(true);
+    setDeleteError('');
+    const result = await deleteAccount(deletePassword);
+    if (result.ok) {
+      setShowDeleteDialog(false);
+      setDeletePassword('');
+      toast.success('Your account and all associated data have been permanently deleted.');
+      logout();
+      return;
+    }
+    setDeleteError(result.error || 'Failed to delete account');
+    setIsDeleting(false);
+  };
 
   useEffect(() => {
     if (profile?.name) {
@@ -669,6 +701,49 @@ function AccountSection() {
           Sign Out
         </Button>
       </div>
+
+      {/* Danger zone — permanent, irreversible account deletion. */}
+      <div className="pt-5 border-t border-(--status-critical-border)">
+        <div className="mb-1 flex items-center gap-2 text-(--status-critical-fg)">
+          <Trash2 className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
+          <h3 className="text-sm font-semibold">Delete account</h3>
+        </div>
+        <p className="mb-4 text-sm text-(--text-secondary)">
+          Permanently delete your account and all saved runs, findings, and history. This cannot be undone.
+        </p>
+        <Button variant="destructive" size="sm" className="w-fit" onClick={() => setShowDeleteDialog(true)}>
+          <Trash2 className={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
+          Delete Account
+        </Button>
+      </div>
+
+      <DeleteConfirmDialog
+        isOpen={showDeleteDialog}
+        onClose={closeDeleteDialog}
+        onConfirm={() => void handleDeleteAccount()}
+        title="Delete your account?"
+        message="This permanently erases your account and every saved run, finding, and history record. This action cannot be undone."
+        confirmLabel="Delete Account"
+        confirmationPhrase="DELETE"
+        isLoading={isDeleting}
+      >
+        <div>
+          <label htmlFor="delete-account-password" className="block text-sm text-(--text-secondary)">
+            Confirm your password
+          </label>
+          <input
+            id="delete-account-password"
+            type="password"
+            value={deletePassword}
+            onChange={(e) => { setDeletePassword(e.target.value); if (deleteError) setDeleteError(''); }}
+            disabled={isDeleting}
+            autoComplete="current-password"
+            maxLength={PASSWORD_MAX_LENGTH}
+            className="mt-2 w-full rounded-(--radius-md) border border-(--border-hairline) bg-(--surface-app) px-3 py-2 text-sm text-(--text-primary) transition-colors focus:border-(--border-focus) focus:outline-none focus:ring-2 focus:ring-(--accent-border)"
+          />
+          {deleteError && <p className="mt-2 text-sm text-(--status-critical-fg)">{deleteError}</p>}
+        </div>
+      </DeleteConfirmDialog>
 
       <Modal
         isOpen={showLogoutConfirm}

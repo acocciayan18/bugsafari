@@ -406,21 +406,23 @@ export class ExplorationLoop {
         if (targetResolution.kind === 'return') return targetResolution.result;
         target = targetResolution.target;
 
-        // Session-preservation hard veto: on an authenticated run, never click a
-        // session-destroying control (logout, re-login, account delete/switch,
-        // password reset, token revoke). Demotion alone lets it fire once the
-        // frontier is spent; this blocks the click outright and accounts the edge
-        // covered so the frontier still converges. Off for guest/unauth runs.
-        if (this.deps.sessionGuardActive && shouldVetoExecution(target)) {
+        // Authentication-control hard veto: never click a control that leaves the
+        // target application through auth (logout, login/signup, account
+        // delete/switch, password reset, token revoke). Applies to EVERY run —
+        // guest and authenticated alike — so exploration stays inside the app under
+        // test and never drives itself into a login/signup/logout flow. Demotion
+        // alone lets it fire once the frontier is spent; this blocks the click
+        // outright and accounts the edge covered so the frontier still converges.
+        if (shouldVetoExecution(target)) {
           this.deps.pathNavigator.markEdgeCyclic(fingerprint.currentHash, target.selector);
           this.deps.clusterRegistry.markTriggered(fingerprint.compound.structure, target.selector, step);
           this.deps.telemetry.emitMilestone(
-            ` Session preserved. Suppressed ${humanizeElement(target)} because it can end the authenticated session.`,
+            ` Stayed in the target app. Suppressed ${humanizeElement(target)} because it is an authentication control.`,
           );
           this.deps.telemetry.emit('ACTION', {
             actionExecuted: 'session-control-suppressed',
             selector: target.selector,
-            message: `Vetoed ${humanizeElement(target)}: would end/replace the authenticated session.`,
+            message: `Vetoed ${humanizeElement(target)}: authentication control (login/signup/logout or session change) is out of exploration scope.`,
           });
           continue;
         }
@@ -960,18 +962,18 @@ export class ExplorationLoop {
       })
       .sort((left, right) => right.riskScore - left.riskScore);
 
-    // Session preservation: on an authenticated run, sink logout/sign-out controls
-    // beneath everything else so the engine explores the authenticated surface
-    // instead of ending its own session within the first few steps.
-    if (this.deps.sessionGuardActive) {
-      ranked = ranked
-        .map((element) =>
-          isSessionDestroyingControl(element)
-            ? { ...element, riskScore: element.riskScore - SESSION_EXIT_DEMOTION }
-            : element,
-        )
-        .sort((left, right) => right.riskScore - left.riskScore);
-    }
+    // Authentication-control avoidance: sink login/signup/logout and other
+    // session-destroying controls beneath everything else, on EVERY run, so the
+    // engine exhausts the real application surface instead of navigating itself
+    // into an auth flow. The execution veto above is the hard backstop; this keeps
+    // such controls off the frontier in the first place.
+    ranked = ranked
+      .map((element) =>
+        isSessionDestroyingControl(element)
+          ? { ...element, riskScore: element.riskScore - SESSION_EXIT_DEMOTION }
+          : element,
+      )
+      .sort((left, right) => right.riskScore - left.riskScore);
 
     // Premature-navigation guard: while any untriggered NON-navigational control
     // remains on this view, demote every untriggered route-changing anchor below

@@ -377,9 +377,16 @@ function LiveFeed({
             <div className="relative flex h-14 w-14 items-center justify-center rounded-full border border-(--border-hairline) bg-(--surface-app) text-(--text-tertiary) shadow-(--shadow-sm)">
               <Flag size={22} strokeWidth={1.75} aria-hidden="true" />
             </div>
+            {/* Primary status is always the completion state. The specific outcome
+                (time limit, scope covered, stopped…) is secondary metadata below. */}
             <p className="relative font-mono text-xs uppercase tracking-[0.07em] text-(--text-primary) sm:text-[13px]">
-              {terminationCopy?.label ?? 'Exploration Complete'}
+              Exploration Complete
             </p>
+            {terminationCopy && (
+              <p className="relative font-mono text-[11px] uppercase tracking-[0.07em] text-(--text-tertiary)">
+                {terminationCopy.label}
+              </p>
+            )}
             <p className="relative max-w-md text-[13px] text-(--text-secondary)">
               {terminationReason ?? terminationCopy?.detail ?? 'Exploration finished.'}
             </p>

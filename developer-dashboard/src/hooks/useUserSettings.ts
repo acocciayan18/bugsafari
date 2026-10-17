@@ -38,6 +38,7 @@ export function useUserSettings() {
             updateProfile: s.updateProfile,
             updateSettings: s.updateSettings,
             changePassword: s.changePassword,
+            deleteAccount: s.deleteAccount,
             clearErrors: s.clearErrors,
             clearPasswordSuccess: s.clearPasswordSuccess,
         };

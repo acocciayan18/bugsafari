@@ -1,13 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Tab } from '../components/ui/Tab';
 import {
     Radar, Brain, ClipboardCheck, Target, Map, History, Ban,
     Filter, Scale, RefreshCcw, Lock, Settings, Play, Eye,
     CheckCircle2, Rocket, ShieldCheck, BadgeCheck, ListChecks, Sun, Moon, Menu, X,
 } from 'lucide-react';
 import { SECTION_META } from './sectionMeta';
-import { INFILTRATION_PROFILE_CATALOG, DEFAULT_INFILTRATION_PROFILE } from '../types';
 import { BrowserFrame } from '../components/marketing/ProductShot';
 import { useDarkMode } from '../context/DarkModeContext';
 
@@ -188,32 +186,27 @@ function DarkCta({ heading, sub }: { heading: string; sub: string }) {
     );
 }
 
-// Rendered straight from the shared catalog the engine gates on; a local copy
-// silently drifted from what the profiles actually do.
-function ProfileTabs() {
-    const [active, setActive] = useState(0);
-    const profile = INFILTRATION_PROFILE_CATALOG[active];
+// Problem areas a single combined run always covers; no modes to pick between.
+const TESTING_COVERAGE = [
+    { icon: <Filter className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" />, title: 'Form & Input Integrity', description: 'Throws tricky, escalating data at your forms to find inputs that slip past validation.' },
+    { icon: <Scale className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" />, title: 'Load & Concurrency', description: 'Fires rapid, overlapping actions and disrupts the network to surface race conditions and duplicate submissions.' },
+    { icon: <RefreshCcw className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" />, title: 'Async & Timing', description: 'Interrupts in-flight requests and page transitions to expose timing bugs and unhandled failures.' },
+    { icon: <Lock className="w-6 h-6" strokeWidth={1.75} aria-hidden="true" />, title: 'Access Control', description: 'Tampers with client-side auth state to confirm the server really enforces who can do what.' },
+];
+
+function CoveragePanel() {
     return (
-        <div className="border border-(--border-hairline) rounded-2xl overflow-hidden bg-(--surface-panel)">
-            <div className="flex overflow-x-auto border-b border-(--border-hairline) scroll-rail" role="tablist">
-                {INFILTRATION_PROFILE_CATALOG.map((p, i) => (
-                    <Tab
-                        key={p.id}
-                        role="tab"
-                        active={active === i}
-                        onClick={() => setActive(i)}
-                        className="px-5 py-4 text-sm font-semibold font-mono uppercase"
-                    >
-                        {p.label}
-                    </Tab>
+        <div className="border border-(--border-hairline) rounded-2xl overflow-hidden bg-(--surface-panel) p-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {TESTING_COVERAGE.map((c) => (
+                    <div key={c.title} className="flex gap-4">
+                        <IconTile>{c.icon}</IconTile>
+                        <div className="space-y-1">
+                            <h3 className="text-base font-bold uppercase tracking-tight text-(--text-primary)">{c.title}</h3>
+                            <p className="text-sm leading-relaxed text-(--text-secondary)">{c.description}</p>
+                        </div>
+                    </div>
                 ))}
-            </div>
-            <div className="p-8">
-                <h3 className="font-bold text-lg mb-2 text-(--text-primary)">{profile.label}</h3>
-                <p className="text-sm leading-relaxed text-(--text-secondary) max-w-2xl">
-                    {profile.description}
-                    {profile.id === DEFAULT_INFILTRATION_PROFILE ? ' The default profile.' : ''}
-                </p>
             </div>
         </div>
     );
@@ -327,11 +320,11 @@ export function ExploreContent() {
 
             <div className="space-y-6">
                 <div className="space-y-2">
-                    <span className="font-mono text-sm font-bold uppercase tracking-wide text-(--text-tertiary)">Testing Modes</span>
-                    <h2 className="text-xl lg:text-2xl font-extrabold uppercase tracking-tight text-(--text-primary)">One App, Five Ways To Test It</h2>
-                    <p className="text-base text-(--text-secondary) max-w-2xl">Pick a mode and BugSafari focuses on one kind of problem, from throwing tricky data at your forms to stress-testing what happens under pressure.</p>
+                    <span className="font-mono text-sm font-bold uppercase tracking-wide text-(--text-tertiary)">One Combined Run</span>
+                    <h2 className="text-xl lg:text-2xl font-extrabold uppercase tracking-tight text-(--text-primary)">One App, Every Angle Tested</h2>
+                    <p className="text-base text-(--text-secondary) max-w-2xl">BugSafari runs one combined test that hits every kind of problem in a single pass, from throwing tricky data at your forms to stress-testing what happens under pressure. Nothing to pick, nothing to set up.</p>
                 </div>
-                <ProfileTabs />
+                <CoveragePanel />
             </div>
 
             <FaqAccordion items={[
@@ -387,26 +380,26 @@ export function FeaturesContent() {
             </div>
 
             <SplitSection
-                eyebrow="Testing Modes"
-                heading="Five Ways To Stress Your App"
-                description="Each mode focuses on a different kind of problem, so you can aim a run at exactly what you're worried about, from tricky form input to what happens under pressure."
+                eyebrow="One Combined Run"
+                heading="Every Angle, Tested At Once"
+                description="A single run exercises every kind of problem in one pass, from tricky form input to what happens under pressure. No modes to choose between and no configuration to tune."
                 bullets={[
                     'Throws tricky and unexpected data at your forms to see what slips through.',
                     'Checks whether the rules you set in the browser are actually enforced on the server.',
                     'Interrupts actions mid-way to catch timing bugs that only show up under pressure.',
                 ]}
                 image="product-config"
-                imageAlt="The BugSafari configuration modal showing its five testing modes"
+                imageAlt="The BugSafari configuration modal"
                 frameLabel="BugSafari: Testing Configuration"
                 reverse
             />
 
             <div>
                 <div className="mb-6 space-y-2">
-                    <span className="font-mono text-sm font-bold uppercase tracking-wide text-(--text-tertiary)">Testing Modes</span>
-                    <h2 className="text-xl lg:text-2xl font-extrabold uppercase tracking-tight text-(--text-primary)">Pick A Mode, Not A Script</h2>
+                    <span className="font-mono text-sm font-bold uppercase tracking-wide text-(--text-tertiary)">Coverage</span>
+                    <h2 className="text-xl lg:text-2xl font-extrabold uppercase tracking-tight text-(--text-primary)">No Modes To Pick, No Scripts To Write</h2>
                 </div>
-                <ProfileTabs />
+                <CoveragePanel />
             </div>
 
             <div className="border border-(--border-hairline) rounded-2xl p-6 lg:p-10 bg-(--surface-inset) space-y-6">
@@ -599,7 +592,7 @@ export function AboutContent() {
 
             <StatRow items={[
                 { value: '11', label: 'Bug types caught' },
-                { value: '5', label: 'Testing modes' },
+                { value: '1', label: 'Combined run' },
                 { value: 'Live', label: 'Real-time results' },
                 { value: '0', label: 'Scripts to write' },
             ]} />

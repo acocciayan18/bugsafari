@@ -1,9 +1,16 @@
 import type { Express, Response, NextFunction } from 'express';
+import { Types } from 'mongoose';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
+import { RefreshTokenModel } from '../../infrastructure/database/models/RefreshTokenModel.js';
+import { BrainConfigModel } from '../../infrastructure/database/models/BrainConfigModel.js';
+import { ShareLinkModel } from '../../infrastructure/database/models/ShareLinkModel.js';
+import { SupportTicketModel } from '../../infrastructure/database/models/SupportTicketModel.js';
+import { purgeUserSessions } from '../../infrastructure/database/retentionReaper.js';
 import type { AuthRequest } from './authMiddleware.js';
 import { requireAuth } from './authMiddleware.js';
 import { validatePasswordComplexity, isPasswordTooLong, validateName, MAX_NAME_LENGTH } from './authValidation.js';
 import { revokeAllForUser } from './refreshTokenService.js';
+import { clearRefreshCookie } from './refreshCookie.js';
 import { writeLimiter, readLimiter, resetPasswordLimiter } from '../middleware/rateLimiter.js';
 
 import { createLogger } from '../../infrastructure/observability/logger.js';
@@ -223,6 +230,85 @@ export async function handleChangePassword(
 }
 
 /**
+ * DELETE /api/users/account
+ * Permanently delete the authenticated account. Re-authenticates with the current
+ * password, erases every piece of the user's data (sessions + forensic cascade,
+ * brain configs, share links, support tickets), revokes and deletes all refresh
+ * tokens, removes the user document, and clears the refresh cookie. Irreversible.
+ */
+export async function handleDeleteAccount(
+    request: AuthRequest,
+    res: Response,
+    next: NextFunction,
+): Promise<void> {
+    try {
+        const userId = request.userId;
+
+        if (!userId) {
+            errorResponse(res, 401, 'Authentication required');
+            return;
+        }
+
+        const { password } = request.body as { password?: string };
+
+        if (!password || typeof password !== 'string') {
+            errorResponse(res, 400, 'Password is required to delete your account');
+            return;
+        }
+
+        // An over-length password can never be correct — reject before bcrypt so it
+        // can't be used as a hash-CPU exhaustion vector on an authenticated route.
+        if (isPasswordTooLong(password)) {
+            errorResponse(res, 403, 'Password is incorrect');
+            return;
+        }
+
+        const user = await UserModel.findById(userId);
+
+        if (!user) {
+            errorResponse(res, 404, 'User not found');
+            return;
+        }
+
+        // Re-authenticate. 403, not 401 — the caller IS authenticated; a 401 reads to
+        // the client as an expired session and forces a logout instead of a retry.
+        const isValidPassword = await user.comparePassword(password);
+        if (!isValidPassword) {
+            errorResponse(res, 403, 'Password is incorrect');
+            return;
+        }
+
+        const uid = new Types.ObjectId(userId);
+
+        // Kill every live session first so the account is unreachable even if a later
+        // cleanup step fails midway (the user document still exists, so it is retryable).
+        await revokeAllForUser(userId, 'account-deleted');
+        await RefreshTokenModel.deleteMany({ userId: uid });
+
+        // Erase owned data: sessions + their forensic cascade, then the per-user
+        // collections. All deletes are idempotent, so a retry after a partial failure
+        // is safe.
+        const purge = await purgeUserSessions(userId);
+        await Promise.all([
+            BrainConfigModel.deleteMany({ userId: uid }),
+            ShareLinkModel.deleteMany({ userId: uid }),
+            SupportTicketModel.deleteMany({ userId: uid }),
+        ]);
+
+        // Remove the identity last — once gone there is nothing left to retry against.
+        await UserModel.findByIdAndDelete(userId);
+
+        clearRefreshCookie(res);
+        obsLog.info(`[Settings] Account deleted for ${userId} (${purge.sessions} session(s) purged)`);
+
+        jsonResponse(res, 200, { ok: true, message: 'Your account and all associated data have been permanently deleted.' });
+    } catch (error) {
+        obsLog.error('[Settings] Error deleting account:', error);
+        next(error);
+    }
+}
+
+/**
  * GET /api/settings
  * Fetch user preferences/settings
  */
@@ -394,6 +480,9 @@ export function registerUserSettingsRoutes(app: Express): void {
     // rather than the general write budget.
     app.put('/api/users/password', resetPasswordLimiter, requireAuth, handleChangePassword);
 
+    // Account deletion re-authenticates with the password — same tight budget.
+    app.delete('/api/users/account', resetPasswordLimiter, requireAuth, handleDeleteAccount);
+
     // Settings routes
     app.get('/api/settings', readLimiter, requireAuth, handleGetSettings);
     app.put('/api/settings', writeLimiter, requireAuth, handleUpdateSettings);
@@ -402,6 +491,7 @@ export function registerUserSettingsRoutes(app: Express): void {
     obsLog.info('  GET  /api/users/profile');
     obsLog.info('  PUT  /api/users/profile');
     obsLog.info('  PUT  /api/users/password');
+    obsLog.info('  DEL  /api/users/account');
     obsLog.info('  GET  /api/settings');
     obsLog.info('  PUT  /api/settings');
 }

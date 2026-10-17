@@ -44,6 +44,7 @@ interface SettingsState {
     updateProfile: (data: ProfileUpdateData) => Promise<boolean>;
     updateSettings: (patch: Partial<UserSettings>, options?: { silent?: boolean }) => Promise<boolean>;
     changePassword: (currentPassword: string, newPassword: string) => Promise<boolean>;
+    deleteAccount: (password: string) => Promise<{ ok: boolean; error?: string }>;
     clearErrors: () => void;
     clearPasswordSuccess: () => void;
 }
@@ -286,6 +287,33 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
             return false;
         } finally {
             set({ isPasswordChanging: false });
+        }
+    },
+
+    deleteAccount: async (password) => {
+        if (!useAuthStore.getState().token) {
+            return { ok: false, error: 'Not authenticated' };
+        }
+
+        try {
+            const response = await authFetch(`${API_BASE_URL}/api/users/account`, {
+                method: 'DELETE',
+                body: JSON.stringify({ password }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                return { ok: false, error: errorData.error || 'Failed to delete account' };
+            }
+
+            // The server already revoked every session and cleared the refresh cookie;
+            // drop the local session so no dead token is replayed on the next request.
+            clearSession();
+            return { ok: true };
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to delete account';
+            console.error('[settingsStore] Delete account error:', error);
+            return { ok: false, error: message };
         }
     },
 

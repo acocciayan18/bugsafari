@@ -1,15 +1,16 @@
 import type { Page } from 'playwright';
 
-// Centralized session-preservation policy for authenticated exploratory runs.
-// Pure, deterministic classification (no RNG, no DOM, no I/O) plus a small
-// stateful restore coordinator. Reused identically by the scoring stage
-// (demotion), the execution stage (hard veto), and the navigation monitor
-// (auth-page detection + restore). Inert on guest/unauthenticated runs — every
-// call site gates on the engine's authenticated-run flag before consulting it.
+// Centralized authentication-control policy for exploratory runs. Pure,
+// deterministic classification (no RNG, no DOM, no I/O) plus a small stateful
+// restore coordinator. The classifier drives the scoring stage (demotion) and the
+// execution stage (hard veto) on EVERY run — guest and authenticated alike — so
+// exploration never drives itself into a login/signup/logout flow. The navigation
+// monitor's auth-page detection + restore remains authenticated-only: a bounce to
+// an auth page is only a session loss when there was a session to lose.
 
-// Session-exit demotion, applied only to authenticated runs. Larger than every
-// other ExplorationLoop demotion so a session-destroying control is genuinely
-// last-resort in ranking; the execution veto then blocks the click outright.
+// Session-exit demotion. Larger than every other ExplorationLoop demotion so a
+// session-destroying/auth control is genuinely last-resort in ranking; the
+// execution veto then blocks the click outright.
 export const SESSION_EXIT_DEMOTION = 2000;
 
 // Minimal element shape the classifier reads — visible text and identifying
