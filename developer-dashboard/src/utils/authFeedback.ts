@@ -59,16 +59,6 @@ const COPY: Record<AuthFeedbackCode, CopyEntry> = {
     message: 'An account with this email already exists.',
     hint: 'Sign in instead, or reset the password for that account.',
   },
-  CAPTCHA_REQUIRED: {
-    severity: 'validation',
-    message: 'Please complete the challenge to continue.',
-    hint: 'Answer the question below, then create your account.',
-  },
-  CAPTCHA_FAILED: {
-    severity: 'validation',
-    message: "That answer wasn't correct.",
-    hint: 'A fresh challenge has loaded. Solve it and try again.',
-  },
   EMAIL_UNVERIFIED: {
     severity: 'auth',
     message: 'Please verify your email before signing in.',

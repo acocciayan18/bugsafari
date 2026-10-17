@@ -4,12 +4,10 @@ import { handleSignup } from './authSignupController.js';
 import { handleLogin } from './authLoginController.js';
 import { handleForgotPassword, handleResetPassword } from './authPasswordResetController.js';
 import { handleVerifyEmail, handleResendVerification } from './authEmailVerificationController.js';
-import { handleGetCaptcha } from './captchaController.js';
 import {
   loginLimiter,
   loginIpLimiter,
   signupLimiter,
-  captchaLimiter,
   forgotPasswordLimiter,
   resetPasswordLimiter,
   refreshLimiter,
@@ -22,8 +20,6 @@ import {
  * by definition, so each carries its own abuse budget.
  */
 export function registerAuthRoutes(app: Express): void {
-  // Signup CAPTCHA challenge — must be solved before registration is accepted.
-  app.get('/api/auth/captcha', captchaLimiter, handleGetCaptcha);
   // Registration routes - /api/auth/register is primary alias of /api/auth/signup
   app.post('/api/auth/register', signupLimiter, handleSignup);
   app.post('/api/auth/signup', signupLimiter, handleSignup);

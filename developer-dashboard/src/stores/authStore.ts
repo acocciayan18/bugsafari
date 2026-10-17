@@ -140,8 +140,6 @@ export const useAuthStore = create<AuthState>((set) => ({
         const result = await postAuth<SignupResponse>('/api/auth/register', {
             email: credentials.email.trim(),
             password: credentials.password,
-            captchaToken: credentials.captchaToken,
-            captchaAnswer: credentials.captchaAnswer,
         });
 
         if (!result.ok) {

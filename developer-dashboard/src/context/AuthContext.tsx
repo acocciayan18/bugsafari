@@ -21,9 +21,6 @@ export interface LoginCredentials {
 export interface SignupCredentials {
   email: string;
   password: string;
-  // Signed single-use challenge token and the operator's answer, verified server-side.
-  captchaToken: string;
-  captchaAnswer: string;
 }
 
 export type NavigateCallback = (path: string) => void;

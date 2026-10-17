@@ -18,8 +18,6 @@ export type AuthErrorCode =
   | 'PASSWORD_REUSED'
   | 'INVALID_CREDENTIALS'
   | 'EMAIL_TAKEN'
-  | 'CAPTCHA_REQUIRED'
-  | 'CAPTCHA_FAILED'
   | 'EMAIL_UNVERIFIED'
   | 'VERIFICATION_TOKEN_INVALID'
   | 'EMAIL_SEND_FAILED'
@@ -35,7 +33,7 @@ export type AuthErrorCode =
   | 'INTERNAL_ERROR';
 
 /** Form control the failure belongs to, when it is attributable to one. */
-export type AuthErrorField = 'email' | 'password' | 'confirmPassword' | 'token' | 'captcha';
+export type AuthErrorField = 'email' | 'password' | 'confirmPassword' | 'token';
 
 export interface AuthErrorBody {
   error: string;

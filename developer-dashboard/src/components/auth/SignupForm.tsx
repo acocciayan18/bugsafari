@@ -7,7 +7,6 @@ import { textLinkClass } from '../ui/TextLink';
 import AuthShell from './AuthShell';
 import AuthAlert from './AuthAlert';
 import PasswordRequirements, { isPasswordValid } from './PasswordRequirements';
-import CaptchaChallenge from './CaptchaChallenge';
 import { EMAIL_MAX_LENGTH, PASSWORD_MAX_LENGTH } from '../../utils/authLimits';
 import LegalFooter from '../legal/LegalFooter';
 import LegalDocModal from '../legal/LegalDocModal';
@@ -31,9 +30,6 @@ export default function SignupForm() {
   const [openDocId, setOpenDocId] = useState<LegalDocId | null>(null);
   const [verificationSent, setVerificationSent] = useState(false);
   const [sentToEmail, setSentToEmail] = useState('');
-  const [captchaToken, setCaptchaToken] = useState('');
-  const [captchaAnswer, setCaptchaAnswer] = useState('');
-  const [captchaReload, setCaptchaReload] = useState(0);
 
   const consentRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
@@ -83,14 +79,9 @@ export default function SignupForm() {
     ? 'Please confirm your password.'
     : '';
 
-  const captchaError = submitted && captchaAnswer.trim().length === 0
-    ? 'Enter your answer to the challenge above.'
-    : '';
-
   const emailInvalid = !!showEmailError || authError?.field === 'email';
   const passwordInvalid = !!showPasswordError || authError?.field === 'password';
   const confirmInvalid = !!showConfirmError;
-  const captchaInvalid = !!captchaError || authError?.field === 'captcha';
 
   // Shared field skin so every input stays pixel-identical.
   const fieldBase = 'peer w-full h-11 rounded-(--radius-md) border bg-(--surface-panel) pl-10 pr-11 text-base text-(--text-primary) placeholder:text-(--text-tertiary) transition-[color,border-color,box-shadow] duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)] focus:outline-none focus:border-(--border-focus) focus:ring-2 focus:ring-(--accent-border)';
@@ -119,26 +110,15 @@ export default function SignupForm() {
       consentRef.current?.focus();
       return;
     }
-    if (!captchaToken || captchaAnswer.trim().length === 0) {
-      (document.getElementById('captcha-answer') as HTMLInputElement | null)?.focus();
-      return;
-    }
 
     try {
-      const ok = await signup({ email: email.trim(), password, captchaToken, captchaAnswer: captchaAnswer.trim() });
+      const ok = await signup({ email: email.trim(), password });
       if (ok) {
         setSentToEmail(email.trim());
         setVerificationSent(true);
-        return;
       }
-      // The single-use token is spent once the server verifies it, so any failed
-      // attempt needs a fresh challenge before the operator can retry.
-      setCaptchaAnswer('');
-      setCaptchaReload((n) => n + 1);
     } catch (err) {
       console.error('[SignupForm] Signup error:', err);
-      setCaptchaAnswer('');
-      setCaptchaReload((n) => n + 1);
     }
   };
 
@@ -309,19 +289,6 @@ export default function SignupForm() {
             </p>
           )}
         </div>
-
-        <CaptchaChallenge
-          answer={captchaAnswer}
-          onAnswerChange={(v) => {
-            setCaptchaAnswer(v);
-            if (authError) clearAuthError();
-          }}
-          onTokenChange={setCaptchaToken}
-          error={captchaError}
-          invalid={captchaInvalid}
-          reloadSignal={captchaReload}
-          disabled={isLoading}
-        />
 
         <AuthAlert feedback={authError} />
 
