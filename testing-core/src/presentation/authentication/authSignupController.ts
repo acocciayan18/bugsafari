@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { UserModel } from '../../infrastructure/database/models/UserModel.js';
 import { validateEmail, requireNonEmptyString, validatePasswordComplexity, maskEmail } from './authValidation.js';
+import { verifyCaptcha } from './captchaService.js';
 import { sendVerificationEmail, deliveredOrDevFallback, EMAIL_VERIFICATION_TTL_MS } from './emailTransport.js';
 import type { AuthErrorBody } from '../../../../shared/types.js';
 
@@ -26,7 +27,7 @@ export async function handleSignup(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const { email, password } = request.body;
+    const { email, password, captchaToken, captchaAnswer } = request.body;
 
     // Validate + normalize inputs before any DB or bcrypt work.
     const trimmedEmail = validateEmail(email);
@@ -61,6 +62,19 @@ export async function handleSignup(
       // reveals nothing, and a vague "complexity guidelines" string left the
       // operator with no way to fix the password.
       const body: AuthErrorBody = { error: complexityError, code: 'PASSWORD_WEAK', field: 'password' };
+      response.status(400).json(body);
+      return;
+    }
+
+    // Hard anti-automation gate: verified last so a malformed email/password never
+    // burns the single-use token, and verified server-side so no frontend request
+    // can be crafted to skip it. A failure stops signup before any DB or bcrypt work.
+    if (!verifyCaptcha(captchaToken, captchaAnswer)) {
+      const body: AuthErrorBody = {
+        error: 'CAPTCHA verification failed. Please solve the challenge again.',
+        code: 'CAPTCHA_FAILED',
+        field: 'captcha',
+      };
       response.status(400).json(body);
       return;
     }

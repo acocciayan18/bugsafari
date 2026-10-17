@@ -165,6 +165,16 @@ export const signupLimiter = createRateLimiter({
   message: 'Too many accounts created from this address. Try again later.',
 });
 
+// Minting a signup challenge is cheap but each token grants one signup attempt;
+// a generous ceiling stops a bot from pre-fetching tokens in bulk while never
+// bothering a human who refreshes a challenge a few times.
+export const captchaLimiter = createRateLimiter({
+  name: 'auth:captcha',
+  windowMs: 15 * 60_000,
+  max: 30,
+  message: 'Too many challenge requests. Try again in a few minutes.',
+});
+
 export const forgotPasswordLimiter = createRateLimiter({
   name: 'auth:forgot-password',
   windowMs: 60 * 60_000,

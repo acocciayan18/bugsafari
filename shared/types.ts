@@ -16,6 +16,7 @@ export * from './types/forensicLogs.js';
 export * from './types/testingType.js';
 export * from './types/auth.js';
 export * from './types/authError.js';
+export * from './types/captcha.js';
 export * from './types/regression.js';
 export * from './types/session.js';
 export * from './types/share.js';
