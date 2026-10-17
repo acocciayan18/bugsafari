@@ -1,5 +1,12 @@
 # BugSafari Accuracy & Detection Audit
 
+> **Implementation status (2026-10-17):** P0 + P1 items and the cheap P2 fixes are
+> implemented and verified (typecheck clean, affected unit tests green, offline accuracy
+> gate 100%, 0 lint errors). See **§6 Implementation status** at the end for the exact
+> change list and what was deliberately deferred.
+
+
+
 **Date:** 2026-10-17
 **Scope:** `testing-core` engine — autonomous exploration, fault detection, verification, fuzzing, and the accuracy-measurement harness.
 **Goal:** reduce false positives (FP) and false negatives (FN), improve autonomous exploration and bug detection, expand testing capability, and raise result accuracy.
@@ -166,6 +173,43 @@ Adopt these as the standing definition of "accuracy," run in CI (M‑1):
 4. **Per-fix micro-fixtures:** each FN/FP fix above ships with the specific fixture/corpus row named in its *Verify* line, so the fix is demonstrably effective and stays green.
 
 Track four headline numbers run-over-run: **security precision**, **class recall**, **selector-attribution accuracy**, **deep reach rate**. A change may not lower any of the four without explicit sign-off.
+
+---
+
+## 6. Implementation status
+
+### Implemented and verified
+
+| # | Change | Files |
+|---|--------|-------|
+| M‑1 | Offline accuracy gate wired into CI (`bench -- --gate` step); e2e harness given a threshold gate (`BenchThresholds`) that exits non-zero; `bench:e2e` opt-in gate via `BUGSAFARI_BENCH_GATE`, and it no longer masks a gate failure with `exit(0)` | `.github/workflows/ci.yml`, `testing/benchmark/harness.ts`, `scripts/e2e-bench.ts` |
+| FN‑2 | Live-path fuzz escalation no longer parks a silently-accepting field at L0. On acceptance-without-fault the ladder now sweeps the injection-relevant structure/context-break layers up to `ACCEPT_PROBE_CAP` (L2) before holding; expensive L3/L4 stay reserved for genuine resistance | `exploration/escalationDecision.ts`, `exploration/ActionExecutor.ts`, `escalationDecision.test.ts` |
+| FN‑3 | `injectionDifferential` now sweeps the whole SQL + NoSQL operator pools per field (interleaved, rotation-ordered, stop on first positive) instead of one operator each; both injection finders replaced the fixed 1200 ms wait with an early-settle bounded wait (resolves on first correlated response, caps at 8 s, env-tunable) so slow/cold-start backends are judged | `bugs/finders/injectionDifferential.ts`, `bugs/finders/noSqlInjection.ts`, `injectionDifferential.test.ts` |
+| FN‑1 | Exploration step ceiling is now the tunable `max-exploration-steps` setting (default 750), authoritative in production; legacy `min(maxSteps*5,750)` preserved for bare test doubles | `shared/types/testingType.ts`, `exploration/ExplorationEngine.ts`, `exploration/ExplorationLoop.ts`, `exploration/types.ts` |
+| FP‑1 | `QUERY_MUTATION` `undefined/null/NaN` tokens anchored to a value position (path segment / query value), so a legitimate slug no longer trips a route-mutation verdict | `bugs/knowledgeBase/signalPatterns.ts` |
+| FP‑2 | Client-error oracle now requires a hard route-failure marker and the absence of an empty-result phrase before a sparse "not found" view is judged a broken route — a legitimate empty-state is no longer reported nor dropped from coverage | `exploration/clientErrorOracle.ts` |
+| FP‑3 | Cross-channel corroboration tightened: window 3000→1500 ms, and the second channel must be a different fault type AND a different signature on the same URL (a distinct symptom, not an echo) | `verification/VerificationPipeline.ts` |
+| M‑2 | Detection corpus grown with the FP‑1 decoys (`/docs/nullable-fields`, `/account/annulment`, `?id=null`) and added class coverage (bare JSON.parse, soft-fail 200, 404, 503, connection-string leak) | `__accuracy__/detectionCorpus.ts` |
+
+New env knobs: `BUGSAFARI_INJECTION_WAIT_MS` (injection response cap), `BUGSAFARI_BENCH_GATE` (e2e gate), and the `max-exploration-steps` optimization setting.
+
+### Deferred (documented, not implemented)
+
+These are larger new subsystems that warrant their own focused change with dedicated fixtures rather than a bundled one, and each is specified in §2 above:
+
+- **T‑1** two-session IDOR / access-control differential — needs a second authenticated browser context and a new finder + bug class.
+- **T‑2 / T‑3 / T‑4** stored/second-order XSS, JSON contract-drift, file-upload & multi-step fuzzing — each a new oracle/finder with its own catalog entry.
+- **T‑5** passive security-header/cookie observer — small but needs a new finding class wired through the network path and the dashboard.
+- **FN‑4** instance-variety bonus vs shell saturation — touches `StateClusterRegistry` + novelty scoring; needs a deep-fixture recall check.
+- **FN‑5** broaden the concurrent double-submit beyond auth L0 — the existing probe lives on the off-live-path `dataFuzzer.execute`; doing this where it matters means adding a race probe to the live `executeInputFuzzing` under the concurrency gate, a cross-scenario change best done on its own.
+- **E‑1 / E‑2** bug-bearing MRR metric + 60/40 blend validation, and multi-seed ensemble mode — measurement/strategy work that builds on the now-in-place e2e gate.
+
+### Verification run for this change
+
+- `tsc --noEmit` (testing-core) + `shared` build: clean.
+- `escalationDecision`, `injectionDifferential`, `noSqlInjection`, `verification`, `FaultClassifier` unit tests: pass.
+- `npm run bench -- --gate`: class accuracy / security precision / recall / F1 all 100%, ranking + dedup 100% — gate passes with the enlarged corpus.
+- `eslint` on all changed files: 0 errors.
 
 ---
 

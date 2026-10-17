@@ -13,11 +13,20 @@
  *     signal was found, or there is nothing left to probe — restart the ladder).
  *   - the app actively rejected the payload (field no longer holds it, or a client
  *     validation error surfaced) → escalate to a nastier layer next encounter.
- *   - the payload was accepted and processed without a fault → hold the level
- *     (progress, not resistance — do not blindly climb).
+ *   - the payload was accepted and processed without a fault → sweep the
+ *     injection-relevant structure/context-break layers (up to ACCEPT_PROBE_CAP)
+ *     before holding. A field that silently swallows everything is exactly where
+ *     injection hides, so it must not be parked at L0 (audit FN-2). Cost is bounded:
+ *     silent acceptance never climbs into the expensive L3/L4 amplification layers —
+ *     only genuine resistance does.
  */
 
 export type EscalationOutcome = 'reset' | 'escalate' | 'hold';
+
+// Highest level a SILENTLY-ACCEPTED field is swept to before holding. L1 adds
+// structure-breakers, L2 adds context-break mutations — the injection-relevant
+// layers. L3/L4 (length amplification, polyglot) are reserved for genuine resistance.
+export const ACCEPT_PROBE_CAP = 2;
 
 export interface EscalationInputs {
   /** The fuzzed field still exists in the DOM after inject + submit. */
@@ -26,11 +35,16 @@ export interface EscalationInputs {
   faulted: boolean;
   /** The app resisted the payload: it was not retained, or a client validation error surfaced. */
   resisted: boolean;
+  /** Current escalation level the payload was synthesized at (0 on first encounter). */
+  level: number;
 }
 
 export function decideEscalation(inputs: EscalationInputs): EscalationOutcome {
   if (!inputs.fieldStillPresent || inputs.faulted) return 'reset';
   if (inputs.resisted) return 'escalate';
+  // Silent acceptance: keep sweeping the structure/context-break layers until the
+  // probe cap, then hold — bounded injection probing on a field that resists nothing.
+  if (inputs.level < ACCEPT_PROBE_CAP) return 'escalate';
   return 'hold';
 }
 

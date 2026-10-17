@@ -48,14 +48,18 @@ export interface VerificationOutcome extends VerificationVerdict {
   seenCount: number;
 }
 
-// Window within which a second, different-channel fault corroborates this one.
-const CORRELATION_WINDOW_MS = 3000;
+// Window within which a second, different-channel fault corroborates this one. Tightened
+// from 3000ms (audit FP-3): under heavy fuzzing many unrelated faults land on one endpoint
+// path within a few seconds; a shorter window and a distinct-signature requirement keep
+// coincidental co-location from reading as corroboration of the SAME fault.
+const CORRELATION_WINDOW_MS = 1500;
 // Cap the recent-fault ring buffer so a long run can't grow it unbounded.
 const RECENT_FAULTS_CAP = 64;
 
 interface RecentFault {
   faultType: FaultType;
   urlKey: string;
+  signature: string;
   at: number;
 }
 
@@ -110,10 +114,17 @@ export class VerificationPipeline {
 
     const now = this.nowMs();
     const key = urlKey(candidate.url);
+    // A genuine second channel is a DIFFERENT fault type AND a DIFFERENT signature on the
+    // same URL within the window — a distinct symptom, not an echo of this same fault.
     const crossChannel = this.recent.some(
-      (r) => r.faultType !== candidate.faultType && r.urlKey === key && key !== '' && now - r.at <= CORRELATION_WINDOW_MS,
+      (r) =>
+        r.faultType !== candidate.faultType &&
+        r.signature !== signature &&
+        r.urlKey === key &&
+        key !== '' &&
+        now - r.at <= CORRELATION_WINDOW_MS,
     );
-    this.recordRecent({ faultType: candidate.faultType, urlKey: key, at: now });
+    this.recordRecent({ faultType: candidate.faultType, urlKey: key, signature, at: now });
 
     // Corroboration: the same fault recurred, OR a different channel flagged the same URL.
     const corroborated = seenCount >= 2 || crossChannel;

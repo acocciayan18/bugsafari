@@ -160,13 +160,15 @@ export const SIGNAL_PATTERNS: Record<SignalCategory, readonly RegExp[]> = {
     /<embed[^>]*>/i,
     /<object[^>]*>/i,
   ],
-  // Malformed query-string mutation (URL only — these tokens appear legitimately in content).
+  // Malformed query-string mutation (URL only). undefined/null/NaN are anchored to a
+  // value position — a path segment or query value delimited by /=?&# or the string end —
+  // so a legitimate slug ("/annulment", "/nullable-fields", "/docs/undefined-behavior")
+  // no longer trips a route-mutation verdict (audit FP-1). Only a bare serialized token
+  // (…/user/undefined, ?id=null, &page=NaN) matches.
   QUERY_MUTATION: [
     /%3D/i,
     /%26/i,
-    /undefined/i,
-    /null/i,
-    /NaN/i,
+    /(?:^|[/=&?#]|%2f)(?:undefined|null|nan)(?=$|[/=&?#])/i,
   ],
 };
 

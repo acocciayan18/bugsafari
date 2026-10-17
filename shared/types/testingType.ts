@@ -44,6 +44,11 @@ export interface OptimizationSettings {
   // choice become deterministic (same seed + target → same action sequence) for
   // thesis-panel replays. Omitted (default) → Math.random, non-reproducible.
   'exploration-seed'?: number;
+  // Absolute ceiling on exploration steps (default 750). The adaptive budget extends
+  // while coverage is still being gained, but never past this cap; a large SPA has more
+  // than 750 reachable states, so raise it to avoid truncating coverage with timebox
+  // still remaining. The timebox and the memory watchdog remain the hard stops.
+  'max-exploration-steps'?: number;
   // Read-only dialogs: cancel every native confirm/alert/prompt instead of
   // answering it. Default false — confirm-gated destructive branches (delete,
   // destroy, pay) are the highest-scored controls in the heuristic, and cancelling
@@ -65,6 +70,7 @@ export const defaultOptimizationSettings: OptimizationSettings = {
   'page-saturation-interactions': 25,  // repeat actuations on a shell → fully explored
   'form-fuzz-cap': 2,  // 2 fuzz submissions per form → excluded from further fuzzing
   'dialog-read-only': false,  // Answer dialogs so confirm-gated branches actually run
+  'max-exploration-steps': 750,  // absolute step ceiling; raise for large SPAs
 };
 
 // Operator-facing single boundary choice. Maps to the two engine flags below:

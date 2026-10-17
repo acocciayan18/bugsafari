@@ -29,6 +29,10 @@ jobs:
         run: npm test --workspace shared --if-present
       - name: Unit tests (testing-core)
         run: npm test --workspace testing-core
+      # Offline accuracy gate (audit M-1): fails the build if classifier precision/recall,
+      # ranking, or dedup fall below committed thresholds. Fast + deterministic (no browser).
+      - name: Accuracy gate (classifier / ranking / dedup)
+        run: npm run bench --workspace testing-core -- --gate
 
   frontend:
     name: developer-dashboard

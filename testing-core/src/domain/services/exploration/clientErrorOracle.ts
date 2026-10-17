@@ -32,6 +32,18 @@ const MAX_ERROR_VIEW_CONTROLS = 4;
 // Sampled from the rendered body; bounded so a huge page costs nothing to check.
 const TEXT_SAMPLE_LIMIT = 4000;
 
+// A legitimate empty RESULT state ("No results found", "Your cart is empty", "0 items")
+// is a healthy screen, not a broken route. It shares the word "found"/"not found" with a
+// DEAD_END 404 view, so a bare DEAD_END match on a sparse page used to report it as a
+// broken route AND drop it from coverage (audit FP-2). A DEAD_END verdict therefore
+// requires a hard route-failure marker and the ABSENCE of an empty-result phrase.
+const EMPTY_STATE_RE =
+  /\b(no (results|items|data|records|matches|entries)|nothing (found|here)|empty|0 (results|items)|no .{0,20} found)\b/i;
+// Unambiguous route/page-not-found markers — these are the app failing to resolve a route,
+// distinct from an empty data set. Only these justify a DEAD_END verdict on a sparse view.
+const HARD_ROUTE_FAILURE_RE =
+  /\b(404|page not found|cannot (get|post)|this page (could|can) ?n[o']t be found|route not found|not found)\b/i;
+
 // Node-side ceiling on the sample evaluate. A wedged renderer main thread (heavy media
 // decode, render loop) leaves an un-timeouted page.evaluate parked forever, freezing the
 // step loop past the timebox. On expiry we abandon the sample and treat the view as
@@ -59,10 +71,14 @@ export async function detectClientErrorView(page: Page): Promise<ClientErrorVerd
   if (sample.textLength > MAX_ERROR_VIEW_TEXT) return NOT_AN_ERROR;
   if (sample.controlCount > MAX_ERROR_VIEW_CONTROLS) return NOT_AN_ERROR;
 
+  // An empty RESULT state is healthy chrome, not a broken route — never an error view.
+  const emptyState = EMPTY_STATE_RE.test(sample.text);
+
   for (const category of ['DEAD_END', 'SERVER_ERROR', 'COMPONENT_FAIL'] as const) {
-    if (matchesCategory(category, sample.text)) {
-      return { isErrorView: true, signal: `${category}: ${sample.text.slice(0, 120).trim()}` };
-    }
+    if (!matchesCategory(category, sample.text)) continue;
+    // DEAD_END needs a hard route-failure marker and must not be a plain empty-result view.
+    if (category === 'DEAD_END' && (emptyState || !HARD_ROUTE_FAILURE_RE.test(sample.text))) continue;
+    return { isErrorView: true, signal: `${category}: ${sample.text.slice(0, 120).trim()}` };
   }
   return NOT_AN_ERROR;
 }

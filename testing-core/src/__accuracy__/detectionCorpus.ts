@@ -213,4 +213,67 @@ export const DETECTION_CORPUS: readonly DetectionCase[] = [
     expected: 'SERVER_API_FAILURE',
     expectSecurity: false,
   },
+
+  // ── FP-1 decoys: a legitimate slug containing null/undefined/nan as a SUBSTRING must
+  //    not trip the QUERY_MUTATION route-mutation verdict (tokens are now value-anchored). ─
+  {
+    name: 'benign: "nullable" slug is not a malformed-route token',
+    input: { faultType: 'NETWORK', message: 'route render', url: 'https://app.test/#/docs/nullable-fields' },
+    expected: 'BOUNDARY_STRESS_FAILURE', // NETWORK no-status, no signal ⇒ fault-type default, NOT route mutation
+    expectSecurity: false,
+  },
+  {
+    name: 'benign: "annulment" path is not a malformed-route token',
+    input: { faultType: 'NETWORK', message: 'route render', url: 'https://app.test/account/annulment' },
+    expected: 'BOUNDARY_STRESS_FAILURE',
+    expectSecurity: false,
+  },
+  {
+    name: 'query-mutation: null as a serialized query value',
+    input: { faultType: 'NETWORK', message: 'route error', url: 'https://app.test/api/items?id=null' },
+    expected: 'ROUTE_MUTATION_FAILURE',
+    expectSecurity: false,
+  },
+
+  // ── Added class coverage ────────────────────────────────────────────────────
+  {
+    // A client JSON.parse SyntaxError with NO captured HTTP response is a local runtime
+    // crash, not a server-contract break — must stay a stability exception, not API_CONTRACT.
+    name: 'client-crash: bare JSON.parse SyntaxError, no HTTP evidence',
+    input: { faultType: 'EXCEPTION', message: "SyntaxError: Unexpected token '<' is not valid JSON" },
+    expected: 'RUNTIME_STABILITY_EXCEPTION',
+    expectSecurity: false,
+  },
+  {
+    // A captured 2xx whose body declares a failure (soft-fail) is a server-contract break.
+    name: 'api-contract: soft-fail 200 body declaring an error',
+    input: { faultType: 'NETWORK', message: 'HTTP 200 POST /api/order', statusCode: 200, softFail: true },
+    expected: 'API_CONTRACT_VIOLATION',
+    expectSecurity: false,
+  },
+  {
+    name: 'unhandled 404 client status',
+    input: { faultType: 'NETWORK', message: 'HTTP 404 GET /api/profile', statusCode: 404 },
+    expected: 'UNHANDLED_CLIENT_ERROR',
+    expectSecurity: false,
+  },
+  {
+    // A directly-observed 503 is a server failure, never resource exhaustion or navigation.
+    name: 'server-error: 503 service unavailable',
+    input: { faultType: 'NETWORK', message: '503 Service Unavailable', statusCode: 503 },
+    expected: 'SERVER_API_FAILURE',
+    expectSecurity: false,
+  },
+  {
+    // A leaked DB connection string in a 2xx body is information exposure, a security leak.
+    name: 'info-leak: mongodb connection string in a 2xx body',
+    input: {
+      faultType: 'NETWORK',
+      message: 'HTTP 200 GET /api/debug',
+      content: 'connect failed: mongodb+srv://admin:p@cluster0.example.net/app',
+      statusCode: 200,
+    },
+    expected: 'SECURITY_VULNERABILITY_LEAK',
+    expectSecurity: true,
+  },
 ];

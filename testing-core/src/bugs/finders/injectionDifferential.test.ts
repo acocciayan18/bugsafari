@@ -42,12 +42,18 @@ check('both accepted but operator returned materially more data ⇒ amplificatio
   assert.equal(isDataAmplification(res(200, 100), res(200, 300)), false);
 });
 
-check('one SQL + one NoSQL operator picked, each carrying attack surface', () => {
+check('whole SQL + NoSQL pools swept, interleaved, each carrying attack surface (FN-3)', () => {
   resetFuzzRunSeed();
   const picks = selectOperatorPayloads('#user');
-  assert.equal(picks.length, 2);
+  // The full pools (4 + 4), interleaved SQL/NoSQL so each class gets its strongest shot early.
+  assert.equal(picks.length, 8);
   assert.equal(picks[0].bugClass, 'SQL_INJECTION');
   assert.equal(picks[1].bugClass, 'NOSQL_INJECTION');
+  const sqlValues = new Set(picks.filter((p) => p.bugClass === 'SQL_INJECTION').map((p) => p.value));
+  const noSqlValues = new Set(picks.filter((p) => p.bugClass === 'NOSQL_INJECTION').map((p) => p.value));
+  // No operator repeated within a class — the whole pool is covered in one field probe.
+  assert.equal(sqlValues.size, 4);
+  assert.equal(noSqlValues.size, 4);
   for (const p of picks) assert.ok(carriesAttackSurface(p.value), `not attack surface: ${p.value}`);
 });
 

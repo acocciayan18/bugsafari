@@ -43,6 +43,17 @@ export interface BenchOptions {
   timeboxMs: number;
   seed: number;
   scenarios: TestingTypeId[];
+  // When set, the run exits non-zero if any metric falls below its floor. Lets the e2e
+  // bench act as a regression GATE (CI / pre-merge), not only a printout (audit M-1).
+  gate?: BenchThresholds;
+}
+
+export interface BenchThresholds {
+  minRecall?: number;
+  minPrecision?: number;
+  minF1?: number;
+  minSelectorAccuracy?: number;
+  maxFalsePositives?: number;
 }
 
 interface Finding {
@@ -145,4 +156,22 @@ export async function runAndScore(app: BenchApp, manifest: BenchManifest, opts: 
   console.log('\nMetrics (attribution-level):');
   console.log(`  selector accuracy : ${pct(selectorAccuracy)}  (${selectorHits.length}/${SEEDED_DEFECTS.length} defects named at the right control)`);
   console.log('\n═════════════════════════════════════════════════════════════════\n');
+
+  // Regression gate: when thresholds are supplied, any shortfall fails the process so a
+  // CI step catches an accuracy regression instead of it scrolling past in the log.
+  if (opts.gate) {
+    const g = opts.gate;
+    const failures: string[] = [];
+    if (g.minRecall !== undefined && recall < g.minRecall) failures.push(`recall ${pct(recall)} < ${pct(g.minRecall)}`);
+    if (g.minPrecision !== undefined && precision < g.minPrecision) failures.push(`precision ${pct(precision)} < ${pct(g.minPrecision)}`);
+    if (g.minF1 !== undefined && f1 < g.minF1) failures.push(`F1 ${pct(f1)} < ${pct(g.minF1)}`);
+    if (g.minSelectorAccuracy !== undefined && selectorAccuracy < g.minSelectorAccuracy) failures.push(`selector accuracy ${pct(selectorAccuracy)} < ${pct(g.minSelectorAccuracy)}`);
+    if (g.maxFalsePositives !== undefined && falsePos.length > g.maxFalsePositives) failures.push(`false positives ${falsePos.length} > ${g.maxFalsePositives}`);
+    if (failures.length > 0) {
+      console.error(`✗ [${opts.title}] accuracy gate failed: ${failures.join('; ')}`);
+      process.exitCode = 1;
+    } else {
+      console.log(`✓ [${opts.title}] accuracy gate passed`);
+    }
+  }
 }

@@ -15,25 +15,29 @@ function check(name: string, fn: () => void): void {
 console.log('escalationDecision — input-resistance-driven ladder (A2/A3 fix)');
 
 check('a fault resets the ladder to L0', () => {
-  assert.equal(decideEscalation({ fieldStillPresent: true, faulted: true, resisted: true }), 'reset');
-  assert.equal(decideEscalation({ fieldStillPresent: true, faulted: true, resisted: false }), 'reset');
+  assert.equal(decideEscalation({ fieldStillPresent: true, faulted: true, resisted: true, level: 2 }), 'reset');
+  assert.equal(decideEscalation({ fieldStillPresent: true, faulted: true, resisted: false, level: 2 }), 'reset');
 });
 
 check('a vanished field resets the ladder to L0', () => {
-  assert.equal(decideEscalation({ fieldStillPresent: false, faulted: false, resisted: true }), 'reset');
+  assert.equal(decideEscalation({ fieldStillPresent: false, faulted: false, resisted: true, level: 1 }), 'reset');
 });
 
 check('genuine resistance (payload rejected / client error) escalates', () => {
-  assert.equal(decideEscalation({ fieldStillPresent: true, faulted: false, resisted: true }), 'escalate');
+  assert.equal(decideEscalation({ fieldStillPresent: true, faulted: false, resisted: true, level: 3 }), 'escalate');
 });
 
-check('an accepted-and-processed payload with no fault HOLDS — the A2 false-escalation fix', () => {
-  // Previously this hashed identical (value-blind) and wrongly escalated to L4.
-  assert.equal(decideEscalation({ fieldStillPresent: true, faulted: false, resisted: false }), 'hold');
+check('silent acceptance sweeps the structure/context-break layers before holding (FN-2)', () => {
+  // A swallow-everything field is where injection hides, so keep probing up to the
+  // cap instead of parking it at L0; only past the cap does acceptance HOLD.
+  assert.equal(decideEscalation({ fieldStillPresent: true, faulted: false, resisted: false, level: 0 }), 'escalate');
+  assert.equal(decideEscalation({ fieldStillPresent: true, faulted: false, resisted: false, level: 1 }), 'escalate');
+  assert.equal(decideEscalation({ fieldStillPresent: true, faulted: false, resisted: false, level: 2 }), 'hold');
+  assert.equal(decideEscalation({ fieldStillPresent: true, faulted: false, resisted: false, level: 4 }), 'hold');
 });
 
 check('fault dominates resistance (reset wins over escalate)', () => {
-  assert.equal(decideEscalation({ fieldStillPresent: true, faulted: true, resisted: true }), 'reset');
+  assert.equal(decideEscalation({ fieldStillPresent: true, faulted: true, resisted: true, level: 0 }), 'reset');
 });
 
 console.log('\nresolveResistance — delivery-corroborated acceptance (P3-02 fix)');

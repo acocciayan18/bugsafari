@@ -34,8 +34,17 @@ import {
 // A safe backend treats `{"$ne":null}` / `' OR '1'='1` as an ordinary string, so the
 // two responses match and nothing is reported — no false positive on a defended app.
 
-// Window (ms) to let each submission's response settle before it is judged.
-const OBSERVE_WINDOW_MS = 1200;
+// Upper bound (ms) on waiting for a submission's correlated response. Replaces the
+// old flat 1200ms wait: the capture now resolves the instant the correlated response
+// body settles (fast backends judged immediately) but will wait this long for a slow
+// one — a cold start or a slow query is exactly the boundary condition being probed,
+// and a fixed short wait dropped it as "no response" (audit FN-3). Env-tunable.
+const RESPONSE_WAIT_CAP_MS = (() => {
+  const n = Number(process.env.BUGSAFARI_INJECTION_WAIT_MS);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 8000;
+})();
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 // Benign control value — a safe app answers this the same way it answers the operator.
 const BENIGN_VALUE = 'bugsafari';
 // Operator payloads, each tagged with the datastore class it targets. As a plain string
@@ -51,19 +60,28 @@ type OperatorClass = Extract<BugClass, 'SQL_INJECTION' | 'NOSQL_INJECTION'>;
 const SQL_OPERATORS: readonly string[] = ["' OR '1'='1", "' OR '1'='1' --", "admin'--", "' OR 1=1--"];
 const NOSQL_OPERATORS: readonly string[] = ['{"$ne":null}', '{"$gt":""}', '{"$ne":""}', '{"$regex":".*"}'];
 
-// Deterministic per-(selector, run) pick: stable within a run (replayable), varied across
-// runs via the run salt. The chosen literal is recorded on the finding for reproducibility.
-function pickOperator(pool: readonly string[], selector: string): string {
-  const idx = (deriveFuzzSeed(selector, 'DATABASE_AUTH') ^ currentFuzzRunSeed()) >>> 0;
-  return pool[idx % pool.length];
+// Deterministic per-(selector, run) rotation offset: stable within a run (replayable),
+// varied across runs via the run salt. Orders the pool so the run's lead operator is
+// tried first, then the rest — a vuln that trips only on a non-lead operator ($where
+// vs $ne) is no longer missed within a single run (audit FN-3).
+function rotatePool(pool: readonly string[], selector: string): string[] {
+  const offset = ((deriveFuzzSeed(selector, 'DATABASE_AUTH') ^ currentFuzzRunSeed()) >>> 0) % pool.length;
+  return pool.map((_, i) => pool[(offset + i) % pool.length]);
 }
 
-// Build this field's two differential attempts (one per datastore class) for the current run.
+// Build this field's differential attempts: the WHOLE SQL + NoSQL pools, rotation-ordered,
+// interleaved so each datastore class gets its strongest shot early. One-shot per field and
+// the run loop stops on the first positive differential, so a defended app still costs the
+// baseline + a bounded operator sweep and reports nothing.
 export function selectOperatorPayloads(selector: string): ReadonlyArray<{ value: string; bugClass: OperatorClass }> {
-  return [
-    { value: pickOperator(SQL_OPERATORS, selector), bugClass: 'SQL_INJECTION' },
-    { value: pickOperator(NOSQL_OPERATORS, selector), bugClass: 'NOSQL_INJECTION' },
-  ];
+  const sql = rotatePool(SQL_OPERATORS, selector);
+  const nosql = rotatePool(NOSQL_OPERATORS, selector);
+  const attempts: { value: string; bugClass: OperatorClass }[] = [];
+  for (let i = 0; i < Math.max(sql.length, nosql.length); i++) {
+    if (i < sql.length) attempts.push({ value: sql[i], bugClass: 'SQL_INJECTION' });
+    if (i < nosql.length) attempts.push({ value: nosql[i], bugClass: 'NOSQL_INJECTION' });
+  }
+  return attempts;
 }
 // Data-amplification thresholds: the operator body must be BOTH >3× and >512 bytes
 // larger than the baseline before a same-status differential counts as broadened data.
@@ -87,21 +105,23 @@ async function submitAndCapture(
   origin: string,
 ): Promise<CorrelatedResponse | null> {
   const captured: { hit: CorrelatedResponse | null } = { hit: null };
-  const pending: Promise<void>[] = [];
+  // Resolved the instant the first correlated response body settles, so a responsive
+  // backend is judged without burning the full cap; a slow one waits up to the cap.
+  let settle: () => void = () => undefined;
+  const settled = new Promise<void>((resolve) => { settle = resolve; });
   const onResponse = (response: Response): void => {
     if (captured.hit) return;
     if (!correlates(response, value, target, origin)) return;
     const method = response.request().method();
-    pending.push(
-      response
-        .text()
-        .then((text) => {
-          if (!captured.hit) captured.hit = { status: response.status(), bodyLen: Math.min(text.length, MAX_BODY_BYTES), url: response.url(), method };
-        })
-        .catch(() => {
-          if (!captured.hit) captured.hit = { status: response.status(), bodyLen: 0, url: response.url(), method };
-        }),
-    );
+    response
+      .text()
+      .then((text) => {
+        if (!captured.hit) captured.hit = { status: response.status(), bodyLen: Math.min(text.length, MAX_BODY_BYTES), url: response.url(), method };
+      })
+      .catch(() => {
+        if (!captured.hit) captured.hit = { status: response.status(), bodyLen: 0, url: response.url(), method };
+      })
+      .finally(() => settle());
   };
 
   page.on('response', onResponse);
@@ -109,8 +129,7 @@ async function submitAndCapture(
     const delivered = await setFieldValue(page, selector, value);
     if (!delivered.delivered) return null;
     await triggerFormSubmission(page, selector);
-    await page.waitForTimeout(OBSERVE_WINDOW_MS);
-    await Promise.allSettled(pending);
+    await Promise.race([settled, sleep(RESPONSE_WAIT_CAP_MS)]);
   } catch {
     return null;
   } finally {

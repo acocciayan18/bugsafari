@@ -13,13 +13,20 @@
 import type { TestingTypeId } from '../../shared/types.js';
 import { startSeededApp } from '../testing/benchmark/seeded-app/server.js';
 import * as manifest from '../testing/benchmark/seeded-app/manifest.js';
-import { runAndScore } from '../testing/benchmark/harness.js';
+import { runAndScore, type BenchThresholds } from '../testing/benchmark/harness.js';
+
+// Opt-in gate (audit M-1): `BUGSAFARI_BENCH_GATE=1 npm run bench:e2e` turns the smoke run
+// into a regression gate. Off by default so an ad-hoc run still just prints.
+const GATE: BenchThresholds | undefined = process.env.BUGSAFARI_BENCH_GATE
+  ? { minRecall: 0.8, minPrecision: 0.8, minSelectorAccuracy: 0.6, maxFalsePositives: 1 }
+  : undefined;
 
 async function main() {
   const app = await startSeededApp();
   const scenarios: TestingTypeId[] = ['exploratory', 'dataFuzzing', 'formBypass', 'navigation', 'concurrency'];
-  await runAndScore(app, manifest, { title: 'e2e-bench', timeboxMs: 45000, seed: 42, scenarios });
-  process.exit(0);
+  await runAndScore(app, manifest, { title: 'e2e-bench', timeboxMs: 45000, seed: 42, scenarios, gate: GATE });
+  // Respect a gate failure (process.exitCode set by the harness) instead of masking it with 0.
+  process.exit(process.exitCode ?? 0);
 }
 
 main().catch((err) => {

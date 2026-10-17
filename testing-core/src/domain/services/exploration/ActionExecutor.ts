@@ -1023,7 +1023,7 @@ export class ActionExecutor {
         appReacted: snapshot.stateChanged,
       });
 
-      const outcome = decideEscalation({ fieldStillPresent, faulted, resisted: resistance.resisted });
+      const outcome = decideEscalation({ fieldStillPresent, faulted, resisted: resistance.resisted, level });
       if (outcome === 'reset') {
         this.deps.escalationTracker.reset(target.selector, category);
       } else if (outcome === 'escalate') {

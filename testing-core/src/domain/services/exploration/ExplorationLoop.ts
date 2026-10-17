@@ -241,7 +241,11 @@ export class ExplorationLoop {
       stagnationForceBacktrack: 3, // score at/above which we force a backtrack
       maxRecoveryRounds: 2,
       sabotageCadence: 10,
-      hardCap: Math.min(maxSteps * 5, 750), // absolute ceiling — never exceed 750 regardless of caller budget
+      // Absolute ceiling. The adaptive budget extends while coverage is gained, but never
+      // past this. The tunable setting is authoritative (engine always supplies it, default
+      // 750) so a large SPA is not truncated (audit FN-1); absent it (bare test doubles) the
+      // legacy min(maxSteps*5, 750) is preserved. Timebox + memory watchdog remain hard stops.
+      hardCap: this.deps.maxExplorationSteps ?? Math.min(maxSteps * 5, 750),
 
       extensionSteps: Math.max(10, Math.ceil(maxSteps / 2)),
       coverageStallWindow: 12,

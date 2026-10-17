@@ -275,6 +275,8 @@ export class ExplorationEngine {
   private readonly transitionRepeatBudget: number;
   // Per-form fuzz cap (resolved in the constructor).
   private readonly formFuzzCap: number;
+  // Absolute exploration-step ceiling (resolved in the constructor).
+  private readonly maxExplorationSteps: number;
 
   private isPaused = false;
   // True while the ExplorationLoop is mid-step; lets a Pause wait for the current
@@ -408,6 +410,13 @@ export class ExplorationEngine {
       ?? defaultOptimizationSettings['form-fuzz-cap']
       ?? 2;
     obsLog.info(`[ExplorationEngine] Form fuzz cap:`, this.formFuzzCap);
+
+    // Resolve the absolute exploration-step ceiling (default 750; floored at 1).
+    const rawMaxSteps = optimizationSettings?.['max-exploration-steps']
+      ?? defaultOptimizationSettings['max-exploration-steps']
+      ?? 750;
+    this.maxExplorationSteps = Number.isFinite(rawMaxSteps) && rawMaxSteps > 0 ? Math.floor(rawMaxSteps) : 750;
+    obsLog.info(`[ExplorationEngine] Max exploration steps:`, this.maxExplorationSteps);
 
     // Resolve page-saturation caps (per structural shell; 0 disables each cap).
     const maxVisits = optimizationSettings?.['page-saturation-visits']
@@ -1684,6 +1693,7 @@ export class ExplorationEngine {
         ensurePageHealth: (p) => pageHealthGuard.ensureHealthy(p),
         boundaryScope: this.boundaryScope,
         transitionRepeatBudget: this.transitionRepeatBudget,
+        maxExplorationSteps: this.maxExplorationSteps,
         accessibilityAuditor: this.accessibilityAuditor,
         navigationFinder,
         reportNavigationDefects,

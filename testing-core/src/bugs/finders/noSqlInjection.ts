@@ -15,8 +15,19 @@ import {
   type SubmissionTarget,
 } from './injectionEvidence.js';
 
-// Time allowed for the backend to answer the injected input before we judge it.
-const OBSERVE_WINDOW_MS = 1200;
+// Upper bound (ms) on waiting for the backend to answer the injected input. The wait
+// resolves early once the first correlated response settles (fast backend judged at once)
+// but tolerates a slow one up to this cap — a fixed short wait dropped slow/cold-start
+// answers as "no response" and missed the leak (audit FN-3). Env-tunable.
+const RESPONSE_WAIT_CAP_MS = (() => {
+  const n = Number(process.env.BUGSAFARI_INJECTION_WAIT_MS);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 8000;
+})();
+// Short grace after the first correlated response so a trailing body in the same burst
+// is still collected before the leak scan runs.
+const SETTLE_GRACE_MS = 400;
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 // Cap on the extracted driver-error snippet — the real error line, not the whole page.
 const MAX_ERROR_SNIPPET = 200;
 
@@ -90,6 +101,10 @@ async function observeInjection(
   const responses: Array<{ status: number; url: string; method: string; text: string }> = [];
   const consoleTexts: string[] = [];
   const pending: Promise<void>[] = [];
+  // Resolved when the first correlated response settles, so the observe window ends as
+  // soon as the backend answers instead of always waiting the full cap.
+  let settle: () => void = () => undefined;
+  const settled = new Promise<void>((resolve) => { settle = resolve; });
 
   const onResponse = (response: Response): void => {
     if (response.status() >= 500 && !evidence.serverFault) {
@@ -101,7 +116,7 @@ async function observeInjection(
     const status = response.status();
     const url = response.url();
     const method = response.request().method();
-    pending.push(response.text().then((text) => { responses.push({ status, url, method, text }); }, () => undefined));
+    pending.push(response.text().then((text) => { responses.push({ status, url, method, text }); }, () => undefined).finally(() => settle()));
   };
   const onConsole = (message: { text(): string }): void => { consoleTexts.push(message.text()); };
 
@@ -109,7 +124,10 @@ async function observeInjection(
   page.on('console', onConsole);
   try {
     const payload = await inject();
-    await page.waitForTimeout(OBSERVE_WINDOW_MS);
+    // Wait for the first correlated response (up to the cap), then a short grace for a
+    // trailing body in the same burst; a backend that never answers hits the cap.
+    await Promise.race([settled, sleep(RESPONSE_WAIT_CAP_MS)]);
+    await sleep(SETTLE_GRACE_MS);
     await Promise.allSettled(pending);
 
     // A driver error in a correlated response body carries the endpoint too.

@@ -326,6 +326,10 @@ export interface ExplorationLoopDeps {
   /** Session-wide transition-repeat budget: max non-productive re-navigations of one
    *  control on its structural shell before it's blocked as a loop source (0 disables). */
   transitionRepeatBudget: number;
+  /** Absolute ceiling on exploration steps, honored even while the adaptive budget would
+   *  still extend. Large SPAs exceed the historical 750-step cap; this makes it tunable so
+   *  coverage is not truncated with timebox still remaining (audit FN-1). */
+  maxExplorationSteps: number;
   /** Static WCAG auditor run once per novel structural shell (read-only DOM scan). */
   accessibilityAuditor: AccessibilityAuditor;
   /** Passive navigation-defect analyzer fed from per-step observation signals. */
