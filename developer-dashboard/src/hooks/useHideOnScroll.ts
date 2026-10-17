@@ -1,5 +1,6 @@
-// Hide-on-scroll-down / reveal-on-scroll-up for a mobile header. Observes a scroll
-// container ref (rAF-batched, delta-thresholded) so the transition never flickers.
+// Hide-on-scroll-down / reveal-on-scroll-up for a sticky/fixed header. Observes a
+// scroll container ref, or the window when no ref is attached (rAF-batched,
+// delta-thresholded) so the transition never flickers.
 import { useEffect, useRef, useState } from 'react';
 
 const DELTA_PX = 8;
@@ -12,19 +13,21 @@ export function useHideOnScroll<T extends HTMLElement = HTMLDivElement>(active: 
   const ticking = useRef(false);
 
   useEffect(() => {
-    const el = scrollRef.current;
-    // Inactive (desktop) always shows the header and attaches no listener.
-    if (!el || !active) {
+    // Inactive always shows the header and attaches no listener.
+    if (!active) {
       setHidden(false);
       return;
     }
-    lastY.current = el.scrollTop;
+    const el = scrollRef.current;
+    const target: HTMLElement | Window = el ?? window;
+    const readY = () => (el ? el.scrollTop : window.scrollY);
+    lastY.current = readY();
     const onScroll = () => {
       if (ticking.current) return;
       ticking.current = true;
       requestAnimationFrame(() => {
         ticking.current = false;
-        const y = el.scrollTop;
+        const y = readY();
         const dy = y - lastY.current;
         if (Math.abs(dy) < DELTA_PX) return;
         if (y <= TOP_REVEAL_PX) setHidden(false);
@@ -32,8 +35,8 @@ export function useHideOnScroll<T extends HTMLElement = HTMLDivElement>(active: 
         lastY.current = y;
       });
     };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
+    target.addEventListener('scroll', onScroll, { passive: true });
+    return () => target.removeEventListener('scroll', onScroll);
   }, [active]);
 
   return { scrollRef, hidden };

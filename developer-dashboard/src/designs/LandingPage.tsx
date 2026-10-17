@@ -6,6 +6,7 @@ import { SECTION_META } from '../pages/sectionMeta';
 import { LegalDocModal } from '../components/legal/LegalDocModal';
 import type { LegalDocId } from '../legal/content';
 import { useDarkMode } from '../context/DarkModeContext';
+import { useHideOnScroll } from '../hooks/useHideOnScroll';
 import { BrowserFrame } from '../components/marketing/ProductShot';
 
 type SectionId = 'home' | 'explore' | 'features' | 'community' | 'about';
@@ -262,6 +263,9 @@ const LandingPage = () => {
     const [legalDoc, setLegalDoc] = useState<LegalDocId | null>(null);
     const [menuOpen, setMenuOpen] = useState(false);
     const mainRef = useRef<HTMLElement>(null);
+    // Window scrolls the page; nav hides on scroll-down, reveals on scroll-up.
+    // Suspended while the mobile drawer is open so it never retracts mid-menu.
+    const { hidden: navHidden } = useHideOnScroll(!menuOpen);
 
     const goToSection = useCallback((id: SectionId) => {
         setActiveSection(id);
@@ -281,7 +285,7 @@ const LandingPage = () => {
             <LegalDocModal docId={legalDoc} onClose={() => setLegalDoc(null)} />
 
             {/* Top nav, stays mounted across every in-page section switch */}
-            <nav className="fixed top-0 left-0 right-0 z-50 bg-[var(--surface-app)]/95 backdrop-blur-md border-b border-[var(--border-hairline)]">
+            <nav className={`fixed top-0 left-0 right-0 z-50 bg-[var(--surface-app)]/95 backdrop-blur-md border-b border-[var(--border-hairline)] transition-transform duration-200 ease-out ${navHidden ? '-translate-y-full' : 'translate-y-0'}`}>
                 <div className="flex justify-between items-center w-full px-6 py-4 max-w-[1280px] mx-auto">
                     <div className="flex items-center gap-8">
                         <button onClick={() => goToSection('home')} className="text-xl font-extrabold tracking-tighter uppercase text-[var(--text-primary)] bg-transparent border-none cursor-pointer">
