@@ -106,6 +106,44 @@ async function main(): Promise<void> {
     assert.equal(findings[0].bugClass, 'METAMORPHIC_STATE_LEAK');
   });
 
+  // ── Two-cycle corroboration (fb-test.txt #4: a single-cycle residue was 75% and weak) ──
+
+  await check('a residue that self-heals on the second open/close cycle → no finding', async () => {
+    VolatilityModel.reset();
+    // base, base2, open1, closed1(leftover), open2, closed2(restored)
+    const capture = sequence(
+      obs('base', 'i'), obs('base', 'i'), obs('open', 'i'), obs('base+leftover', 'i'), obs('open', 'i'), obs('base', 'i'),
+    );
+    const findings = await evaluateRoundTrip(ctxWith(modalPage(), opener), capture);
+    assert.equal(findings.length, 0, 'a residue reconciled by the next interaction is not a leak');
+  });
+
+  await check('a stable leftover that PERSISTS across both cycles → METAMORPHIC_STATE_LEAK', async () => {
+    VolatilityModel.reset();
+    // x#t is stable (unchanged across the two action-free baselines) and stays leaked (A→B) after both closes.
+    const capture = sequence(
+      obs('base', 'i', { 'x#t': 'A' }), obs('base', 'i', { 'x#t': 'A' }),
+      obs('open', 'i'), obs('base2', 'i', { 'x#t': 'B' }),
+      obs('open', 'i'), obs('base2', 'i', { 'x#t': 'B' }),
+    );
+    const findings = await evaluateRoundTrip(ctxWith(modalPage(), opener), capture);
+    assert.equal(findings.length, 1);
+    assert.equal(findings[0].bugClass, 'METAMORPHIC_STATE_LEAK');
+    assert.ok((findings[0].evidence?.reproductionPlaybook?.length ?? 0) >= 4, 'repro guide names the second cycle');
+  });
+
+  await check('a residue that SHIFTS to a different field on cycle 2 → no finding', async () => {
+    VolatilityModel.reset();
+    // x#t leaks on cycle 1, y#t on cycle 2 — the leftover is not the same, so it is not corroborated.
+    const capture = sequence(
+      obs('base', 'i', { 'x#t': 'A', 'y#t': 'A' }), obs('base', 'i', { 'x#t': 'A', 'y#t': 'A' }),
+      obs('open', 'i'), obs('base2', 'i', { 'x#t': 'B', 'y#t': 'A' }),
+      obs('open', 'i'), obs('base3', 'i', { 'x#t': 'A', 'y#t': 'B' }),
+    );
+    const findings = await evaluateRoundTrip(ctxWith(modalPage(), opener), capture);
+    assert.equal(findings.length, 0, 'a non-repeating residue is not a persistent leak');
+  });
+
   console.log(`\nroundTripOracle: ${passed} checks passed.`);
 }
 

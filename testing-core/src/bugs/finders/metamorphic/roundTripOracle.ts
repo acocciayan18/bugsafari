@@ -55,6 +55,35 @@ export async function evaluateRoundTrip(
     if (equivalent(baseline.hash, closed.hash)) return [];
     // Differs only by dynamic content the app churns on its own — not a leak.
     if (volatileOnly(key, baseline, closed)) return [];
+    // Cycle 1 shows a non-volatile leak. One cycle alone is weak evidence: a framework portal
+    // container or a one-shot focus marker can leave a residue the next interaction reconciles.
+    // Require the leak to CORROBORATE across a second open/close cycle (fb-test.txt #4 was a
+    // single-cycle 75% finding). The stable field-level residual, when a path map is available.
+    const residual1 = VolatilityModel.stableDiff(key, baseline.paths, closed.paths);
+
+    // Second cycle: open and close again from the current state.
+    await page.locator(opener.selector).first().click({ timeout: 1000 }).catch(() => undefined);
+    if (page.url() !== urlBefore) return [];
+    const opened2 = await capture(page);
+    // The layer did not re-open (opener now inert) — cannot corroborate, so do not report.
+    if (equivalent(baseline.hash, opened2.hash)) return [];
+    const closeBtn2 = page.locator(CLOSE_SELECTOR).first();
+    const hasClose2 = (await closeBtn2.count().catch(() => 0)) > 0;
+    if (hasClose2) await closeBtn2.click({ timeout: 1000 }).catch(() => undefined);
+    else await page.keyboard.press('Escape').catch(() => undefined);
+
+    const closed2 = await capture(page);
+    // Self-healed on the second cycle — not a persistent leak.
+    if (equivalent(baseline.hash, closed2.hash)) return [];
+    if (volatileOnly(key, baseline, closed2)) return [];
+    // When a field-level map is available, the leak must PERSIST or GROW: every stable leftover
+    // path from cycle 1 is still leaked after cycle 2 (residual2 ⊇ residual1). A residue that
+    // shifts or shrinks away is not reported. With no path map it is a structural hash leak, and
+    // the two cycles' equivalent/volatileOnly guards above already proved it persists.
+    const residual2 = VolatilityModel.stableDiff(key, baseline.paths, closed2.paths);
+    if (residual1.size > 0 && !(residual2.size > 0 && [...residual1].every((p) => residual2.has(p)))) {
+      return [];
+    }
 
     const label = resolveElementLabel(opener);
     const route = safeRoutePath(page) || urlBefore;
@@ -64,14 +93,15 @@ export async function evaluateRoundTrip(
         title: 'Closing a dialog left the page changed',
         severity: 'MEDIUM',
         evidence: {
-          message: `Opening then closing "${label}" did not restore the page — leftover DOM/state remained after it was dismissed.`,
+          message: `Opening then closing "${label}" did not restore the page — the same leftover DOM/state remained after two open/close cycles (${residual2.size} stable field(s) not reverted).`,
           actionExecuted: 'metamorphic-round-trip',
           selector: opener.selector,
           stateHash: ctx.stateHash,
           reproductionPlaybook: [
             `Step 1. On ${route}, open "${label}".`,
             `Step 2. Close it using its close control or the Escape key.`,
-            `Step 3. Observe the page did not return to its original state (leftover overlay/elements).`,
+            `Step 3. Repeat the open/close once more.`,
+            `Step 4. Observe the page did not return to its original state (the same leftover overlay/elements persist across both cycles).`,
           ],
         },
       },

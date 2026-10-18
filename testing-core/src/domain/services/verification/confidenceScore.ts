@@ -136,5 +136,15 @@ function gradeScore(raw: number, origin: FaultOrigin, reproductionState?: Reprod
     status = 'NEEDS_VERIFICATION';
   }
 
-  return { score: Math.round(score * 100) / 100, status };
+  // Align the reported number with the terminal status. The raw score could land above its
+  // band after an origin/replay cap demoted the status (e.g. a never-reproduced fault scoring
+  // 0.90 but capped to NEEDS_VERIFICATION), so the operator saw "90% evidence" next to
+  // "Needs verification" — a number that contradicts its own label (fb-test.txt 75-90%). Clamp
+  // the score to its band ceiling so the displayed % can never exceed what the status denotes.
+  // Nothing is suppressed: the finding is still reported, only its number is made honest.
+  const banded = status === 'NEEDS_VERIFICATION' ? Math.min(score, CONFIRMED_THRESHOLD - 0.01)
+    : status === 'INCONCLUSIVE' ? Math.min(score, NEEDS_VERIFICATION_THRESHOLD - 0.01)
+    : score;
+
+  return { score: Math.round(banded * 100) / 100, status };
 }

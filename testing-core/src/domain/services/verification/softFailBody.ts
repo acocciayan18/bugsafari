@@ -71,18 +71,26 @@ export function isExpectedRejectionEnvelope(url: string, body: string): boolean 
 // A GraphQL endpoint — the spec convention is a single /graphql route (POST, or GET
 // with ?query=). Subscriptions and versioned mounts (/api/graphql, /v1/graphql) included.
 const GRAPHQL_ENDPOINT = /\/graphql\b|graphql\?/i;
-// Canonical GraphQL error shape: an `errors` array whose entries are objects carrying a
-// `message`. Bounded gap so a large body cannot force a pathological scan.
-const GRAPHQL_ERRORS_SHAPE = /"errors"\s*:\s*\[\s*\{[\s\S]{0,2048}?"message"\s*:/i;
+// GraphQL error shape: an `errors` array whose FIRST entry is an OBJECT. The entry being an
+// object (not a string) is what distinguishes a spec GraphQL error list from a REST
+// `{"errors":["name is required"]}` string array — which stays flagged. The earlier gate also
+// required a `"message"` key within 2048 chars of the `[{`, but real providers (Facebook's
+// /api/graphql/ among them) order the entry with `severity`/`code`/`api_error_code`/`description`
+// before `message` or push it past that window, so a genuine GraphQL error leaked through as a
+// CWE-754 false positive. The object-entry gate recognizes those without weakening the REST
+// distinction.
+const GRAPHQL_ERRORS_OBJECT = /"errors"\s*:\s*\[\s*\{/i;
 // A top-level `data` key — present (often null) on every spec GraphQL response.
 const GRAPHQL_DATA_KEY = /"data"\s*:/i;
 
 // True when a <400 body is a valid GraphQL error response, not a masked backend failure.
 // Per the GraphQL spec a 200 carrying field/resolver errors in `errors` is normal. The
-// dual gate (spec error shape AND [a data sibling OR a /graphql route]) keeps a REST
-// string-array `{"errors":["x"]}` or a REST endpoint's own envelope still flagged.
+// dual gate (object-entry error array AND [a data sibling OR a /graphql route]) keeps a REST
+// string-array `{"errors":["x"]}` (entry is a string) or a REST endpoint's own envelope still
+// flagged. A server-error signature (checked by the caller) still overrides this suppression,
+// so a resolver leaking a stack/SQL error in a 200 body always promotes.
 export function isGraphQLErrorResponse(url: string, body: string): boolean {
-  if (!body || !GRAPHQL_ERRORS_SHAPE.test(body)) return false;
+  if (!body || !GRAPHQL_ERRORS_OBJECT.test(body)) return false;
   return GRAPHQL_DATA_KEY.test(body) || GRAPHQL_ENDPOINT.test(url);
 }
 

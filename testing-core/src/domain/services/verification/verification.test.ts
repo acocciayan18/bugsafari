@@ -202,6 +202,28 @@ check('reproduction pass that did NOT recur lowers the score', () => {
   assert.ok(withRepro.score < noRepro.score);
 });
 
+// ── Score/status alignment (clamp to band) ──
+check('an unverified fault cannot display a score above its status band (fb-test.txt 75-90%)', () => {
+  // Strong raw evidence (CONFIRMED base + target + corroborated + full completeness) that the
+  // replay gate demotes to NEEDS_VERIFICATION must report a number below the CONFIRMED band,
+  // so the operator never sees "90% evidence" next to "Needs verification".
+  const r = scoreFinding({ confidence: 'CONFIRMED', origin: 'TARGET_APP', evidenceCompleteness: 1, corroborated: true, reproductionState: 'PENDING' });
+  assert.equal(r.status, 'NEEDS_VERIFICATION');
+  assert.ok(r.score < 0.8, 'reported score aligned to the Needs-verification band');
+});
+
+check('a genuine reproduced CONFIRMED finding keeps its full score (no clamp, recall preserved)', () => {
+  const r = scoreFinding({ confidence: 'CONFIRMED', origin: 'TARGET_APP', evidenceCompleteness: 1, corroborated: true });
+  assert.equal(r.status, 'CONFIRMED');
+  assert.ok(r.score >= 0.8);
+});
+
+check('an INCONCLUSIVE finding is clamped below the needs-verification floor', () => {
+  const r = scoreFinding({ confidence: 'INFERRED', origin: 'UNKNOWN', evidenceCompleteness: 0, corroborated: false });
+  assert.equal(r.status, 'INCONCLUSIVE');
+  assert.ok(r.score < 0.5);
+});
+
 // ── Retroactive reproduction verdict (in-run probe) ──
 check('retroactive verdict matches an up-front score with the same outcome', () => {
   const base = { confidence: 'SIGNAL' as const, origin: 'TARGET_APP' as const, evidenceCompleteness: 0.5, corroborated: false };
@@ -271,9 +293,11 @@ check('flaky candidate (unsettled, non-exempt) is PENDING and never CONFIRMED', 
   p.evaluate(cand);
   const second = p.evaluate(cand);
   assert.equal(second.corroborated, true);
-  assert.ok(second.score >= 0.8, 'score is CONFIRMED-band');
   assert.equal(second.reproductionState, 'PENDING');
   assert.notEqual(second.status, 'CONFIRMED');
+  // Alignment: the raw evidence is CONFIRMED-band, but the replay cap demoted the status to
+  // NEEDS_VERIFICATION, so the REPORTED score is clamped below 0.8 to match its label.
+  assert.ok(second.score < 0.8, 'reported score clamped to the NEEDS_VERIFICATION band');
 });
 
 check('deterministic crash is EXEMPT → CONFIRMED, then demotes on a settled rate-0 replay', () => {

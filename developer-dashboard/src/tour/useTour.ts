@@ -42,7 +42,7 @@ export function useTour({ tourId, buildSteps, enabled }: TourOptions): { startTo
   const markCompleted = useCallback(() => {
     // Stamp the device regardless so this browser stays consistent even offline.
     markTourCompleted(tourId, userId);
-    if (isAuthenticated) void updateSettings({ onboardingCompleted: true });
+    if (isAuthenticated) void updateSettings({ onboardingCompleted: true }, { silent: true });
   }, [isAuthenticated, tourId, userId, updateSettings]);
 
   const startTour = useCallback(() => {

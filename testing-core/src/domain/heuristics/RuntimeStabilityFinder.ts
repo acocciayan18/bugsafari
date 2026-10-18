@@ -54,6 +54,17 @@ export function stripConsoleFormat(message: string): string {
   return message.replace(CONSOLE_FORMAT_PREFIX_RE, '');
 }
 
+// First stack frame of a trace ("at fn (file:line:col)" / "fn@url:line:col"), the concrete
+// failing location named in the evidence-based advice. Undefined when no frame is present.
+export function topStackFrame(stack: string | undefined): string | undefined {
+  if (!stack) return undefined;
+  for (const raw of stack.split('\n')) {
+    const line = raw.trim();
+    if (line.startsWith('at ') || /^[^\s@]+@[^\s]+:\d+/.test(line)) return line;
+  }
+  return undefined;
+}
+
 // Canonical JS-error clause — the part of a runtime message that survives framework
 // wrappers (React's "%o %s %s" console format, an ErrorBoundary's "[label] render
 // failed:") and instance noise. When present it ALONE keys the dedup signature, so one
@@ -71,6 +82,21 @@ export const MEDIA_PLAYBACK_RE =
 /** True for a media-playback fault (no decodable source, or a rejected play() promise). */
 export function isMediaPlaybackError(text: string | undefined | null): boolean {
   return !!text && MEDIA_PLAYBACK_RE.test(text);
+}
+
+// Capabilities a real browser exposes that Playwright's automation Chromium does not: WebAuthn
+// (PublicKeyCredential / navigator.credentials), the headless driver flag. An app that feature-detects
+// one of these reports a CAPABILITY-ABSENT fault here only because of the test environment, never in a
+// real user's browser — so it is an automation artifact, not an app defect. Matched on the absence
+// phrasing (not-supported/undefined/not-defined) paired with the capability token, so a genuine WebAuthn
+// BUSINESS error ("WebAuthn registration failed: user not found") and the bare auth vocabulary
+// ("invalid credentials", owned by softFailBody.AUTH_REJECTION) are never swallowed.
+export const ENVIRONMENT_ARTIFACT_RE =
+  /does not support public key credentials|public key credentials? (?:is|are) not (?:supported|available|defined)|\bpublickeycredential\b (?:is )?(?:not defined|not a function|undefined|not supported)|navigator\.credentials (?:is )?(?:undefined|not defined|not available)|\bwebauthn\b (?:is )?not (?:supported|available)|virtual authenticator|\bnavigator\.webdriver\b/i;
+
+/** True for a browser-automation environment artifact (a WebAuthn/credentials capability absent, webdriver flag). */
+export function isEnvironmentArtifactError(text: string | undefined | null): boolean {
+  return !!text && ENVIRONMENT_ARTIFACT_RE.test(text);
 }
 
 // Ordered so the most specific message shape wins; source is only a fallback tiebreaker.
@@ -256,7 +282,7 @@ export class RuntimeStabilityFinder {
       bugId: record.bugId,
       signature,
       message: `[${SUBTYPE_LABEL[subtype]}] ${message}`,
-      studentAdvice: this.buildStudentAdvice(subtype),
+      studentAdvice: this.buildStudentAdvice(subtype, o),
       evidence,
       occurrence: record.occurrence,
       firstSeenMs: record.firstSeenMs,
@@ -264,12 +290,20 @@ export class RuntimeStabilityFinder {
     };
   }
 
-  private buildStudentAdvice(subtype: RuntimeSubtype): string {
+  private buildStudentAdvice(subtype: RuntimeSubtype, o?: RuntimeObservation): string {
     // One consolidated Suggested Fix. The subtype line already names the specific guard, so
     // the steps reference "that guard" rather than repeating a generic null-check/try-catch
     // — the old catalog-checklist append duplicated the guidance the subtype line gave.
+    // Evidence-based: when the fault carries a stack, name the actual failing location (and for
+    // an API-contract fault, the URL whose reply was not JSON) so the advice points the reader at
+    // THIS fault, not a class-generic blob (fb-test.txt's complaint about templated fixes).
+    const where = topStackFrame(o?.stack);
+    const context: string[] = [];
+    if (where) context.push(`Failing location: ${where}`);
+    if (subtype === 'API_CONTRACT_VIOLATION' && o?.url) context.push(`Endpoint whose reply was not JSON: ${o.url}`);
+    const contextBlock = context.length > 0 ? `\n\n${context.join('\n')}` : '';
     return (
-      `${STUDENT_GUIDANCE[subtype]}\n\nSuggested fix:\n` +
+      `${STUDENT_GUIDANCE[subtype]}${contextBlock}\n\nSuggested fix:\n` +
       `1. Reproduce the fault using the replay checklist above\n` +
       `2. Apply that guard at the failing line\n` +
       `3. Add a test that confirms it stays stable`

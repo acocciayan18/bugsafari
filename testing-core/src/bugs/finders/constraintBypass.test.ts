@@ -83,6 +83,19 @@ function main(): void {
     assert.equal(plan?.violating.length, 8 + 32);
   });
 
+  // An effectively-unlimited maxlength is not a security constraint — skip it (fb-test.txt #2).
+  check('an effectively-unlimited maxlength (>= 100000) yields no plan', () => {
+    assert.equal(planFromSnapshot({ maxLength: 999999, pattern: null, required: false }), null);
+    assert.equal(planFromSnapshot({ maxLength: 100000, pattern: null, required: false }), null);
+  });
+
+  // Regression: a realistic maxlength is still a reportable constraint (detection preserved).
+  check('a realistic maxlength just below the ceiling still yields a plan', () => {
+    const plan = planFromSnapshot({ maxLength: 50, pattern: null, required: false });
+    assert.deepEqual(plan, { violating: 'A'.repeat(82), constraint: 'maxlength=50' });
+    assert.equal(planFromSnapshot({ maxLength: 99999, pattern: null, required: false })?.constraint, 'maxlength=99999');
+  });
+
   check('required-only field yields an empty-value required plan', () => {
     assert.deepEqual(planFromSnapshot({ maxLength: null, pattern: null, required: true }), {
       violating: '',

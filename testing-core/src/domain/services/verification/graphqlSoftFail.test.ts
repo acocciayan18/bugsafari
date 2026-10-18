@@ -21,6 +21,10 @@ const REST_SUCCESS_FALSE = '{"success":false,"reason":"payment declined"}';
 const REST_STRING_ERRORS = '{"errors":["name is required","email is invalid"]}';
 const REST_AUTH_LOGIN = '{"success":false,"message":"invalid credentials"}';
 const SQL_LEAK = '{"data":null,"errors":[{"message":"ER_PARSE_ERROR: You have an error in your SQL syntax near SELECT * FROM users"}]}';
+// Facebook-style /api/graphql/ error: the error object orders severity/code/description BEFORE
+// message and pads it well past the old 2048-char window, so the previous "message within 2048"
+// gate missed it and promoted a normal GraphQL error as a CWE-754 false positive (fb-test.txt #3).
+const FB_GRAPHQL = `{"errors":[{"code":1675030,"api_error_code":1675030,"summary":"There was a problem with this request.","description":"${'x'.repeat(2600)}","is_silent":false,"is_transient":false,"requires_reauth":false,"severity":"CRITICAL","fbtrace_id":"AbCdEfGh","message":"Please try closing and re-opening your browser window."}],"data":null}`;
 
 console.log('graphqlSoftFail — isGraphQLErrorResponse');
 
@@ -43,6 +47,10 @@ check('a REST error-flag envelope is NOT GraphQL', () => {
 
 check('an empty body is NOT GraphQL', () => {
   assert.equal(isGraphQLErrorResponse('https://x.test/graphql', ''), false);
+});
+
+check('an FB-style /api/graphql/ error with message past 2048 chars IS GraphQL (regression for #3)', () => {
+  assert.equal(isGraphQLErrorResponse('https://www.facebook.com/api/graphql/', FB_GRAPHQL), true);
 });
 
 console.log('graphqlSoftFail — resolveMaskedFailure (GraphQL vs REST)');
@@ -86,6 +94,12 @@ check('REST auth login success:false → suppressed via expected rejection (beha
   const r = resolveMaskedFailure({ url: 'https://x.test/api/login', body: REST_AUTH_LOGIN, serverSignature: false });
   assert.equal(r.softFail, false);
   assert.equal(r.graphqlInformational, false);
+});
+
+check('FB-style /api/graphql/ 200 error → suppressed, informational, no finding (regression for #3)', () => {
+  const r = resolveMaskedFailure({ url: 'https://www.facebook.com/api/graphql/', body: FB_GRAPHQL, serverSignature: false });
+  assert.equal(r.softFail, false);
+  assert.equal(r.graphqlInformational, true);
 });
 
 check('a clean 200 body with no envelope → no fault', () => {

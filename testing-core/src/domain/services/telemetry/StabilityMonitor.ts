@@ -24,7 +24,7 @@ import { scrubCredentials } from './credentialScrub.js';
 import { ContractResponseCorrelator, looksNonJsonBody } from './contractCorrelation.js';
 import { resolveRuntimeCulprit } from './runtimeCulprit.js';
 import { resolveControlName, isDescriptiveControlName } from '../../../../../shared/reproduction.js';
-import { RuntimeStabilityFinder, isMediaPlaybackError, type RuntimeObservation, type RuntimeSubtype } from '../../heuristics/RuntimeStabilityFinder.js';
+import { RuntimeStabilityFinder, isMediaPlaybackError, isEnvironmentArtifactError, type RuntimeObservation, type RuntimeSubtype } from '../../heuristics/RuntimeStabilityFinder.js';
 import { DuplicateActionFinder, buildDuplicateReplaySteps, type DuplicateActionDefect } from '../../heuristics/DuplicateActionFinder.js';
 import { ApiHangFinder, isBackgroundTelemetryUrl, isLongLivedRequestUrl, type LoadingProbe, type HangDiagnostic, type HangTrigger } from '../../heuristics/ApiHangFinder.js';
 import { initialSweepState, isSweepDue, advanceSweep, type SweepPolicy } from '../../heuristics/hangSweep.js';
@@ -218,6 +218,9 @@ export function isIgnorableConsoleError(text: string): boolean {
   // Media-playback errors ("no supported sources") are an environment artifact: Playwright's
   // codec-less bundled Chromium rejects H.264/AAC that real Chrome decodes. Suppress as noise.
   if (isMediaPlaybackError(text)) return true;
+  // Automation-environment artifacts (WebAuthn/credentials unsupported, webdriver flag) — present only
+  // because Playwright's Chromium lacks a capability real Chrome exposes; never an app defect.
+  if (isEnvironmentArtifactError(text)) return true;
   return false;
 }
 
@@ -857,6 +860,16 @@ export class StabilityMonitor {
       t.emit('ACTION', {
         actionExecuted: 'media-fault-suppressed',
         message: `Media playback fault suppressed (codec-less browser env): ${message}`,
+      });
+      return;
+    }
+    // Browser-automation artifacts (WebAuthn/PublicKeyCredential unsupported, webdriver flag) throw
+    // only because Playwright's Chromium lacks a capability a real user's browser has. Suppress across
+    // every channel (pageerror/console/rejection) as informational telemetry — never a bug.
+    if (isEnvironmentArtifactError(message)) {
+      t.emit('ACTION', {
+        actionExecuted: 'environment-artifact-suppressed',
+        message: `Browser-automation environment artifact suppressed (not an app fault): ${message}`,
       });
       return;
     }

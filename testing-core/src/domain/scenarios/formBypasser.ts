@@ -44,11 +44,6 @@ const EXTENDED_ATTRIBUTES = [
 ] as const;
 
 /**
- * Maximum length value to set when removing constraints.
- */
-const MAX_LENGTH_LIMIT = 999999;
-
-/**
  * Error signatures that are safe to ignore.
  */
 const NON_FATAL_ERRORS = {
@@ -97,7 +92,7 @@ export async function stripConstraintsSilently(
 ): Promise<ConstraintStripResult> {
   try {
     const raw = await page.evaluate(
-      ({ sel, attrs, extendedAttrs, maxLen }) => {
+      ({ sel, attrs, extendedAttrs }) => {
         const targetEl = document.querySelector(sel);
 
         // Build candidate set: target + siblings
@@ -182,15 +177,17 @@ export async function stripConstraintsSilently(
               }
             }
 
-            // Remove any maxlength cap for giant payloads
+            // Remove any maxlength cap for giant payloads. Removing the attribute leaves the
+            // IDL maxLength at -1 (unlimited), which allows the giant payload WITHOUT reflecting a
+            // bogus numeric cap back onto the element — setting el.maxLength = 999999 re-created a
+            // maxlength="999999" attribute the constraint-bypass finder then read back as a real
+            // constraint (fb-test.txt #2 self-inflicted loop).
             if (el.hasAttribute('maxlength')) removedAttrs.add('maxlength');
             el.removeAttribute('maxlength');
-            el.maxLength = maxLen;
             modified = true;
           } else if (el instanceof HTMLTextAreaElement) {
             if (el.hasAttribute('maxlength')) removedAttrs.add('maxlength');
             el.removeAttribute('maxlength');
-            el.maxLength = maxLen;
             modified = true;
           }
 
@@ -253,7 +250,6 @@ export async function stripConstraintsSilently(
         sel: selector,
         attrs: [...STRIPPED_ATTRIBUTES],
         extendedAttrs: [...EXTENDED_ATTRIBUTES],
-        maxLen: MAX_LENGTH_LIMIT,
       }
     );
     return JSON.parse(raw) as ConstraintStripResult;

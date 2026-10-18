@@ -26,6 +26,27 @@ function capStateFingerprint(fingerprint: unknown): ICaughtBug['stateFingerprint
   return fingerprint as ICaughtBug['stateFingerprint'];
 }
 
+// A fuzz/constraint-bypass payload can be enormous (fb-test.txt #2 stored a 1,000,031-char value
+// verbatim in both the message and bypass.payload). The full blob adds nothing a reader needs and
+// pressures the 16MB BSON limit. Above this size the payload is replaced by a compact descriptor
+// that preserves what forensics actually uses: a readable sample, the exact length, and a stable
+// hash so two runs of the same payload still compare equal. Small payloads pass through verbatim.
+const MAX_PAYLOAD_BYTES = 4_096;
+const PAYLOAD_SAMPLE_CHARS = 256;
+
+// djb2 — stable, cheap, no crypto dependency (same hash the runtime finder uses for signatures).
+function djb2(input: string): string {
+  let h = 5381;
+  for (let i = 0; i < input.length; i++) h = ((h << 5) + h + input.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+// Bound a stored payload string: verbatim when small, else a `len=/sample=/hash=` descriptor.
+export function capPayload(value: string | undefined): string {
+  if (!value || value.length <= MAX_PAYLOAD_BYTES) return value ?? '';
+  return `[payload capped] len=${value.length} hash=${djb2(value)} sample="${value.slice(0, PAYLOAD_SAMPLE_CHARS)}…"`;
+}
+
 /**
  * Project one engine ledger entry onto the persisted finding shape. Single source of
  * truth for the mapping so an incremental checkpoint and a manual save can never write
@@ -40,7 +61,7 @@ export function toSavedCaughtBug(bug: ConfirmedBug): ICaughtBug {
     elementLabel: bug.elementLabel ?? '',
     url: bug.url ?? '',
     statusCode: bug.statusCode,
-    payloadUsed: bug.payloadUsed,
+    payloadUsed: capPayload(bug.payloadUsed),
     advice: bug.advice,
     stackTrace: bug.stackTrace ?? '',
     resolvedStackTrace: bug.resolvedStackTrace ?? '',
@@ -54,7 +75,7 @@ export function toSavedCaughtBug(bug: ConfirmedBug): ICaughtBug {
     timestamp: bug.timestamp,
     attribution: bug.attribution,
     stateFingerprint: capStateFingerprint(bug.stateFingerprint),
-    bypass: bug.bypass,
+    bypass: bug.bypass ? { ...bug.bypass, payload: capPayload(bug.bypass.payload) } : bug.bypass,
     severity: resolveSeverity({
       severity: bug.severity,
       bugClass: bug.attribution?.bugClass,

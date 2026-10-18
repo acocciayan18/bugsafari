@@ -139,6 +139,34 @@ check('API contract violation advice is also one consolidated Suggested Fix', ()
   assert.ok(finding.message.startsWith('[Server reply was not the JSON the app expected]'));
 });
 
+check('advice names the actual failing location when a stack is present (evidence-based)', () => {
+  const f = new RuntimeStabilityFinder();
+  const { finding } = f.classify(obs({
+    message: "Cannot read properties of undefined (reading 'id')",
+    stack: "TypeError: Cannot read properties of undefined (reading 'id')\n    at Cart (http://app.test/cart.js:42:17)\n    at render (http://app.test/react.js:9:1)",
+  }));
+  assert.ok(finding.studentAdvice.includes('Failing location: at Cart (http://app.test/cart.js:42:17)'), finding.studentAdvice);
+  // Still exactly one consolidated Suggested fix block (no regression).
+  assert.equal(finding.studentAdvice.split('Suggested fix:').length - 1, 1);
+});
+
+check('API-contract advice names the endpoint whose reply was not JSON', () => {
+  const f = new RuntimeStabilityFinder();
+  const { finding } = f.classify(obs({
+    message: `SyntaxError: Unexpected token '<', "<!DOCTYPE "... is not valid JSON`,
+    url: 'http://app.test/api/orders',
+    contractCorrelated: true,
+  }));
+  assert.ok(finding.studentAdvice.includes('Endpoint whose reply was not JSON: http://app.test/api/orders'), finding.studentAdvice);
+});
+
+check('advice without a stack stays the generic consolidated fix (regression)', () => {
+  const f = new RuntimeStabilityFinder();
+  const { finding } = f.classify(obs({ message: 'foo is not defined' }));
+  assert.ok(!finding.studentAdvice.includes('Failing location:'), 'no fabricated location');
+  assert.equal(finding.studentAdvice.split('Suggested fix:').length - 1, 1);
+});
+
 check('media fault advice names a media/source concept, not a bare promise catch', () => {
   const f = new RuntimeStabilityFinder();
   const { finding } = f.classify(obs({ message: 'The element has no supported sources.', source: 'REJECTION' }));

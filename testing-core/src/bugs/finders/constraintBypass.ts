@@ -25,6 +25,13 @@ interface ViolationPlan {
   constraint: string;
 }
 
+// A maxlength at or above this is not a security-meaningful limit — it is an effectively-unlimited
+// sanity cap (and often the engine's OWN formBypasser sentinel, 999999, read back after a strip). A
+// field that "allows ~1M chars" enforces no documented rule, so removing it and submitting one more
+// char proves nothing: flagging it manufactured the fb-test.txt #2 false positive (a 1,000,031-char
+// payload). Real field limits (passwords, usernames, codes) sit far below this.
+const MEANINGFUL_MAXLENGTH_CEILING = 100_000;
+
 function safeOrigin(url: string): string {
   try {
     return new URL(url).origin;
@@ -43,9 +50,17 @@ function relativeEndpoint(url: string): string {
   }
 }
 
-// Prose form of the submitted value — empty string reads as an explicit phrase.
+// Max payload chars inlined into the human message. A sub-ceiling maxlength still yields a value
+// up to ~100k chars; embedding it whole bloated the finding text (fb-test.txt #2). Longer values
+// are summarized with their length so the message stays readable.
+const MESSAGE_PAYLOAD_PREVIEW = 80;
+
+// Prose form of the submitted value — empty string reads as an explicit phrase; a long value is
+// previewed with its length rather than inlined whole.
 function describePayload(value: string): string {
-  return value === '' ? 'an empty value' : `"${value}"`;
+  if (value === '') return 'an empty value';
+  if (value.length > MESSAGE_PAYLOAD_PREVIEW) return `a ${value.length}-character value ("${value.slice(0, MESSAGE_PAYLOAD_PREVIEW)}…")`;
+  return `"${value}"`;
 }
 
 function sameOrigin(url: string, origin: string): boolean {
@@ -180,7 +195,7 @@ export function planFromSnapshot(snapshot: ConstraintSnapshot | null): Violation
     }
     if (violatesPattern) return { violating: candidate, constraint: `pattern=${snapshot.pattern}` };
   }
-  if (snapshot.maxLength !== null) {
+  if (snapshot.maxLength !== null && snapshot.maxLength < MEANINGFUL_MAXLENGTH_CEILING) {
     return { violating: 'A'.repeat(snapshot.maxLength + 32), constraint: `maxlength=${snapshot.maxLength}` };
   }
   if (snapshot.required) return { violating: '', constraint: 'required' };
