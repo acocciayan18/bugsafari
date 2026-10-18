@@ -1,24 +1,393 @@
-Runtime Stability Exception
+Client Render Freeze
+High
+
+CWE
+CWE-834
+Message
+Client render freeze: the main thread was blocked for ~19s, so the page could not respond to input or repaint.
+Reproduction Guide
+
+1
+click
+Click 2 controls at the same time: the "🦁 BugSafari Target" link and the "← all scenarios" link
+Observed result
+Invalid: 0 of 2 clicks registered. The target controls could not be clicked (hidden, removed, or covered), so this burst never actually interacted with the app.
+Suggested Fix
+
+
+Suggested fix: free the main thread
+1. Move long synchronous work (large loops, parsing, layout) off the main thread with a Web Worker, or split it into async chunks so the view can paint
+2. If the view keeps re-rendering, find a state update inside render or an effect with no dependency guard (setState triggers render, which triggers setState again)
+3. Look for a subscription or observer that re-adds nodes on every change (toasts, live feeds, infinite scroll)
+4. Memoize derived values so a new object each render cannot keep retriggering the effect
+
+Stack Trace
+Click to expand
+Server API Failure
+High
+×12
+
+CWE
+CWE-755
+At detection
+Needs verification · 79% evidence
+Message
+HTTP 500 POST /api/compute · HTTP 500 server error. The backend failed to process the request.
+Element
+email
+input[name="email"]
+Reproduction Guide
+
+1
+open
+Navigate to /
+2
+click
+Click the "Input Boundary Stress / Backend Crash" link. Result: the app moved to /input-fuzzing
+Route
+/
+·
+Section
+"Security"
+·
+Element
+"Input Boundary Stress / Backend Crash" link
+3
+click
+Click the "Input Boundary Stress / Backend Crash" link
+Route
+/input-fuzzing
+·
+Section
+"Security"
+·
+Element
+"Input Boundary Stress / Backend Crash" link
+4
+rapid
+Click 10 points spread evenly across the visible area of the 1440×900 window
+Route
+/input-fuzzing
+5
+type
+Type "{"username": {"$ne": null}, "password": {"$ne": null}}" into the "email" field
+Route
+/input-fuzzing
+·
+Element
+"email" field
+Suggested Fix
+
+
+For this finding
+• Address: POST /api/compute (HTTP 500)
+
+Suggested fix: find and fix the failing server call
+1. Check the server logs for this endpoint and fix the error or the upstream/gateway it depends on
+2. Return a clear error to the browser and show a retry or error state instead of a broken screen
+3. Add health checks and a timeout on upstream calls so a bad gateway fails fast with a proper status
+4. Add a test that forces the endpoint to 5xx and confirms the UI shows an error, not a crash
+
+Stack Trace
+Click to expand
+API Contract Violation
 Medium
 ×5
+
+CWE
+CWE-754
+At detection
+Needs verification · 69% evidence
+Message
+HTTP 200 GET /api/soft-fail · HTTP 200 returned an error payload, indicating that the request reported success at the HTTP level but the application response indicates a failure.
+API Endpoint
+GET /api/soft-fail
+Reproduction Guide
+
+1
+open
+Navigate to /network-errors
+2
+rapid
+Click 4 controls at the same time: the "Soft-fail 200 body" button, the "Place order (500)" button, the "🦁 BugSafari Target" link and the "← all scenarios" link
+Route
+/network-errors
+Suggested Fix
+
+
+For this finding
+• Address: GET /api/soft-fail (HTTP 200)
+
+Suggested fix: verify the reply before trusting it
+1. Check response.ok, the HTTP status, and the Content-Type before calling response.json(), and handle non-JSON replies on purpose
+2. When the body carries its own error flag (error:true, success:false, status:"error"), treat it as a failure and surface it instead of showing success
+3. Fix the endpoint so real failures return the correct status (4xx/5xx) with proper JSON, not a 200 or an HTML error page
+4. Add a test that returns an error body and confirms the UI shows the failure instead of crashing or showing success
+
+Stack Trace
+Click to expand
+Boundary Stress Failure
+Medium
+
+CWE
+CWE-400
+At detection
+Inconclusive · 36% evidence
+Message
+Network request failed: POST /api/compute (net::ERR_FAILED) · The failed request left the interface broken (unhandled error or stuck UI).
+Element
+Compute
+Reproduction Guide
+
+1
+open
+Navigate to /
+2
+click
+Click the "Input Boundary Stress / Backend Crash" link. Result: the app moved to /input-fuzzing
+Route
+/
+·
+Section
+"Security"
+·
+Element
+"Input Boundary Stress / Backend Crash" link
+3
+click
+Click the "Input Boundary Stress / Backend Crash" link
+Route
+/input-fuzzing
+·
+Section
+"Security"
+·
+Element
+"Input Boundary Stress / Backend Crash" link
+4
+rapid
+Click 10 points spread evenly across the visible area of the 1440×900 window
+Route
+/input-fuzzing
+5
+type
+Type "{"username": {"$ne": null}, "password": {"$ne": null}}" into the "email" field
+Route
+/input-fuzzing
+·
+Element
+"email" field
+6
+submit
+Submit the form
+Route
+/input-fuzzing
+7
+type
+Type "{"__proto__": {"": ""}}" into the "config" text box
+Route
+/input-fuzzing
+·
+Element
+"config" text box
+8
+submit
+Click the "Compute" button to submit the form
+Route
+/input-fuzzing
+9
+network
+Make the /api/compute request fail (aborted) to test the app's error handling
+Route
+/input-fuzzing
+10
+click
+Click the "Compute" button, repeated 4 times in quick succession
+Route
+/input-fuzzing
+·
+Element
+"Compute" button
+Suggested Fix
+
+
+For this finding
+• Address: POST /api/compute
+
+Suggested fix: handle slow, cancelled, and overwhelming requests
+1. Add a request timeout and cancel in-flight calls that are superseded
+2. Add retry with backoff plus a visible error and timeout state for the user
+3. Guard the call site against empty, slow, or cancelled replies, and debounce bursts
+
+Stack Trace
+Click to expand
+Runtime Stability Exception
+Medium
+
+CWE
+CWE-248
+At detection
+Needs verification · 79% evidence
+Message
+Failed to fetch
+Element
+Compute
+Reproduction Guide
+
+1
+open
+Navigate to /
+2
+click
+Click the "Input Boundary Stress / Backend Crash" link. Result: the app moved to /input-fuzzing
+Route
+/
+·
+Section
+"Security"
+·
+Element
+"Input Boundary Stress / Backend Crash" link
+3
+click
+Click the "Input Boundary Stress / Backend Crash" link
+Route
+/input-fuzzing
+·
+Section
+"Security"
+·
+Element
+"Input Boundary Stress / Backend Crash" link
+4
+rapid
+Click 10 points spread evenly across the visible area of the 1440×900 window
+Route
+/input-fuzzing
+5
+type
+Type "{"username": {"$ne": null}, "password": {"$ne": null}}" into the "email" field
+Route
+/input-fuzzing
+·
+Element
+"email" field
+6
+submit
+Submit the form
+Route
+/input-fuzzing
+7
+type
+Type "{"__proto__": {"": ""}}" into the "config" text box
+Route
+/input-fuzzing
+·
+Element
+"config" text box
+8
+submit
+Click the "Compute" button to submit the form
+Route
+/input-fuzzing
+9
+network
+Make the /api/compute request fail (aborted) to test the app's error handling
+Route
+/input-fuzzing
+10
+click
+Click the "Compute" button, repeated 4 times in quick succession
+Route
+/input-fuzzing
+·
+Element
+"Compute" button
+Suggested Fix
+
+
+A promise failed and nothing caught it: a failed `await` or `.then` with no `.catch`. Wrap the async call in try/catch and show the error to the user.
+
+Failing location: at onSubmit (https://bagsafari-target-app-knuz.vercel.app/assets/index-D3bp60Br.js:12:2349)
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
+
+Stack Trace
+Click to expand
+Duplicate Action
+Medium
+
+CWE
+CWE-837
+At detection
+Needs verification · 65% evidence
+Message
+POST /api/compute was sent again 365ms later, after the first had already completed, and both requests succeeded, so the action ran twice.
+Element
+Compute
+Reproduction Guide
+
+1
+open
+Navigate to /input-fuzzing
+2
+click
+Click the "Compute" control. Result: the server responded HTTP 200
+Route
+/input-fuzzing
+·
+Element
+"Compute" control
+3
+click
+Click the "Compute" control. Result: the server responded HTTP 200
+Route
+/input-fuzzing
+·
+Element
+"Compute" control
+Suggested Fix
+
+
+The control fired the same state-changing request twice with no debounce or disable-on-submit guard.
+Suggested fix: enforce a single submission per action
+1. Disable or debounce the control on the first submit until the request settles
+2. Send an idempotency key the server can dedupe, or guard the write with an optimistic-concurrency token
+3. Add a test that double-clicks the control and confirms the backend commits the action only once
+
+Stack Trace
+Click to expand
+Runtime Stability Exception
+Medium
+×7
 
 CWE
 CWE-248
 At detection
 Confirmed · 100% evidence
 Message
-Cannot read properties of null (reading 'innerHTML')
+ChunkLoadError: Loading chunk 12 failed
+Element
+Chunk load failure
 Reproduction Guide
 
 1
 open
-Navigate to /
+Navigate to /js-runtime-errors
+2
+rapid
+Click 5 controls at the same time: the "Chunk load failure" button, the "Unhandled rejection" button, the "SyntaxError (bad JSON)" button, the "ReferenceError" button and the "Stack overflow" button
+Route
+/js-runtime-errors
 Suggested Fix
 
 
-The code read a field on `null`, usually a missing page element (`querySelector` returned null) or an empty API result. Confirm the lookup found something before using it.
+A page bundle failed to download, often after a new deploy or a network hiccup. Add a retry or refresh fallback around the dynamic import.
 
-Failing location: at https://cebupacificair.com/:99:459
+Failing location: at Object.run (https://bagsafari-target-app-knuz.vercel.app/assets/index-D3bp60Br.js:11:25071)
 
 Suggested fix:
 1. Reproduce the fault using the replay checklist above
@@ -29,23 +398,296 @@ Stack Trace
 Click to expand
 Runtime Stability Exception
 Medium
-×5
+×24
+
+CWE
+CWE-248
+At detection
+Confirmed · 100% evidence
+Message
+Unexpected token '<', "<not json>" is not valid JSON
+Element
+SyntaxError (bad JSON)
+Reproduction Guide
+
+1
+open
+Navigate to /js-runtime-errors
+2
+rapid
+Click 5 controls at the same time: the "Chunk load failure" button, the "Unhandled rejection" button, the "SyntaxError (bad JSON)" button, the "ReferenceError" button and the "Stack overflow" button
+Route
+/js-runtime-errors
+Suggested Fix
+
+
+The browser could not parse the script: malformed JSON, a broken template, or a build problem. Confirm the failing reply or source is valid JS or JSON.
+
+Failing location: at JSON.parse (<anonymous>)
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
+
+Stack Trace
+Click to expand
+Runtime Stability Exception
+Medium
+×9
+
+CWE
+CWE-248
+At detection
+Confirmed · 100% evidence
+Message
+handleSubmitMissing is not defined
+Element
+ReferenceError
+Reproduction Guide
+
+1
+open
+Navigate to /js-runtime-errors
+2
+rapid
+Click 5 controls at the same time: the "Chunk load failure" button, the "Unhandled rejection" button, the "SyntaxError (bad JSON)" button, the "ReferenceError" button and the "Stack overflow" button
+Route
+/js-runtime-errors
+Suggested Fix
+
+
+The code used a name that does not exist here: a typo, a missing import, or a variable used before it was declared. Check the spelling and that it is imported or declared.
+
+Failing location: at eval (eval at run (https://bagsafari-target-app-knuz.vercel.app/assets/index-D3bp60Br.js:11:24793), <anonymous>:1:1)
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
+
+Stack Trace
+Click to expand
+Runtime Stability Exception
+Medium
+×12
+
+CWE
+CWE-248
+At detection
+Confirmed · 100% evidence
+Message
+silent fetch failed
+Reproduction Guide
+
+1
+open
+Navigate to /js-runtime-errors
+2
+rapid
+Click 5 controls at the same time: the "Chunk load failure" button, the "Unhandled rejection" button, the "SyntaxError (bad JSON)" button, the "ReferenceError" button and the "Stack overflow" button
+Route
+/js-runtime-errors
+Suggested Fix
+
+
+A promise failed and nothing caught it: a failed `await` or `.then` with no `.catch`. Wrap the async call in try/catch and show the error to the user.
+
+Failing location: at Object.run (https://bagsafari-target-app-knuz.vercel.app/assets/index-D3bp60Br.js:11:25175)
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
+
+Stack Trace
+Click to expand
+Runtime Stability Exception
+Medium
+×4
 
 CWE
 CWE-248
 At detection
 Needs verification · 79% evidence
 Message
-Blocked script execution in 'about:blank' because the document's frame is sandboxed and the 'allow-scripts' permission is not set.
+5 is not a function
+Element
+Not a function
 Reproduction Guide
 
 1
 open
-Navigate to /
+Navigate to /constraint-bypass
+2
+rapid
+Click 10 points spread evenly across the visible area of the 1440×900 window
+Route
+/constraint-bypass
+3
+click
+Click the "Accessibility (WCAG 2.1)" link
+Route
+/js-runtime-errors
+·
+Element
+"Accessibility (WCAG 2.1)" link
+4
+click
+Click the "Client-side Constraint Bypass" link
+Route
+/js-runtime-errors
+·
+Element
+"Client-side Constraint Bypass" link
+5
+click
+Click the "Duplicate Actions / Double Submit" link
+Route
+/js-runtime-errors
+·
+Element
+"Duplicate Actions / Double Submit" link
+6
+click
+Click the "SPA State Races" link
+Route
+/js-runtime-errors
+·
+Element
+"SPA State Races" link
+7
+click
+Click the "JavaScript Runtime Errors" link
+Route
+/js-runtime-errors
+·
+Element
+"JavaScript Runtime Errors" link
+8
+click
+Click the "Stack overflow" button, repeated 2 times in quick succession
+Route
+/js-runtime-errors
+·
+Panel
+"Throw a runtime fault"
+·
+Element
+"Stack overflow" button
+9
+rapid
+Click 5 controls at the same time: the "Chunk load failure" button, the "Unhandled rejection" button, the "SyntaxError (bad JSON)" button, the "ReferenceError" button and the "Stack overflow" button
+Route
+/js-runtime-errors
+10
+open
+Navigate to /js-runtime-errors
 Suggested Fix
 
 
-An unhandled error stopped the current operation from completing. Reproduce it with the checklist, wrap the failing operation in try/catch, and check its inputs.
+The code called something that is not a function: a typo, a value that is actually undefined, or a method that does not exist on that type. Log the value before calling it.
+
+Failing location: at Object.run (https://bagsafari-target-app-knuz.vercel.app/assets/index-D3bp60Br.js:11:24858)
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
+
+Stack Trace
+Click to expand
+Runtime Stability Exception
+Medium
+×17
+
+CWE
+CWE-248
+At detection
+Needs verification · 69% evidence
+Message
+Unexpected token 'T', "The page c"... is not valid JSON
+Reproduction Guide
+
+1
+open
+Navigate to /state-races
+2
+rapid
+Click 3 controls at the same time: the "Increment (unguarded)" button, the "← all scenarios" link and the "🦁 BugSafari Target" link
+Route
+/state-races
+Suggested Fix
+
+
+The browser could not parse the script: malformed JSON, a broken template, or a build problem. Confirm the failing reply or source is valid JS or JSON.
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
+Runtime Stability Exception
+Medium
+×2
+
+CWE
+CWE-248
+At detection
+Confirmed · 100% evidence
+Message
+Invalid array length
+Element
+RangeError
+Reproduction Guide
+
+1
+open
+Navigate to /js-runtime-errors
+2
+rapid
+Click 5 controls at the same time: the "ReferenceError" button, the "RangeError" button, the "Unhandled rejection" button, the "Chunk load failure" button and the "Not iterable" button
+Route
+/js-runtime-errors
+Suggested Fix
+
+
+A value fell outside its allowed range (for example a negative array length or recursion that went too deep). Check the number before using it to size or index.
+
+Failing location: at Object.run (https://bagsafari-target-app-knuz.vercel.app/assets/index-D3bp60Br.js:11:24951)
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
+
+Stack Trace
+Click to expand
+Runtime Stability Exception
+Medium
+×6
+
+CWE
+CWE-248
+At detection
+Confirmed · 100% evidence
+Message
+42 is not iterable
+Reproduction Guide
+
+1
+open
+Navigate to /js-runtime-errors
+2
+rapid
+Click 5 controls at the same time: the "ReferenceError" button, the "RangeError" button, the "Unhandled rejection" button, the "Chunk load failure" button and the "Not iterable" button
+Route
+/js-runtime-errors
+Suggested Fix
+
+
+The code looped over something that is not a list (it was `undefined`, `null`, or an object). Set it to `[]` before the loop, or confirm the API returned an array.
+
+Failing location: at Object.run (https://bagsafari-target-app-knuz.vercel.app/assets/index-D3bp60Br.js:11:24734)
 
 Suggested fix:
 1. Reproduce the fault using the replay checklist above

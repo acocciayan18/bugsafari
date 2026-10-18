@@ -414,7 +414,7 @@ function ClinicalForensicsDashboard({
                 />
               )}
               {!isQueued && hasRunCompleted && !isActiveSession && (
-                <RunCompletionStatus outcome={terminationOutcome} reason={terminationReason} />
+                <RunCompletionStatus />
               )}
               {/* Standby indicator — job is waiting for a free worker; all controls locked. */}
               {isQueued && <QueueStandbyChip />}
