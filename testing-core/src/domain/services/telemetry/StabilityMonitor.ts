@@ -1,4 +1,4 @@
-import type { Dialog, Page, Request, Response } from 'playwright';
+import type { ConsoleMessage, Dialog, Page, Request, Response } from 'playwright';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { decideDialog } from '../exploration/dialogPolicy.js';
 import { resolveReproFaultUrl } from './faultUrlAnchor.js';
@@ -38,7 +38,7 @@ import type {
   ReproductionSnapshot,
   StateFingerprint,
 } from '../../../../../shared/types.js';
-import { isActionableNetworkStatus, routeNetworkEvent, NON_TARGET_NETWORK_REASONS, siteRelationship, PLAYWRIGHT_MARKERS, resolveSeverity, NETWORK_ACTION, isEnvironmentTransportFailure, isAntiBotChallengeRequest } from '../../../../../shared/types.js';
+import { isActionableNetworkStatus, routeNetworkEvent, NON_TARGET_NETWORK_REASONS, siteRelationship, PLAYWRIGHT_MARKERS, resolveSeverity, NETWORK_ACTION, isEnvironmentTransportFailure, isAntiBotChallengeRequest, isBrowserSecurityBlock } from '../../../../../shared/types.js';
 import { NetworkQuarantine } from '../../../infrastructure/monitoring/NetworkQuarantine.js';
 import { initialDegradeState, onTargetFailure, onTargetSuccess, type DegradeState } from './networkDegradeDecision.js';
 import type { StabilityMonitorDeps } from '../exploration/types.js';
@@ -197,24 +197,23 @@ const RESOURCE_LOAD_CONSOLE_RE = /^Failed to load resource:/i;
 // swallowed.
 const REACT_DEV_WARNING_RE = /received nan for the \S+ attribute|prop on \S+ should not be null\. consider using an empty string|should not be null\. consider using an empty string to clear the component|each child in a (?:list|array) should have a unique ["']?key/i;
 
-// Browser CSP-violation reports ("… violates the following Content Security Policy directive …";
-// "Refused to apply inline style/execute inline script because it violates …"). These are the
-// browser's own security-policy blocks, not app JS exceptions — often the CSP correctly blocking
-// inline execution — so they must never become a RUNTIME_STABILITY_EXCEPTION (CWE-248) with
-// inapplicable "wrap in try/catch" advice. The full phrase is unique to these reports.
-const CSP_VIOLATION_RE = /content security policy/i;
+// Browser security/policy blocks (CSP violations, iframe-sandbox "Blocked script execution …
+// allow-scripts", permissions/feature policy) are the browser's own enforcement — often correctly
+// blocking inline/sandboxed execution — not app JS exceptions, so they must never become a
+// RUNTIME_STABILITY_EXCEPTION (CWE-248) with inapplicable "wrap in try/catch" advice. The shared
+// predicate (isBrowserSecurityBlock) is reused by the provenance classifier so the two agree.
 
 // Error-level console lines that must NOT become findings: network-stack errors (already
 // covered by response/requestfailed monitoring), browser resource-load errors (ditto, and
 // their "failed to load" text otherwise misclassifies a bare 4xx as a navigation loop),
 // React development-only warnings (absent in production; here only provoked by fuzzed input),
-// and browser CSP-violation reports (a security-policy block, not an app JS exception).
+// and browser security/policy blocks (CSP / iframe-sandbox / permissions policy, not app JS).
 export function isIgnorableConsoleError(text: string): boolean {
   if (!text) return false;
   if (text.includes('net::ERR') || text.includes('ERR_')) return true;
   if (RESOURCE_LOAD_CONSOLE_RE.test(text)) return true;
   if (REACT_DEV_WARNING_RE.test(text)) return true;
-  if (CSP_VIOLATION_RE.test(text)) return true;
+  if (isBrowserSecurityBlock(text)) return true;
   // Media-playback errors ("no supported sources") are an environment artifact: Playwright's
   // codec-less bundled Chromium rejects H.264/AAC that real Chrome decodes. Suppress as noise.
   if (isMediaPlaybackError(text)) return true;
@@ -222,6 +221,17 @@ export function isIgnorableConsoleError(text: string): boolean {
   // because Playwright's Chromium lacks a capability real Chrome exposes; never an app defect.
   if (isEnvironmentArtifactError(text)) return true;
   return false;
+}
+
+// A console error whose source frame is about:blank comes from a sandboxed/blank sub-frame (ad
+// slot, placeholder, third-party embed) emitting browser-level messages, never the target app's
+// own JS. Drop it so a child frame's noise is not attributed to the top-level app.
+export function isBlankFrameConsoleError(message: Pick<ConsoleMessage, 'location'>): boolean {
+  try {
+    return (message.location()?.url ?? '') === 'about:blank';
+  } catch {
+    return false;
+  }
 }
 
 // Browser fetch/XHR rejection signatures. An app that CATCHES its own failed request and logs it
@@ -1116,6 +1126,7 @@ export class StabilityMonitor {
       if (message.type() !== 'error') return;
       const text = message.text();
       if (isIgnorableConsoleError(text)) return;
+      if (isBlankFrameConsoleError(message)) return;
       void this.reportRuntimeFault(page, 'CONSOLE', text);
     });
 

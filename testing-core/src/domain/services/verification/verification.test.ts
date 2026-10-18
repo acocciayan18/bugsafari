@@ -167,6 +167,20 @@ check('ResizeObserver loop → BROWSER_EXTENSION noise', () => {
   assert.equal(v.origin, 'BROWSER_EXTENSION');
 });
 
+check('sandboxed-iframe "Blocked script execution" → not TARGET_APP', () => {
+  const v = classifyFaultOrigin({
+    faultType: 'CONSOLE',
+    message: "Blocked script execution in 'about:blank' because the document's frame is sandboxed and the 'allow-scripts' permission is not set.",
+  });
+  assert.equal(v.origin, 'BROWSER_EXTENSION');
+  assert.equal(v.isTargetApp, false);
+});
+
+check('CSP violation → not TARGET_APP', () => {
+  const v = classifyFaultOrigin({ faultType: 'CONSOLE', message: 'Refused to execute inline script because it violates the following Content Security Policy directive.' });
+  assert.equal(v.isTargetApp, false);
+});
+
 check('cross-origin API failure (split frontend/backend deploy) is still TARGET_APP', () => {
   const v = classifyFaultOrigin({
     faultType: 'NETWORK',

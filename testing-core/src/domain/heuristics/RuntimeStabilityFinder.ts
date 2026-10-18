@@ -298,6 +298,12 @@ export class RuntimeStabilityFinder {
     // an API-contract fault, the URL whose reply was not JSON) so the advice points the reader at
     // THIS fault, not a class-generic blob (fb-test.txt's complaint about templated fixes).
     const where = topStackFrame(o?.stack);
+    // A stackless generic line that matches no JS-error shape is not a thrown exception (e.g. a
+    // browser-emitted message that slipped the noise filter): there is no failing line to guard, so
+    // the generic try/catch checklist does not apply.
+    if (subtype === 'GENERIC_EXCEPTION' && !where && !CORE_ERROR_RE.test(o?.message ?? '')) {
+      return 'This is a browser-emitted console message, not a thrown JavaScript exception, so there is no failing line to guard. If it is a security or sandbox policy block, adjust the relevant policy (CSP, iframe `sandbox`, or permissions policy); if a third-party frame emitted it, it is not a defect in this app.';
+    }
     const context: string[] = [];
     if (where) context.push(`Failing location: ${where}`);
     if (subtype === 'API_CONTRACT_VIOLATION' && o?.url) context.push(`Endpoint whose reply was not JSON: ${o.url}`);

@@ -2,7 +2,7 @@
 // Run: `npx tsx src/domain/services/telemetry/StabilityMonitor.consoleNoise.test.ts`.
 
 import assert from 'node:assert/strict';
-import { isIgnorableConsoleError, isFetchFailureText } from './StabilityMonitor.js';
+import { isIgnorableConsoleError, isFetchFailureText, isBlankFrameConsoleError } from './StabilityMonitor.js';
 
 let passed = 0;
 function check(name: string, fn: () => void): void {
@@ -35,6 +35,13 @@ check('CSP inline-style violation is ignored', () =>
   assert.equal(isIgnorableConsoleError("Applying inline style violates the following Content Security Policy directive 'default-src 'none''. Either the 'unsafe-inline' keyword, a hash, or a nonce is required. The action has been blocked."), true));
 check('CSP inline-script violation is ignored', () =>
   assert.equal(isIgnorableConsoleError('Refused to execute inline script because it violates the following Content Security Policy directive: "script-src \'self\'".'), true));
+
+// Iframe-sandbox and permissions/feature-policy blocks are the SAME class of browser enforcement
+// as CSP — the browser blocking execution, not an app exception. (cebupac-test.txt false positive.)
+check('sandboxed-iframe "Blocked script execution" is ignored', () =>
+  assert.equal(isIgnorableConsoleError("Blocked script execution in 'about:blank' because the document's frame is sandboxed and the 'allow-scripts' permission is not set."), true));
+check('permissions-policy block is ignored', () =>
+  assert.equal(isIgnorableConsoleError("[Violation] Permissions policy violation: unload is not allowed in this document."), true));
 
 // Media-playback errors are an environment artifact: Playwright's codec-less Chromium rejects
 // H.264/AAC that real Chrome decodes. "No supported sources" must never be a CWE-248 exception.
@@ -81,5 +88,15 @@ check('"Load failed" (Safari) is a fetch failure', () =>
 check('an unrelated app crash is NOT a fetch failure', () =>
   assert.equal(isFetchFailureText("Cannot read properties of undefined (reading 'length')"), false));
 check('empty text is not a fetch failure', () => assert.equal(isFetchFailureText(''), false));
+
+// isBlankFrameConsoleError — a console error sourced from an about:blank sub-frame is a
+// sandboxed/blank child frame's browser noise, never the top-level app's own JS.
+console.log('\nisBlankFrameConsoleError — frame-origin gate');
+check('about:blank source frame is dropped', () =>
+  assert.equal(isBlankFrameConsoleError({ location: () => ({ url: 'about:blank', lineNumber: 0, columnNumber: 0 }) }), true));
+check('a real app source URL is kept', () =>
+  assert.equal(isBlankFrameConsoleError({ location: () => ({ url: 'https://cebupacificair.com/main.js', lineNumber: 1, columnNumber: 1 }) }), false));
+check('an empty source URL is kept (not over-dropped)', () =>
+  assert.equal(isBlankFrameConsoleError({ location: () => ({ url: '', lineNumber: 0, columnNumber: 0 }) }), false));
 
 console.log(`\n${passed} passed`);

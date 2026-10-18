@@ -157,6 +157,15 @@ export const BROWSER_NOISE_MARKERS: readonly string[] = [
   'script error.',
 ];
 
+/** Browser-enforced security/policy blocks (CSP, iframe sandbox, permissions/feature policy) - never an app JS exception. */
+export const BROWSER_SECURITY_BLOCK_PATTERNS: readonly RegExp[] = [
+  /content security policy/i,
+  /blocked script execution/i,
+  /sandboxed and the '?allow-scripts/i,
+  /permissions policy/i,
+  /feature policy/i,
+];
+
 /**
  * Embedded third-party SDK console noise (social widgets, chat, analytics). A caught-
  * and-logged error from a vendor SDK the page embeds is the vendor's concern, not a
@@ -326,6 +335,11 @@ export function isHarnessArtifact(text: string, url = ''): boolean {
 /** True when the text says the request was cancelled/aborted rather than failed. */
 export function isCancelledRequest(text: string): boolean {
   return matchesAny(text, ABORT_PATTERNS);
+}
+
+/** True for a browser-enforced security/policy block (CSP / iframe sandbox / permissions policy), not an app exception. */
+export function isBrowserSecurityBlock(text: string): boolean {
+  return matchesAny(text, BROWSER_SECURITY_BLOCK_PATTERNS);
 }
 
 const verdict = (

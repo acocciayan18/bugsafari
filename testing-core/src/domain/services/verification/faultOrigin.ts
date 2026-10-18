@@ -12,6 +12,7 @@ import type { FaultOrigin } from '../../../../../shared/types.js';
 import {
   ABORT_PATTERNS,
   BROWSER_NOISE_MARKERS,
+  isBrowserSecurityBlock,
   BUGSAFARI_MARKERS,
   ENVIRONMENT_TRANSPORT_MARKERS,
   EXTENSION_URL_PREFIXES,
@@ -73,6 +74,11 @@ export function classifyFaultOrigin(input: OriginInput): OriginVerdict {
   }
   if (includesAny(text, BROWSER_NOISE_MARKERS)) {
     return { origin: 'BROWSER_EXTENSION', isTargetApp: false, reason: 'Benign browser/devtools console noise.' };
+  }
+  // Browser-enforced security/policy block (CSP, iframe sandbox, permissions policy) - the browser
+  // blocking execution, not an app exception. Reject before the TARGET_APP default claims it.
+  if (isBrowserSecurityBlock(text)) {
+    return { origin: 'BROWSER_EXTENSION', isTargetApp: false, reason: 'Browser-enforced security/policy block (CSP / iframe sandbox / permissions policy), not an application exception.' };
   }
 
   // Embedded vendor SDK (Facebook widget, chat, analytics) logging its own caught

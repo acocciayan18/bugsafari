@@ -1,0 +1,53 @@
+Runtime Stability Exception
+Medium
+×5
+
+CWE
+CWE-248
+At detection
+Confirmed · 100% evidence
+Message
+Cannot read properties of null (reading 'innerHTML')
+Reproduction Guide
+
+1
+open
+Navigate to /
+Suggested Fix
+
+
+The code read a field on `null`, usually a missing page element (`querySelector` returned null) or an empty API result. Confirm the lookup found something before using it.
+
+Failing location: at https://cebupacificair.com/:99:459
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
+
+Stack Trace
+Click to expand
+Runtime Stability Exception
+Medium
+×5
+
+CWE
+CWE-248
+At detection
+Needs verification · 79% evidence
+Message
+Blocked script execution in 'about:blank' because the document's frame is sandboxed and the 'allow-scripts' permission is not set.
+Reproduction Guide
+
+1
+open
+Navigate to /
+Suggested Fix
+
+
+An unhandled error stopped the current operation from completing. Reproduce it with the checklist, wrap the failing operation in try/catch, and check its inputs.
+
+Suggested fix:
+1. Reproduce the fault using the replay checklist above
+2. Apply that guard at the failing line
+3. Add a test that confirms it stays stable
