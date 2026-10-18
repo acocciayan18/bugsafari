@@ -112,6 +112,17 @@ const MAX_NETWORK_REWARDS_PER_ACTION = 3;
 // Depth of the acted-element history for time-keyed fault attribution. A fault's causal
 // window is 2s, so a handful of recent actions is ample; bounded so it never grows.
 const ACTED_HISTORY_CAP = 32;
+// Value-entry field input types: typing into these delivers a value but issues no request.
+const VALUE_ENTRY_INPUT_TYPES = new Set(['text', 'email', 'number', 'password', 'search', 'tel', 'url', 'date', 'datetime-local', 'month', 'week', 'time', 'color', 'range', '']);
+// True when a control can itself ISSUE a network request (button/submit/anchor/clickable).
+// A value-entry field (text input, textarea, select) delivers a value but never fires the
+// fetch, so a network fault must not be stamped on it — the submit/click control did.
+function isRequestIssuingTarget(el: InteractiveElement): boolean {
+  const tag = (el.tagName ?? '').toLowerCase();
+  if (tag === 'textarea' || tag === 'select') return false;
+  if (tag === 'input') return !VALUE_ENTRY_INPUT_TYPES.has((el.type ?? '').toLowerCase());
+  return true;
+}
 // A navigation within this window of the last engine action is attributed to that action —
 // i.e. BugSafari's click/goto caused the route change (used to suppress self-cancelled requests).
 const NAV_CAUSE_WINDOW_MS = 1200;
@@ -1167,7 +1178,7 @@ export class ExplorationEngine {
       getActiveUrlAt: (atMs) => navTrail.urlAt(atMs),
       onApiFailure: () => { this.runtimeMetrics.requestsCount++; },
       recordNetworkFailure: () => this.networkFailureCascade.recordFailure(),
-      getInteractionContext: (atMs, windowMs) => this.interactionContextAt(atMs, windowMs),
+      getInteractionContext: (atMs, windowMs, requestIssuingOnly) => this.interactionContextAt(atMs, windowMs, requestIssuingOnly),
       isConcurrentBurstAt: (atMs, windowMs) => isConcurrentBurstAt(this.actedHistory.map((h) => ({ selector: h.target.selector, actedAtMs: h.actedAtMs })), atMs, windowMs),
       wasRequestSupersededByEngineNav: (startMs, endMs) => navTrail.supersededInFlight(startMs, endMs),
       getTargetOrigin: () => this.canonicalOrigin,
@@ -1908,12 +1919,14 @@ export class ExplorationEngine {
     return null;
   }
 
-  private interactionContextAt(atMs: number, windowMs: number = NETWORK_ATTRIBUTION_WINDOW_MS): InteractionContext | null {
+  private interactionContextAt(atMs: number, windowMs: number = NETWORK_ATTRIBUTION_WINDOW_MS, requestIssuingOnly = false): InteractionContext | null {
     // Resolve the element actually being actuated AT the fault's instant: the newest
     // history entry acted at or before atMs and still inside the causal window. Scanning
     // the history (not just the latest slot) recovers a slow request's true culprit when
     // a later action has since replaced the "latest" pointer (async-lag attribution).
     // `windowMs` defaults to the network window; runtime-fault callers pass a tighter one.
+    // `requestIssuingOnly` (network path) skips value-entry fields that deliver a value but
+    // issue no request, so a 500 is attributed to the submit/click control, not a typed input.
     for (let i = this.actedHistory.length - 1; i >= 0; i--) {
       const entry = this.actedHistory[i];
       if (entry.actedAtMs > atMs) continue;
@@ -1923,6 +1936,7 @@ export class ExplorationEngine {
       // such a span AND this entry did not supersede it (i.e. was acted during/before the
       // span, not as a fresh action after it) — so a genuine post-span click still attributes.
       if (ActiveScenarioTracker.offTargetVetoes(atMs, entry.actedAtMs)) return null;
+      if (requestIssuingOnly && !isRequestIssuingTarget(entry.target)) continue;
       return {
         selector: entry.target.selector,
         label: resolveElementLabel(entry.target),

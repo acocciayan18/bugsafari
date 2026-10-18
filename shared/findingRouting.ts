@@ -18,15 +18,29 @@ export interface RoutableFinding {
   reason?: string;
   statusCode?: number;
   url?: string;
-  attribution?: { routingReason?: string; bugClass?: string; origin?: string };
+  attribution?: { routingReason?: string; bugClass?: string; origin?: string; verificationStatus?: string };
   stackTrace?: string;
 }
+
+// Force-promoted application faults bypass the confidence floor by design: a proven UI
+// break or a rejected first-party request surfaces at NEEDS_VERIFICATION even before replay.
+// Everything else scored INCONCLUSIVE is telemetry only.
+const FORCE_PROMOTED_REASONS: ReadonlySet<string> = new Set(['CHAOS_INJECTED', 'BROKE_UI', 'CLIENT_REQUEST_REJECTED']);
 
 export function isReportableFinding(finding: RoutableFinding): boolean {
   // Provenance is authoritative: a fault attributed to Playwright, the environment,
   // BugSafari itself, or a browser extension is never a target-app finding.
   const origin = finding.attribution?.origin;
   if (origin && NON_APPLICATION_ORIGINS.has(origin)) return false;
+
+  // A finding scored INCONCLUSIVE (confidence below the reporting threshold) is telemetry
+  // only, mirroring StabilityMonitor.verifyFault's INCONCLUSIVE drop so the live and saved
+  // surfaces agree. Force-promoted application faults are exempt. Absent status (legacy
+  // records) is left alone — only an explicit INCONCLUSIVE is withheld.
+  if (finding.attribution?.verificationStatus === 'INCONCLUSIVE'
+    && !FORCE_PROMOTED_REASONS.has(finding.attribution?.routingReason ?? '')) {
+    return false;
+  }
 
   const routingReason = finding.attribution?.routingReason;
   if (routingReason) return isPromotableReason(routingReason);

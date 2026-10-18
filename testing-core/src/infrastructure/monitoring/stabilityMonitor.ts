@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
 import type { TelemetryGateway } from '../../application/ports/TelemetryGateway.js';
 import type { ActionRecord, FindingAttribution, StateFingerprint } from '../../../../shared/types.js';
-import { stripContradictoryFreezeObservations } from '../../../../shared/reproduction.js';
+import { stripContradictoryFreezeObservations, isInertBurstObservation, isResponsiveBurstObservation } from '../../../../shared/reproduction.js';
 import { classifyFault, type FaultType } from '../../bugs/knowledgeBase/index.js';
 import { BUG_CATALOG } from '../../bugs/knowledgeBase/bugCatalog.js';
 import { deriveStableBugId } from '../../domain/services/exploration/bugIdentity.js';
@@ -160,8 +160,28 @@ export function setupStabilityMonitoring(
     // blank while the saved report named one.
     const bugId = deriveStableBugId('client-render-freeze', [normalizeRoutePath(url)]);
     const reproduction = ActiveScenarioTracker.flushSnapshot({ faultUrl: url, faultAtMs });
-    // A freeze means the page could not respond; a burst that registered fast clicks
-    // contradicts it, so drop those responsive-burst observations from the freeze evidence.
+    // An UNMEASURED (heartbeat-only) freeze whose sole correlated interaction was an inert
+    // burst (zero clicks landed) with no responsive burst never actually interacted with the
+    // app — there is no evidence the app did anything, and no measured main-thread block to
+    // stand on its own. Suppress it to telemetry (mirrors the concurrent-stress inert guard)
+    // rather than emit a HIGH finding blamed on clicks that did not register. A watchdog-
+    // measured block (blockMs present) is a real, self-standing signal and is never suppressed
+    // here; the contradictory burst line is simply stripped below.
+    if (blockMs === undefined
+      && reproduction.narrative.some(isInertBurstObservation)
+      && !reproduction.narrative.some(isResponsiveBurstObservation)) {
+      telemetry.emitTelemetry({
+        timestamp,
+        type: 'ACTION',
+        meta: {
+          actionExecuted: 'freeze-suppressed-inert-burst',
+          message: 'Heartbeat freeze signal had no measured block and no interaction that registered; suppressed as inconclusive.',
+        },
+      });
+      return;
+    }
+    // A freeze means the page could not respond; a responsive burst (fast clicks landed)
+    // contradicts it and an inert burst never interacted, so neither rides along as evidence.
     const reproductionPlaybook = stripContradictoryFreezeObservations(reproduction.narrative);
     // Renderer is unresponsive during a freeze — capture cookies only (no storage evaluate).
     const stateFingerprint = await captureStateFingerprint(page, { cookiesOnly: true });
@@ -354,7 +374,23 @@ export function setupStabilityMonitoring(
     if (isTeardown()) return;
     if (typeof gapMs !== 'number' || !Number.isFinite(gapMs) || gapMs < FREEZE_BLOCK_THRESHOLD_MS) return;
     // Onset = now minus the measured block; anchors the reproduction before the freeze.
-    void emitFreezeFinding(Date.now() - Math.round(gapMs), gapMs);
+    const onsetMs = Date.now() - Math.round(gapMs);
+    // A main-frame navigation during (or just before) the measured block is a document swap
+    // or a nav-suspended timer, not a wedged thread — the in-page tick gap it produces is an
+    // artifact, so suppress it (mirrors the heartbeat path's navigation guard). A genuine
+    // in-page compute freeze on a stable route does not coincide with a navigation.
+    if (lastMainFrameNavAt >= onsetMs - NAV_SETTLE_MS) {
+      telemetry.emitTelemetry({
+        timestamp: new Date().toISOString(),
+        type: 'ACTION',
+        meta: {
+          actionExecuted: 'freeze-suppressed-navigation',
+          message: 'In-page watchdog gap coincided with a page navigation; suppressed as a document swap, not a freeze.',
+        },
+      });
+      return;
+    }
+    void emitFreezeFinding(onsetMs, gapMs);
   };
   // Installs the ticking watchdog in a document. Idempotent per document. The reporter
   // hook is read lazily (at tick time), so it works even if exposeFunction has not yet

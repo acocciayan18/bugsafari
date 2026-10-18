@@ -200,7 +200,7 @@ export interface StabilityMonitorDeps {
   /** Interaction the engine was executing at `atMs`, correlating a request to its triggering
    *  control. `windowMs` overrides the causal window — callers use a tighter one for runtime
    *  faults so a stale persistent control isn't blamed for a background/async fault. */
-  getInteractionContext(atMs: number, windowMs?: number): InteractionContext | null;
+  getInteractionContext(atMs: number, windowMs?: number, requestIssuingOnly?: boolean): InteractionContext | null;
   /** True when two-or-more DISTINCT controls were acted near `atMs` (a concurrent burst), so a
    *  network fault at that instant cannot be blamed on one control. Optional: absent ⇒ never ambiguous. */
   isConcurrentBurstAt?(atMs: number, windowMs?: number): boolean;

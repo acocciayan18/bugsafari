@@ -32,6 +32,7 @@ import {
   describeNetworkFault,
   mapReproductionActionType,
   isResponsiveBurstObservation,
+  isInertBurstObservation,
   stripContradictoryFreezeObservations,
 } from './reproduction.js';
 import type { ActionRecord } from './types/bug.js';
@@ -256,16 +257,23 @@ check('responsive burst observation is detected; inert and plain lines are not',
   assert.equal(isResponsiveBurstObservation('5 of 5 clicks registered in 218ms'), false);
 });
 
-check('freeze repro strips a responsive burst but keeps steps and inert bursts', () => {
+check('inert burst observation is detected (full invalid line); plain/responsive lines are not', () => {
+  assert.equal(isInertBurstObservation(`${OBSERVATION_PREFIX}${describeInertBurst(5)}`), true);
+  assert.equal(isInertBurstObservation(`${OBSERVATION_PREFIX}5 of 5 clicks registered in 218ms`), false);
+  assert.equal(isInertBurstObservation('Step 1. Navigate to /'), false);
+  // The invalid verdict must ride an OBSERVED line, not any prose that mentions clicks.
+  assert.equal(isInertBurstObservation(describeInertBurst(5)), false);
+});
+
+check('freeze repro strips BOTH responsive and inert bursts but keeps real steps', () => {
   const narrative = [
     'Step 1. Navigate to /',
     `${OBSERVATION_PREFIX}5 of 5 clicks registered in 218ms`,
-    `${OBSERVATION_PREFIX}Invalid: 0 of 5 clicks registered`,
+    `${OBSERVATION_PREFIX}${describeInertBurst(5)}`,
     'Step 2. Click the "Play Hymn" button',
   ];
   assert.deepEqual(stripContradictoryFreezeObservations(narrative), [
     'Step 1. Navigate to /',
-    `${OBSERVATION_PREFIX}Invalid: 0 of 5 clicks registered`,
     'Step 2. Click the "Play Hymn" button',
   ]);
 });

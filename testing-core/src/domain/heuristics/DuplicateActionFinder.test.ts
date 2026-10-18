@@ -838,4 +838,16 @@ check('a real write endpoint (/orders, /price-alert) still reports a double-subm
   }
 });
 
+// A /api/compute endpoint computes a result and persists nothing, so a re-click (even the
+// non-overlapping grace-window one that slipped past a disable-on-submit guard) commits
+// nothing twice — the cebupac RUN false positive on POST /api/compute.
+check('a double POST to /api/compute (compute endpoint) is NOT a defect', () => {
+  const h = new Harness();
+  const a = h.send(1000, { url: 'http://app.test/api/compute' });
+  assert.equal(h.settle(a, 1200, 200), null);
+  const b = h.send(1565, { url: 'http://app.test/api/compute' }); // 365ms after the first settled
+  assert.equal(h.settle(b, 1800, 200), null);
+  assert.equal(h.finder.totalFound(), 0);
+});
+
 console.log(`\n${passed} passed`);

@@ -525,9 +525,9 @@ export class StabilityMonitor {
   }
 
   // One-line description of the interaction that triggered a request, for forensic evidence.
-  private triggeringActionFor(atMs: number): string | undefined {
+  private triggeringActionFor(atMs: number, requestIssuingOnly = false): string | undefined {
     try {
-      const ctx = this.deps.getInteractionContext(atMs);
+      const ctx = this.deps.getInteractionContext(atMs, undefined, requestIssuingOnly);
       return ctx ? resolveControlName({ label: ctx.label, selector: ctx.selector }) : undefined;
     } catch {
       return undefined;
@@ -536,9 +536,9 @@ export class StabilityMonitor {
 
   // The control that actually caused a fault: the interaction active at fault time.
   // Authoritative over the last timeline step, which lags an async fault.
-  private culpritSelectorAt(atMs: number, windowMs?: number): string | undefined {
+  private culpritSelectorAt(atMs: number, windowMs?: number, requestIssuingOnly = false): string | undefined {
     try {
-      return this.deps.getInteractionContext(atMs, windowMs)?.selector || undefined;
+      return this.deps.getInteractionContext(atMs, windowMs, requestIssuingOnly)?.selector || undefined;
     } catch {
       return undefined;
     }
@@ -567,7 +567,7 @@ export class StabilityMonitor {
     if (!this.isOwnControlRequest(request)) return undefined;
     const start = this.requestStartTimes.get(request) ?? this.requestSettledAtMs(request);
     if (this.deps.isConcurrentBurstAt?.(start)) return undefined;
-    return this.culpritSelectorAt(start);
+    return this.culpritSelectorAt(start, undefined, true);
   }
 
   // Page URL active when a request STARTED — anchors its reproduction to the page that issued it,
@@ -608,7 +608,7 @@ export class StabilityMonitor {
     if (!this.isOwnControlRequest(request)) return undefined;
     const start = this.requestStartTimes.get(request) ?? this.requestSettledAtMs(request);
     if (this.deps.isConcurrentBurstAt?.(start)) return undefined;
-    return this.triggeringActionFor(start);
+    return this.triggeringActionFor(start, true);
   }
 
   // Wall-clock duration of a settled request; prefers Playwright's precise timing.
@@ -1960,7 +1960,7 @@ export class StabilityMonitor {
           // endpoint-anchored reproduction instead of a wrong/whole-burst snapshot.
           interaction: this.deps.isConcurrentBurstAt?.(startedAt)
             ? undefined
-            : this.deps.getInteractionContext(startedAt) ?? undefined,
+            : this.deps.getInteractionContext(startedAt, undefined, true) ?? undefined,
           pageUrl: page.url(),
         });
         }
@@ -2284,7 +2284,12 @@ export class StabilityMonitor {
       // promotePendingNetworkFaults). Host-independent DNS/TLS and CDN anti-bot failures
       // are never a target defect, so they are not parked: a coincidental runtime fault
       // must not reclassify them as a UI break.
-      if (!isEnvironmentTransportFailure(reason.toLowerCase()) && !isAntiBotChallengeRequest(url.toLowerCase())) {
+      // A chaos-INJECTED abort is likewise never parked: the engine cancelled the call, so
+      // the resulting app break surfaces on its own through the exception/hang detectors as
+      // a single finding. Parking it would mint a SECOND, network-framed card (a
+      // BOUNDARY_STRESS_FAILURE) for the same self-inflicted event. The Network row above
+      // still records it, annotated with the injected mode, as supporting evidence.
+      if (!chaosMode && !isEnvironmentTransportFailure(reason.toLowerCase()) && !isAntiBotChallengeRequest(url.toLowerCase())) {
         this.networkArbiter.hold(url, evidence, failedAtMs);
       }
     });

@@ -483,12 +483,20 @@ export function isResponsiveBurstObservation(line: string): boolean {
 }
 
 /**
- * Drop responsive-burst observations from a freeze reproduction. A freeze means the page
- * could not respond to input, so a burst that registered fast clicks contradicts it and must
- * not ride along as the freeze's evidence.
+ * True when a narrative line is an inert-burst observation: zero clicks registered, so the
+ * burst never actually interacted with the app ("Invalid: 0 of N clicks registered…").
+ */
+export function isInertBurstObservation(line: string): boolean {
+  return line.includes(OBSERVATION_PREFIX) && line.includes('clicks registered') && line.includes('never actually interacted with the app');
+}
+
+/**
+ * Drop contradictory burst observations from a freeze reproduction. A responsive burst
+ * (fast clicks landed) contradicts a freeze; an inert burst (zero clicks landed) never
+ * interacted with the app. Neither is the freeze's cause, so neither rides along as evidence.
  */
 export function stripContradictoryFreezeObservations(narrative: string[]): string[] {
-  return narrative.filter((line) => !isResponsiveBurstObservation(line));
+  return narrative.filter((line) => !isResponsiveBurstObservation(line) && !isInertBurstObservation(line));
 }
 
 /**

@@ -11,7 +11,7 @@ const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 // caught by `price`. Conservative, clear-read verbs only: the residual risk is a missed
 // double-submit on a read-verb-named write, preferable to flagging every idempotent quote.
 const READ_MODEL_ENDPOINT_RE =
-  /\/(?:quote|quotes|estimate|preview|calculate|calc|pricing|price|search|availability|suggest|autocomplete|typeahead|lookup)(?:[/?#]|$)/i;
+  /\/(?:quote|quotes|estimate|preview|calculate|calc|compute|simulate|pricing|price|search|availability|suggest|autocomplete|typeahead|lookup)(?:[/?#]|$)/i;
 
 // Primary oracle is in-flight overlap. A repeat issued AFTER the first settled is only a
 // candidate inside this grace window; beyond it the operator intent is a fresh submission.
