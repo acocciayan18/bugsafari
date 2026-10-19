@@ -21,6 +21,7 @@ import type { ChaosTransactionManager, StressClickMetadata } from '../../chaos/i
 import { BOMB_COUNT, isNonFatalNavigationError, wait } from './utils.js';
 import { ActiveScenarioTracker } from '../../../infrastructure/monitoring/activeScenarioTracker.js';
 import { ActionRecorder } from '../../../infrastructure/monitoring/actionBuffer.js';
+import { nextBurstId } from '../../../infrastructure/monitoring/burstCorrelation.js';
 import { describeCoordinateBombing, resolveElementLabel } from '../../services/forensics/narration.js';
 import { StressClickMetadataRecorder, type BurstOutcome } from '../../services/forensics/metadataRecorder.js';
 
@@ -86,6 +87,10 @@ export const coordinateBombing = {
       elementKind: 'page area',
       selector: target?.selector ?? 'viewport',
       url: page.url(),
+      // Burst id so stepMinimizer prunes this stress MACRO from a repro anchored on a
+      // DIFFERENT culprit — like the selector-based spammers already do. Without it the
+      // grid dump leaks into unrelated findings as fake "setup".
+      burstId: nextBurstId(),
       macro: {
         scenario: 'CoordinateBombing',
         params: { count: BOMB_COUNT, width, height },

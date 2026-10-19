@@ -121,6 +121,26 @@ check('a same-page burst the culprit was not part of is dropped as stress noise'
   assert.equal(out.some((r) => r.selector === '#go'), true, 'culprit kept');
 });
 
+check('a coordinate-bombing MACRO is pruned from a repro anchored on a different culprit', () => {
+  const out = minimizeActionRecords(
+    [
+      rec({ type: 'NAVIGATE', url: 'http://app.test/duplicate-actions' }),
+      // Stress grid fired on empty space — its own burst, not setup for the real action.
+      rec({
+        type: 'MACRO',
+        selector: 'viewport',
+        url: 'http://app.test/duplicate-actions',
+        burstId: 'cb1',
+        macro: { scenario: 'CoordinateBombing', params: { count: 10, width: 1440, height: 900 }, summary: 'grid' },
+      }),
+      rec({ selector: 'button.danger', url: 'http://app.test/duplicate-actions' }), // culprit
+    ],
+    { faultUrl: 'http://app.test/duplicate-actions', culpritSelector: 'button.danger' },
+  );
+  assert.equal(out.some((r) => r.macro?.scenario === 'CoordinateBombing'), false, 'grid MACRO dropped as stress noise');
+  assert.equal(out.some((r) => r.selector === 'button.danger'), true, 'culprit kept');
+});
+
 check('a timeline with no culprit match is left exactly as page/time scoping produced it', () => {
   const records = [
     rec({ type: 'NAVIGATE', url: 'http://app.test/form' }),
