@@ -3,8 +3,12 @@
 //   npx tsx src/domain/scenarios/fuzzing/payloadEscalator.test.ts
 
 import assert from 'node:assert/strict';
-import { synthesizeEscalatedPayload, deriveFuzzSeed } from './payloadEscalator.js';
-import { getUnicodeChaosTokens } from './strategies/chaosFallbackStrategy.js';
+import {
+  synthesizeEscalatedPayload,
+  deriveFuzzSeed,
+  L0_CHAOS_INTERLEAVE_PERIOD,
+} from './payloadEscalator.js';
+import { getUnicodeChaosTokens, getChaosTokensByCategory } from './strategies/chaosFallbackStrategy.js';
 import type { FieldCategory } from './elementClassifier.js';
 
 let passed = 0;
@@ -76,6 +80,65 @@ check('salting the seed varies the vector across runs (run-to-run diversity)', (
     values.add(synthesizeEscalatedPayload('DATABASE_AUTH', 0, salted, 0).value);
   }
   assert.ok(values.size >= 2, `expected varied vectors across salts, got ${values.size}`);
+});
+
+// ── L0 unicode-chaos interleave (the live exploration fuzz path, opt-in) ──────
+// Proves the unusual-character corpus is GENUINELY emitted into classified text
+// fields that accept L0 and never escalate, not merely defined for L1+.
+
+const hasChaosPrefix = (value: string): boolean =>
+  CHAOS.some((t) => t.length > 0 && value.startsWith(t));
+
+check('interleave off (default): classified text field stays clean at every L0 cursor', () => {
+  const seed = seedFor('TEXT_SEARCH');
+  for (let cursor = 0; cursor <= 8; cursor++) {
+    const p = synthesizeEscalatedPayload('TEXT_SEARCH', 0, seed, cursor, 'field', false);
+    assert.ok(!p.description.includes('unicode-chaos'), `cursor ${cursor} must stay clean (protects NoSQL/sibling callers)`);
+  }
+});
+
+check('interleave on: first encounter (cursor 1) stays clean for the reflection oracle', () => {
+  const p = synthesizeEscalatedPayload('TEXT_SEARCH', 0, seedFor('TEXT_SEARCH'), 1, 'field', true);
+  assert.ok(!p.description.includes('unicode-chaos'), 'first swept encounter must carry a pure vector');
+  assert.ok(!hasChaosPrefix(p.value), 'first encounter has no chaos prefix');
+});
+
+check('interleave on: chaos fires at L0 on the cursor period (swept revisit)', () => {
+  const seed = seedFor('TEXT_SEARCH');
+  const p = synthesizeEscalatedPayload('TEXT_SEARCH', 0, seed, L0_CHAOS_INTERLEAVE_PERIOD, 'field', true);
+  assert.ok(p.description.includes('unicode-chaos'), 'cursor on the period must interleave chaos');
+  assert.ok(hasChaosPrefix(p.value), 'payload is genuinely chaos-prefixed');
+});
+
+check('interleave on: NUMERIC/DATE never receive L0 chaos (type-rejected)', () => {
+  for (const cat of ['NUMERIC', 'DATE'] as FieldCategory[]) {
+    for (let cursor = 0; cursor <= 6; cursor++) {
+      const p = synthesizeEscalatedPayload(cat, 0, seedFor(cat), cursor, 'field', true);
+      assert.ok(!p.description.includes('unicode-chaos'), `${cat} must not receive chaos at L0`);
+    }
+  }
+});
+
+check('every unusual class (zero-width/Zalgo/multibyte/emoji/control) is genuinely injected across the sweep', () => {
+  const seed = seedFor('DATABASE_AUTH');
+  const prefixes: string[] = [];
+  // Even cursors inject chaos; step-2 over the odd-length corpus sweeps all residues.
+  for (let cursor = 2; cursor <= 2 * CHAOS.length; cursor += 2) {
+    const p = synthesizeEscalatedPayload('DATABASE_AUTH', 0, seed, cursor, 'field', true);
+    const token = CHAOS.find((t) => t.length > 0 && p.value.startsWith(t));
+    if (token) prefixes.push(token);
+  }
+  const classes: Record<string, string[]> = {
+    'zero-width/control (A+D)': [...getChaosTokensByCategory('A'), ...getChaosTokensByCategory('D')],
+    'Zalgo (B)': getChaosTokensByCategory('B'),
+    'multibyte/emoji (C)': getChaosTokensByCategory('C'),
+  };
+  for (const [name, tokens] of Object.entries(classes)) {
+    assert.ok(
+      prefixes.some((p) => tokens.includes(p)),
+      `sweep never injected a ${name} token — that class would be merely defined`,
+    );
+  }
 });
 
 console.log(`\npayloadEscalator: ${passed} checks passed.`);

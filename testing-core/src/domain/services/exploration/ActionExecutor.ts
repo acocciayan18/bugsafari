@@ -874,6 +874,9 @@ export class ActionExecutor {
       saltFieldSeed(deriveFuzzSeed(target.selector, category)),
       cursor,
       'field',
+      // Opt-in L0 unicode-chaos interleave so Zalgo/emoji/binary vectors genuinely reach
+      // classified text fields on revisits, not only after a resistance-escalation to L1.
+      true,
     );
     const payload = synth.value;
 

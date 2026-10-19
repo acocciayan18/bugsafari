@@ -34,6 +34,9 @@ import { getUnicodeChaosTokens } from './strategies/chaosFallbackStrategy.js';
 /** Highest escalation level (inclusive). Levels 0..MAX ⇒ MAX+1 attempts. */
 export const MAX_ESCALATION_LEVEL = 4;
 
+/** Cursor period at which the live fuzz path interleaves unicode-chaos at L0 (see {@link synthesizeEscalatedPayload}). */
+export const L0_CHAOS_INTERLEAVE_PERIOD = 2;
+
 /** A synthesized payload plus the metadata needed to record and replay it. */
 export interface EscalatedPayload {
   value: string;
@@ -164,6 +167,13 @@ const FIELD_MUTATORS: ReadonlyArray<(value: string) => string> = [
  *                    and only if it escalated all the way) — audit P3-16.
  * @param placement - Where the value will be put; decides whether the L2 layer is
  *                    percent-encoding (URL) or a context-breaking mutation (field).
+ * @param interleaveL0Chaos - Opt-in for the live exploration fuzz path: also blend a
+ *                    unicode-chaos token into a text-accepting field at L0 on swept
+ *                    revisits (cursor on {@link L0_CHAOS_INTERLEAVE_PERIOD}, first
+ *                    encounter kept clean) so Zalgo/emoji/zero-width/control/multibyte
+ *                    genuinely execute against classified inputs that accept L0 and never
+ *                    resistance-escalate. The L0-only callers (NoSQL finder, sibling fill)
+ *                    leave it false so their clean vectors are never chaos-prefixed.
  */
 export function synthesizeEscalatedPayload(
   category: FieldCategory,
@@ -171,6 +181,7 @@ export function synthesizeEscalatedPayload(
   seed: number,
   cursor = 0,
   placement: PayloadPlacement = 'field',
+  interleaveL0Chaos = false,
 ): EscalatedPayload {
   const lvl = Math.max(0, Math.min(MAX_ESCALATION_LEVEL, Math.floor(level)));
   const vectors = baseVectorsFor(category);
@@ -185,7 +196,11 @@ export function synthesizeEscalatedPayload(
   // token to text-accepting fields so Zalgo/zero-width/emoji/control probing reaches
   // every text input, not just unclassified (CHAOS_FALLBACK) ones. Cursor sweeps the
   // corpus across revisits; L0 stays clean for the L0-only callers.
-  if (lvl >= 1 && TEXT_ACCEPTING.has(category) && UNICODE_CHAOS.length > 0) {
+  // L0 interleave fires only for the opt-in live path, on a cursor period, with the
+  // first encounter (cursor 1) left clean so the reflection oracle still gets a pure vector.
+  const l0Chaos =
+    interleaveL0Chaos && lvl === 0 && cursor > 0 && cursor % L0_CHAOS_INTERLEAVE_PERIOD === 0;
+  if ((lvl >= 1 || l0Chaos) && TEXT_ACCEPTING.has(category) && UNICODE_CHAOS.length > 0) {
     const cIdx = (fnv1a(`${seed}:${lvl}:chaos`) + Math.max(0, Math.floor(cursor))) % UNICODE_CHAOS.length;
     value = UNICODE_CHAOS[cIdx] + value;
     layers.push('unicode-chaos');
